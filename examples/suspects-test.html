@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr suspects-test — Phase 1 verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .warn  { color: #fb923c; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; min-height: 1rem; }
+    hr     { border-color: #334155; margin: 1.5rem 0; }
+    summary { cursor: pointer; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>suspects-test.html — Phase 1: Three Suspects</h1>
+<pre id="log"></pre>
+<hr>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore } from '../src/store.js';
+  import { setupModelBindings } from '../src/bindings-model.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  got: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">══ ${label} ══</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function warn(msg) {
+    log.innerHTML += `<span class="warn">   ⚠ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    if (el) box.appendChild(el.cloneNode ? el.cloneNode(true) : el);
+    area.appendChild(box);
+  }
+
+  function attach(host) {
+    document.body.appendChild(host);
+    return () => host.remove();
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // T1 — S4: Array-indexed data-model + delete (path drift?)
+  //
+  // WHAT WE EXPECT:
+  //   Three inputs bound to items.0.name, items.1.name, items.2.name.
+  //   Delete middle item → remaining inputs should track THEIR OWN original path.
+  //   ACTUAL QUESTION: after deleting the middle, does writing to the first input
+  //   still update items.0.name? And the last input—does it still point to items.2.name
+  //   (now gone) or to items.1.name (the shifted item)?
+  //
+  // ANALYSIS (static):
+  //   data-model="items.0.name" subscribes to exactly "items.0.name".
+  //   Deleting the middle item does NOT fire any notification to "items.0.name" or
+  //   "items.2.name"—only "items" notified (if store.set("items", ...) used).
+  //   But crucially: the INPUT's path is FROZEN at bind time. After delete:
+  //     - Input 1: still reads/writes items.0.name  → OK (data didn't shift)
+  //     - Input 3 (formerly items.2): still writes to items.2.name which is now GONE
+  //       and the actual shifted data is at items.1.name → PATH DRIFT BUG
+  // ════════════════════════════════════════════════════════════════════════════
+  group('T1 — S4: Indexed data-model path drift after middle-item delete');
+  {
+    const store = createStore({
+      items: [
+        { name: 'Alice' },
+        { name: 'Bob' },
+        { name: 'Charlie' },
+      ]
+    });
+
+    // Build a simple editable list — each row bound to items.N.name
+    const host = document.createElement('div');
+    host.innerHTML = `
+      <div id="item0"><input type="text" data-model="items.0.name" id="inp0"></div>
+      <div id="item1"><input type="text" data-model="items.1.name" id="inp1"></div>
+      <div id="item2"><input type="text" data-model="items.2.name" id="inp2"></div>
+    `;
+    const detach = attach(host);
+    const cleanup = setupModelBindings(host, store);
+
+    const inp0 = host.querySelector('#inp0');
+    const inp1 = host.querySelector('#inp1');
+    const inp2 = host.querySelector('#inp2');
+
+    // Verify initial values
+    assert('T1: inp0 initial = Alice',   inp0.value, 'Alice');
+    assert('T1: inp1 initial = Bob',     inp1.value, 'Bob');
+    assert('T1: inp2 initial = Charlie', inp2.value, 'Charlie');
+
+    // Remove the middle item (Bob) from the store array
+    const newItems = [{ name: 'Alice' }, { name: 'Charlie' }];
+    // store.set("items", ...) triggers "items" subscriber, NOT "items.N.name"
+    store.set('items', newItems);
+
+    // After deletion, DOM inputs are NOT updated (no subscriber on items.N.name for array-level changes)
+    // inp0 still shows "Alice" — correct (items.0.name is still Alice)
+    // inp2 still shows "Charlie" — BUT items.2.name is now UNDEFINED (only items.0 and items.1 exist)
+    const storeVal0 = store.get('items.0.name'); // should be Alice
+    const storeVal1 = store.get('items.1.name'); // should be Charlie (shifted)
+    const storeVal2 = store.get('items.2.name'); // should be undefined (gone)
+
+    assert('T1: store.items.0.name = Alice after delete',   storeVal0, 'Alice');
+    assert('T1: store.items.1.name = Charlie after delete', storeVal1, 'Charlie');
+    assert('T1: store.items.2.name = undefined after delete', storeVal2, undefined);
+
+    // Now TYPE into inp2 (formerly bound to items.2.name, which is now gone)
+    inp2.value = 'Dave';
+    inp2.dispatchEvent(new Event('input'));
+
+    // BUG CHECK: inp2 writes to items.2.name (which no longer holds a real item)
+    // This means the write goes to a PHANTOM slot, not to the visible "Charlie" row
+    const afterWrite2 = store.get('items.2.name');
+    const afterWrite1 = store.get('items.1.name');
+
+    const inp2WritesToGhost = afterWrite2 === 'Dave' && afterWrite1 === 'Charlie';
+    const inp2WritesToShifted = afterWrite1 === 'Dave';
+
+    if (inp2WritesToGhost) {
+      log.innerHTML += `<span class="fail">✗ T1: BUG CONFIRMED — inp2 writes to phantom items.2.name (path drift)</span>\n`;
+      failed++;
+    } else if (inp2WritesToShifted) {
+      log.innerHTML += `<span class="pass">✓ T1: No path drift (inp2 correctly writes to items.1.name)</span>\n`;
+      passed++;
+    } else {
+      log.innerHTML += `<span class="warn">? T1: Unexpected state — items.1.name=${afterWrite1}, items.2.name=${afterWrite2}</span>\n`;
+    }
+
+    // Type into inp0 — should still correctly update items.0.name
+    inp0.value = 'Alicia';
+    inp0.dispatchEvent(new Event('input'));
+    assert('T1: inp0 write still updates items.0.name', store.get('items.0.name'), 'Alicia');
+
+    note('VERDICT: index-based data-model is UNSAFE after array mutation.');
+    note('Path is frozen at bind time. After middle-delete, inp2 still writes to items.2.name (ghost slot).');
+    note('FAZ 2 recommendation: FORBID indexed paths like "items.N.x" in dev-mode (KISS > path-update complexity).');
+
+    cleanup();
+    detach();
+    show('T1 — Indexed data-model after delete', host);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // T2 — Downward notification:
+  //   data-text="user.name" bound → store.set("user", {name:"new"}) (replace parent)
+  //   Does data-text update?
+  //
+  // ANALYSIS (static):
+  //   store.set("user", ...) calls notify("user", previousValue).
+  //   notify() iterates segments of "user" = ["user"], fires only subscribers for "user".
+  //   "user.name" subscriber is NOT notified → data-text does NOT update.
+  //   This is a real bug: replacing a parent object should cascade to children.
+  // ════════════════════════════════════════════════════════════════════════════
+  group('T2 — Downward notification: parent replace should update child bindings');
+  {
+    const store = createStore({ user: { name: 'initial' } });
+
+    const host = document.createElement('div');
+    host.innerHTML = `<span id="nameSpan" data-text="user.name"></span>`;
+    const detach = attach(host);
+
+    // Manually set up text binding (replicate setupTextBindings logic)
+    const span = host.querySelector('#nameSpan');
+    const path = 'user.name';
+
+    span.textContent = store.get(path) ?? '';
+    const unsub = store.subscribe(path, (val) => {
+      span.textContent = val ?? '';
+    });
+
+    assert('T2: initial text = initial', span.textContent, 'initial');
+
+    // Now replace the PARENT object entirely
+    store.set('user', { name: 'updated' });
+
+    // Does "user.name" subscriber fire? Current notify() only notifies "user", not "user.name"
+    const afterParentReplace = span.textContent;
+
+    if (afterParentReplace === 'updated') {
+      log.innerHTML += `<span class="pass">✓ T2: Downward notification WORKS (no bug)</span>\n`;
+      passed++;
+    } else {
+      log.innerHTML += `<span class="fail">✗ T2: BUG CONFIRMED — child "user.name" NOT notified when parent "user" set. Got: "${afterParentReplace}"</span>\n`;
+      failed++;
+      note('store.set("user", obj) fires notify("user") — only "user" subscribers run.');
+      note('FAZ 2 fix: in notify(), also trigger subscribers whose path STARTS WITH the changed path.');
+    }
+
+    // Verify store value IS correct (the problem is only notification, not the data)
+    assert('T2: store.get("user.name") is correct', store.get('user.name'), 'updated');
+
+    unsub();
+    detach();
+    show('T2 — Downward notification', host);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // T3 — Object.is in-place mutation:
+  //   list.push(x); store.set("items", list) → subscriber fires?
+  //
+  // ANALYSIS (static):
+  //   setByPath checks Object.is(previousValue, newValue).
+  //   Same array reference → Object.is returns true → changed=false → no notification.
+  //   Expected: subscriber does NOT fire (correct behavior).
+  //   Missing: dev-mode warning when same reference detected.
+  // ════════════════════════════════════════════════════════════════════════════
+  group('T3 — Object.is in-place mutation: same reference → no notification (expected)');
+  {
+    const store = createStore({ items: ['a', 'b'] });
+    let callCount = 0;
+
+    const unsub = store.subscribe('items', () => { callCount++; });
+
+    // In-place mutation: mutate the SAME array, set it back
+    const list = store.get('items'); // get the reference
+    list.push('c');                  // mutate in place
+    store.set('items', list);        // set same reference back
+
+    assert('T3: subscriber NOT called (same reference)', callCount, 0);
+    assert('T3: store still has the mutated array (data IS there)', store.get('items').length, 3);
+
+    if (callCount === 0) {
+      note('CONFIRMED: in-place mutation silently skips notification (Object.is same ref).');
+      note('FAZ 2: dev-mode should warn when object/array passed to set() AND reference is unchanged.');
+      note('DOCS: must document "always pass new reference" contract.');
+    } else {
+      note('UNEXPECTED: subscriber fired even with same reference.');
+    }
+
+    // Correct pattern: create new array
+    store.set('items', [...store.get('items'), 'd']);
+    assert('T3: new reference → subscriber called', callCount, 1);
+    assert('T3: items now has 4 elements', store.get('items').length, 4);
+
+    unsub();
+    show('T3 — In-place mutation', document.createTextNode('no DOM'));
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Summary
+  // ════════════════════════════════════════════════════════════════════════════
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} assertions: ${passed} passed, ${failed} failed.</span>\n`;
+
+  log.innerHTML += `\n<span class="group">══ FINDINGS SUMMARY ══</span>\n`;
+  log.innerHTML += `<span class="warn">T1: BUG — indexed data-model (items.N.name) paths drift after array mutation.</span>\n`;
+  log.innerHTML += `<span class="warn">    FIX: dev-mode FORBID indexed paths (KISS). Detected by /\\.\\d+\\./.test(path) || path ends with .N</span>\n`;
+  log.innerHTML += `<span class="warn">T2: BUG — store.set("parent", obj) does not notify "parent.child" subscribers.</span>\n`;
+  log.innerHTML += `<span class="warn">    FIX: in notify(), after upper-path notifications, scan all subscribers for paths</span>\n`;
+  log.innerHTML += `<span class="warn">    that START WITH changedPath+"." and notify them with their current value.</span>\n`;
+  log.innerHTML += `<span class="warn">T3: CONFIRMED behavior (no bug). Missing: dev-mode warning for same-ref mutation.</span>\n`;
+  log.innerHTML += `<span class="warn">    FIX: in store.set(), if value is object/array AND Object.is(old,new), warn.</span>\n`;
+</script>
+</body>
+</html>

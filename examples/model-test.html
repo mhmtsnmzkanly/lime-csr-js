@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr bindings-model — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/bindings-model.js — verification tests</h1>
+
+<!-- data-model + data-on-input ordering (2h): same element, both attributes -->
+<template id="tpl-model-order">
+  <input type="text" data-model="text" data-on-input="onInput">
+</template>
+
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore, mount } from '../src/index.js';
+  import { setupModelBindings } from '../src/bindings-model.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  /** Attaches host to document.body for realistic event behavior (native change/click). */
+  function attach(host) {
+    document.body.appendChild(host);
+    return () => host.remove();
+  }
+
+  // ── 1. text: DOM → state and state → DOM ─────────────────────────────────
+  group('text: typing in the input updates the store; store.set changes the input');
+  {
+    const store = createStore({ name: 'Ali' });
+    const host  = document.createElement('div');
+    host.innerHTML = `<input type="text" data-model="name">`;
+    const detach = attach(host);
+
+    const cleanup = setupModelBindings(host, store);
+    const input = host.querySelector('input');
+
+    assert('initial value: Ali', input.value, 'Ali');
+
+    input.value = 'Veli';
+    input.dispatchEvent(new Event('input'));
+    assert('input → store updated', store.get('name'), 'Veli');
+
+    store.set('name', 'Zeynep');
+    assert('store.set → input updated', input.value, 'Zeynep');
+
+    cleanup();
+    detach();
+    show('1. text (Ali → Veli → Zeynep)', host.cloneNode(true));
+  }
+
+  // ── 2. CURSOR: same-value round-trip must not disturb the cursor ─────────
+  group('cursor: input → store → (same value) → DOM write MUST BE SKIPPED');
+  {
+    const store = createStore({ text: 'abc' });
+    const host  = document.createElement('div');
+    host.innerHTML = `<input type="text" data-model="text">`;
+    const detach = attach(host);
+
+    setupModelBindings(host, store);
+    const input = host.querySelector('input');
+
+    // User typed 'X' between 'a' and 'b': "abc" → "aXbc", cursor at 2.
+    input.value = 'aXbc';
+    input.setSelectionRange(2, 2);
+    input.dispatchEvent(new Event('input'));
+
+    assert('store updated', store.get('text'), 'aXbc');
+    assert('cursor position PRESERVED (subscribe write-back was skipped)',
+      input.selectionStart, 2);
+
+    detach();
+    note('write() did not write the same value again, so selectionStart was not reset');
+  }
+
+  // ── 3. checkbox: both directions ─────────────────────────────────────────
+  group('checkbox: check → state true; store.set(false) → unchecked');
+  {
+    const store = createStore({ agree: false });
+    const host  = document.createElement('div');
+    host.innerHTML = `<input type="checkbox" data-model="agree">`;
+    const detach = attach(host);
+
+    setupModelBindings(host, store);
+    const cb = host.querySelector('input');
+
+    assert('initial value: unchecked', cb.checked, false);
+
+    cb.click(); // native: sets checked=true + fires click/input/change events
+    assert('store after click: true', store.get('agree'), true);
+
+    store.set('agree', false);
+    assert('store.set(false) → unchecked', cb.checked, false);
+
+    detach();
+    show('3. checkbox', host.cloneNode(true));
+  }
+
+  // ── 4. radio group: selection → state; state → correct radio selected ────
+  group('radio group: 3 radios sharing the same data-model path');
+  {
+    const store = createStore({ choice: 'b' });
+    const host  = document.createElement('div');
+    host.innerHTML = `
+      <input type="radio" name="choice-group" value="a" data-model="choice">
+      <input type="radio" name="choice-group" value="b" data-model="choice">
+      <input type="radio" name="choice-group" value="c" data-model="choice">`;
+    const detach = attach(host);
+
+    setupModelBindings(host, store);
+    const radios = Array.from(host.querySelectorAll('input'));
+
+    assert('initial state: "b" selected', radios.map((r) => r.checked), [false, true, false]);
+
+    radios[2].click(); // native: checks itself, unchecks others in the same "name" group
+    assert('"c" clicked → store updated', store.get('choice'), 'c');
+    assert('only "c" is checked', radios.map((r) => r.checked), [false, false, true]);
+
+    store.set('choice', 'a');
+    assert('store.set("a") → only "a" is checked', radios.map((r) => r.checked), [true, false, false]);
+
+    detach();
+    show('4. radio group', host.cloneNode(true));
+  }
+
+  // ── 5. select (single): both directions ───────────────────────────────────
+  group('select (single): selection → state; state → selected option');
+  {
+    const store = createStore({ city: 'ist' });
+    const host  = document.createElement('div');
+    host.innerHTML = `
+      <select data-model="city">
+        <option value="ist">Istanbul</option>
+        <option value="ank">Ankara</option>
+        <option value="izm">Izmir</option>
+      </select>`;
+    const detach = attach(host);
+
+    setupModelBindings(host, store);
+    const select = host.querySelector('select');
+
+    assert('initial value: ist', select.value, 'ist');
+
+    select.value = 'izm';
+    select.dispatchEvent(new Event('change'));
+    assert('selection → store updated', store.get('city'), 'izm');
+
+    store.set('city', 'ank');
+    assert('store.set → select updated', select.value, 'ank');
+
+    detach();
+    show('5. select (single)', host.cloneNode(true));
+  }
+
+  // ── 6. select multiple: array both directions ─────────────────────────────
+  group('select multiple: selected values as an array, both directions');
+  {
+    const store = createStore({ tags: ['a'] });
+    const host  = document.createElement('div');
+    host.innerHTML = `
+      <select multiple data-model="tags">
+        <option value="a">A</option>
+        <option value="b">B</option>
+        <option value="c">C</option>
+      </select>`;
+    const detach = attach(host);
+
+    setupModelBindings(host, store);
+    const select = host.querySelector('select');
+    const [optA, optB, optC] = select.options;
+
+    assert('initially selected: [a]', [optA.selected, optB.selected, optC.selected], [true, false, false]);
+
+    optB.selected = true;
+    optC.selected = true;
+    select.dispatchEvent(new Event('change'));
+    assert('selection → store: [a,b,c]', store.get('tags'), ['a', 'b', 'c']);
+
+    store.set('tags', ['b']);
+    assert('store.set([b]) → only B is selected',
+      [optA.selected, optB.selected, optC.selected], [false, true, false]);
+
+    detach();
+    show('6. select multiple', host.cloneNode(true));
+  }
+
+  // ── 7. number: converts to Number(); invalid/empty → raw string ──────────
+  group('number: valid number → Number, empty/invalid → raw string');
+  {
+    const store = createStore({ age: 0 });
+    const host  = document.createElement('div');
+    host.innerHTML = `<input type="number" data-model="age">`;
+    const detach = attach(host);
+
+    setupModelBindings(host, store);
+    const input = host.querySelector('input');
+
+    input.value = '25';
+    input.dispatchEvent(new Event('input'));
+    assert('valid number → Number 25', store.get('age'), 25);
+    assert('type is number',           typeof store.get('age'), 'number');
+
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    assert('empty field → raw empty string', store.get('age'), '');
+
+    store.set('age', 42);
+    assert('store.set(42) → input.value "42"', input.value, '42');
+
+    detach();
+    show('7. number', host.cloneNode(true));
+  }
+
+  // ── 8. cleanup: neither direction should work after unmount ──────────────
+  group('cleanup: both directions disabled after cleanup');
+  {
+    const store = createStore({ val: 'initial' });
+    const host  = document.createElement('div');
+    host.innerHTML = `<input type="text" data-model="val">`;
+    const detach = attach(host);
+
+    const cleanup = setupModelBindings(host, store);
+    const input = host.querySelector('input');
+
+    cleanup();
+
+    input.value = 'typed';
+    input.dispatchEvent(new Event('input'));
+    assert('after cleanup, input → store DID NOT change', store.get('val'), 'initial');
+
+    store.set('val', 'external');
+    assert('after cleanup, store.set → input DID NOT change', input.value, 'typed');
+
+    detach();
+    note('both removeEventListener + unsubscribe happened (no leak)');
+  }
+
+  // ── 9. empty data-model path → warning, no crash ──────────────────────────
+  group('data-model="" (empty path) → warning issued, no crash');
+  {
+    const warns = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warns.push(args[0]); };
+
+    const store = createStore({});
+    const host  = document.createElement('div');
+    host.innerHTML = `<input type="text" data-model="">`;
+
+    let threw = false;
+    try { setupModelBindings(host, store); } catch { threw = true; }
+
+    console.warn = orig;
+
+    assert('no crash',              threw, false);
+    assert('warning issued',        warns.length > 0, true);
+    assert('warning contains "data-model"', warns[0]?.includes('data-model'), true);
+  }
+
+  // ── 10. data-model + data-on-input ordering (2h) ──────────────────────────
+  group('same element: data-model runs BEFORE data-on-input\'s handler');
+  {
+    const store  = createStore({ text: '' });
+    const target = document.createElement('div');
+    let storeValueSeenByHandler = null;
+    let handlerCallCount = 0;
+
+    mount('model-order', {}, target, store, {
+      handlers: {
+        onInput(event, el) {
+          handlerCallCount++;
+          // If data-model's own 'input' listener already ran, the store must
+          // already reflect the new value by the time this handler fires.
+          storeValueSeenByHandler = store.get('text');
+        },
+      },
+    });
+
+    const input = target.querySelector('input');
+    input.value = 'typed value';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    assert('data-on-input handler was called', handlerCallCount, 1);
+    assert('store already updated by data-model when the handler ran (ordering proof)',
+      storeValueSeenByHandler, 'typed value');
+    assert('store.get("text") matches the input after the event settles',
+      store.get('text'), 'typed value');
+
+    note('setupModelBindings runs inside render() (pipeline step 5b); ' +
+      'setupEventBindings only attaches its delegation listener afterward, in ' +
+      "mount() — so data-model's own 'input' listener on the element always " +
+      'observes the keystroke before the bubbled delegation listener does ✓');
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr bindings-blocks — reactive &lt;if data-live&gt;</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; min-height: 1rem; }
+  </style>
+</head>
+<body>
+<h1>src/bindings-blocks.js — reactive &lt;if data-live&gt; verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<!-- ══════════════ Template definitions ══════════════ -->
+
+<!-- Basic live-if: switches between then↔else when count changes -->
+<template id="tpl-live-count">
+  <div class="wrap">
+    <span class="raw" data-text="count"></span>
+    <if is-gt="count" than="0" data-live>
+      <p class="positive">Positive! (<span data-text="count"></span>)</p>
+    <else>
+      <p class="zero">Zero or negative.</p>
+    </else>
+    </if>
+  </div>
+</template>
+
+<!-- For testing that the data-text binding inside the branch is cleaned up -->
+<template id="tpl-live-bind-cleanup">
+  <div class="wrap">
+    <if is-truthy="show" data-live>
+      <span class="then-span" data-text="message"></span>
+    <else>
+      <span class="else-span">hidden</span>
+    </else>
+    </if>
+  </div>
+</template>
+
+<!-- Nested live-if -->
+<template id="tpl-nested-live">
+  <div class="wrap">
+    <if is-truthy="outer" data-live>
+      <div class="outer-then">
+        <p>Outer: true</p>
+        <if is-truthy="inner" data-live>
+          <b class="inner-badge">Inner: true</b>
+        <else>
+          <span class="inner-badge">Inner: false</span>
+        </else>
+        </if>
+      </div>
+    <else>
+      <div class="outer-else"><p>Outer: false</p></div>
+    </else>
+    </if>
+  </div>
+</template>
+
+<!-- Static (non-live) + live-if together — regression test -->
+<template id="tpl-mixed">
+  <div class="wrap">
+    <if is-truthy="staticFlag">
+      <p class="static-result">static if: true</p>
+    <else>
+      <p class="static-result">static if: false</p>
+    </else>
+    </if>
+    <if is-truthy="liveFlag" data-live>
+      <p class="live-result">live if: true</p>
+    <else>
+      <p class="live-result">live if: false</p>
+    </else>
+    </if>
+  </div>
+</template>
+
+<!-- el="tag" container option (2g) -->
+<template id="tpl-live-el">
+  <div class="wrap">
+    <if is-truthy="open" data-live el="div" class="el-container" data-testid="panel">
+      <p class="content">open</p>
+    <else>
+      <p class="content">closed</p>
+    </else>
+    </if>
+  </div>
+</template>
+
+<!-- block-level hooks: data-after / data-before -->
+<template id="tpl-live-hooks">
+  <div class="wrap">
+    <if is-truthy="open" data-live el="div" class="hook-container" data-after="onAfter" data-before="onBefore">
+      <p class="content">open</p>
+    <else>
+      <p class="content">closed</p>
+    </else>
+    </if>
+  </div>
+</template>
+
+<!-- ══════════════ Test logic ══════════════ -->
+<script type="module">
+  import { createStore } from '../src/store.js';
+  import { mount }       from '../src/index.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  /** Captures warnings emitted while `fn` runs; real console output is still preserved. */
+  function captureWarns(fn) {
+    const caught = [];
+    const orig = console.warn;
+    console.warn = (...args) => { caught.push(args.join(' ')); orig.apply(console, args); };
+    fn();
+    console.warn = orig;
+    return caught;
+  }
+
+  // ── 1. Basic live-if: switching between branches ───────────────────────────
+  group('Basic live-if: then↔else switch via store.set');
+  {
+    const store  = createStore({ count: 0 });
+    const target = document.createElement('div');
+    mount('live-count', {}, target, store);
+
+    // Initial: count=0 → else branch (zero)
+    assert('<if> did not stay in the DOM', target.querySelector('if'), null);
+    assert('else branch active: .zero',  !!target.querySelector('.zero'),     true);
+    assert('then branch absent: .positive', !!target.querySelector('.positive'), false);
+    assert('data-text: 0',            target.querySelector('.raw')?.textContent, '0');
+
+    // count=5 → then branch
+    store.set('count', 5);
+    assert('then branch active: .positive', !!target.querySelector('.positive'), true);
+    assert('else branch absent: .zero',       !!target.querySelector('.zero'),     false);
+    assert('data-text inside then: 5',
+      target.querySelector('.positive span')?.textContent, '5');
+
+    // count=-1 → back to else branch
+    store.set('count', -1);
+    assert('back to else branch: .zero', !!target.querySelector('.zero'),     true);
+    assert('then branch absent: .positive', !!target.querySelector('.positive'), false);
+
+    note('Comment-node placeholders are in the DOM: <!-- live-if:... -->');
+    note('Comment nodes do not affect querySelectorAll ✓');
+    show('1. Basic live-if', target);
+  }
+
+  // ── 2. Cleanup: old data-text binding cancelled on branch change ───────────
+  group('Cleanup: is the old data-text bind cancelled on branch change?');
+  {
+    const store  = createStore({ show: true, message: 'hello' });
+    const target = document.createElement('div');
+    mount('live-bind-cleanup', {}, target, store);
+
+    const thenSpan = target.querySelector('.then-span');
+    assert('then branch active, message: hello', thenSpan?.textContent, 'hello');
+
+    // Does the message update work?
+    store.set('message', 'world');
+    assert('data-text updated in then', thenSpan?.textContent, 'world');
+
+    // Switch branch: then → else
+    store.set('show', false);
+    assert('switched to else branch',    !!target.querySelector('.else-span'), true);
+    assert('then span left the DOM', !!target.querySelector('.then-span'), false);
+
+    // The old then-span is no longer in the DOM; changing message must not update the old span
+    store.set('message', 'leak?');
+    assert('old then-span is detached from the DOM (no leak)',
+      document.contains(thenSpan), false);
+    // The old span's textContent may still change, but it has no effect in the DOM — best check: no new subscription
+    assert('else span still present',
+      target.querySelector('.else-span')?.textContent, 'hidden');
+
+    // Go back: else → then
+    store.set('show', true);
+    assert('back to then branch',
+      !!target.querySelector('.then-span'), true);
+    // The new then span should get the current message (leak test passed → new branch bound)
+    assert('new then span has the current message',
+      target.querySelector('.then-span')?.textContent, 'leak?');
+
+    note('Branch-change order: 1. branchCleanup() 2. new render 3. DOM swap ✓');
+    show('2. Branch cleanup test', target);
+  }
+
+  // ── 3. Nested live-if ──────────────────────────────────────────────────────
+  group('Nested live-if: outer and inner are independently reactive');
+  {
+    const store  = createStore({ outer: false, inner: false });
+    const target = document.createElement('div');
+    mount('nested-live', {}, target, store);
+
+    // outer=false → outer else
+    assert('outer=false: .outer-else present', !!target.querySelector('.outer-else'), true);
+    assert('outer=false: .outer-then absent', !!target.querySelector('.outer-then'), false);
+    assert('outer=false: .inner-badge absent', !!target.querySelector('.inner-badge'), false);
+
+    // outer=true → outer then (inner live-if should activate)
+    store.set('outer', true);
+    assert('outer=true: .outer-then present',  !!target.querySelector('.outer-then'), true);
+    assert('outer=true: .outer-else absent',  !!target.querySelector('.outer-else'), false);
+    assert('outer=true: .inner-badge present', !!target.querySelector('.inner-badge'), true);
+    // inner=false → inner badge = "Inner: false"
+    assert('inner=false: badge text',
+      target.querySelector('.inner-badge')?.textContent, 'Inner: false');
+
+    // inner=true → inner badge should change
+    store.set('inner', true);
+    assert('inner=true: badge text',
+      target.querySelector('.inner-badge')?.textContent, 'Inner: true');
+
+    // outer=false → outer else, inner live-if subscriptions must be cancelled
+    store.set('outer', false);
+    assert('outer=false again: .outer-else present', !!target.querySelector('.outer-else'), true);
+    assert('outer=false again: .inner-badge absent', !!target.querySelector('.inner-badge'), false);
+
+    // Changing inner now should no longer affect the DOM (subscription cancelled)
+    store.set('inner', false);
+    assert('outer=false → inner change had no DOM effect (no inner-badge)',
+      !!target.querySelector('.inner-badge'), false);
+
+    note('Outer branch cleanup also cancelled the inner live-if subscriptions, chained ✓');
+    show('3. Nested live-if', target);
+  }
+
+  // ── 4. Non-live <if> regression ────────────────────────────────────────────
+  group('Regression: non-live <if> is still resolved once (does not change)');
+  {
+    const store  = createStore({ liveFlag: false });
+    const target = document.createElement('div');
+    mount('mixed', { staticFlag: true }, target, store);
+
+    // Static if: staticFlag=true (from context) → "static if: true" stays fixed
+    assert('static if resolved (true)',
+      target.querySelector('.static-result')?.textContent, 'static if: true');
+    assert('static <if> did not stay in the DOM', target.querySelector('if:not([data-live])'), null);
+
+    // Live if: liveFlag=false → "live if: false"
+    assert('live if initial: false',
+      target.querySelector('.live-result')?.textContent, 'live if: false');
+
+    // Live if should update when liveFlag changes
+    store.set('liveFlag', true);
+    assert('live if updated: true',
+      target.querySelector('.live-result')?.textContent, 'live if: true');
+
+    // Static if must stay fixed (even if the store changes)
+    assert('static if still: true (not reactive)',
+      target.querySelector('.static-result')?.textContent, 'static if: true');
+
+    note('Static <if> was resolved once at mount and stayed; live <if> is subscribed to the store ✓');
+    show('4. Regression: static + live if', target);
+  }
+
+  // ── 5. mount cleanup: live-if subscriptions cancelled after unmount ───────
+  group('mount cleanup: the returned cleanup() cancels live-if subscriptions');
+  {
+    const store   = createStore({ count: 1 });
+    const target  = document.createElement('div');
+    const cleanup = mount('live-count', {}, target, store);
+
+    assert('initial: then (count=1)', !!target.querySelector('.positive'), true);
+
+    cleanup(); // cancel all subscriptions
+    store.set('count', 0);
+
+    // DOM must not change (subscription was cancelled)
+    assert('then still present after cleanup (DOM not updated)',
+      !!target.querySelector('.positive'), true);
+    note('cleanup() cancelled the live-if subscriptions + the branch cleanup ✓');
+  }
+
+  // ── 6. el="tag" container option (2g) ──────────────────────────────────────
+  group('el="tag": persistent container instead of bare comment anchors');
+  {
+    const store  = createStore({ open: true });
+    const target = document.createElement('div');
+    mount('live-el', {}, target, store);
+
+    const container = target.querySelector('.el-container');
+    assert('el="div" created a container element', container?.tagName, 'DIV');
+    assert('container has the class carried over from <if>', container?.classList.contains('el-container'), true);
+    assert('container has data-testid carried over from <if>', container?.getAttribute('data-testid'), 'panel');
+    assert('container is NOT itself reserved-attribute-bearing (no "el" attr leaked)', container?.hasAttribute('el'), false);
+    assert('initial content: open', container?.querySelector('.content')?.textContent, 'open');
+
+    const containerBefore = container;
+
+    store.set('open', false);
+    const containerAfter = target.querySelector('.el-container');
+    assert('container identity PRESERVED across condition change', containerAfter, containerBefore);
+    assert('content swapped to closed', containerAfter?.querySelector('.content')?.textContent, 'closed');
+
+    store.set('open', true);
+    assert('container identity still preserved after switching back',
+      target.querySelector('.el-container'), containerBefore);
+    assert('content swapped back to open', target.querySelector('.el-container')?.querySelector('.content')?.textContent, 'open');
+
+    note('Same container DOM node throughout — only its children were replaced ✓');
+    show('6. el="tag" container', target);
+  }
+
+  // ── 7. no el= → original comment-anchor behavior is unchanged ──────────────
+  group('no el=: <if data-live> without el keeps using bare comment anchors');
+  {
+    const store  = createStore({ count: 1 });
+    const target = document.createElement('div');
+    mount('live-count', {}, target, store);
+
+    // No wrapper element should exist around the branch content beyond what
+    // the template itself declares (.wrap) — the branch content's parent is
+    // .wrap directly, not some engine-introduced container.
+    const positive = target.querySelector('.positive');
+    assert('branch content\'s parent is the template\'s own .wrap (no synthetic container)',
+      positive?.parentElement?.classList.contains('wrap'), true);
+    note('Regression: adding el= support did not change the no-el code path ✓');
+  }
+
+  // ── 8. data-after/data-before block-level hooks ────────────────────────────
+  group('8. data-after/data-before: fire correctly, in order, with the right root/store');
+  {
+    const store  = createStore({ open: true });
+    const target = document.createElement('div');
+    const calls  = [];
+
+    mount('live-hooks', {}, target, store, {
+      handlers: {
+        onAfter(rootEl, s) {
+          calls.push({
+            kind: 'after',
+            rootEl,
+            content: rootEl.querySelector('.content')?.textContent,
+            storeMatches: s === store,
+          });
+        },
+        onBefore(rootEl, s) {
+          calls.push({
+            kind: 'before',
+            rootEl,
+            content: rootEl.querySelector('.content')?.textContent,
+            stillInDom: target.contains(rootEl),
+            storeMatches: s === store,
+          });
+        },
+      },
+    });
+
+    // Initial render: data-after fires once, branch already placed.
+    assert('data-after fired once on initial render', calls.filter((c) => c.kind === 'after').length, 1);
+    assert('initial after-hook saw the branch content already placed ("open")', calls[0].content, 'open');
+    assert('initial after-hook received the store instance', calls[0].storeMatches, true);
+
+    const containerRef = target.querySelector('.hook-container');
+    assert('after-hook rootEl is the el= container', calls[0].rootEl, containerRef);
+
+    calls.length = 0;
+    store.set('open', false); // true -> false: before (old branch) then after (new branch)
+
+    assert('exactly 2 hook calls on a branch switch', calls.length, 2);
+    assert('order: data-before fires first', calls[0].kind, 'before');
+    assert('order: data-after fires second', calls[1].kind, 'after');
+    assert('data-before saw the OLD content ("open") still present (before cleanup/removal)',
+      calls[0].content, 'open');
+    assert('data-before\'s rootEl was still attached to the DOM at call time', calls[0].stillInDom, true);
+    assert('data-after saw the NEW content ("closed")', calls[1].content, 'closed');
+    assert('both hooks received the SAME container (el= container is never recreated)',
+      calls[0].rootEl === calls[1].rootEl, true);
+    assert('that stable container is the original container reference', calls[0].rootEl, containerRef);
+
+    calls.length = 0;
+    store.set('open', false); // same value -> no branch switch -> no hook fires
+    assert('re-setting the SAME condition value triggers NEITHER hook', calls.length, 0);
+
+    calls.length = 0;
+    store.set('open', true); // false -> true: same before/after sequence in reverse
+    assert('exactly 2 hook calls on the reverse switch too', calls.length, 2);
+    assert('order still before-then-after on the reverse switch',
+      [calls[0].kind, calls[1].kind], ['before', 'after']);
+
+    note('Sequence proven: data-before fires while the OLD branch is still live in the DOM, ' +
+      'strictly before cleanup+removal; data-after fires only once the NEW branch is placed; ' +
+      'same-condition re-evaluation triggers neither ✓');
+    show('8. Block-level hooks', target);
+  }
+
+  // ── 9. data-after/data-before: missing handler warns, no crash ────────────
+  group('9. Missing data-after/data-before handler: warning issued, no crash');
+  {
+    const store  = createStore({ open: true });
+    const target = document.createElement('div');
+    let threw = false;
+
+    const warns1 = captureWarns(() => {
+      try {
+        mount('live-hooks', {}, target, store, { handlers: {} }); // onAfter/onBefore undefined
+      } catch { threw = true; }
+    });
+
+    assert('no crash on mount with missing handlers', threw, false);
+    assert('BLOCK_AFTER_NOT_FOUND warning issued for the initial render',
+      warns1.some((w) => w.includes('BLOCK_AFTER_NOT_FOUND')), true);
+
+    const warns2 = captureWarns(() => store.set('open', false));
+    assert('BLOCK_BEFORE_NOT_FOUND warning issued on branch switch',
+      warns2.some((w) => w.includes('BLOCK_BEFORE_NOT_FOUND')), true);
+    assert('BLOCK_AFTER_NOT_FOUND warning issued again for the new branch',
+      warns2.some((w) => w.includes('BLOCK_AFTER_NOT_FOUND')), true);
+    assert('the branch switch itself still worked correctly despite missing handlers',
+      target.querySelector('.content')?.textContent, 'closed');
+
+    note('Missing handlers degrade gracefully — warned, but rendering is unaffected ✓');
+  }
+
+  // ── 10. No data-after/data-before: unchanged behavior (regression) ────────
+  group('10. Templates without data-after/data-before: no hook-related warnings');
+  {
+    const store  = createStore({ count: 1 });
+    const target = document.createElement('div');
+
+    const warns = captureWarns(() => {
+      mount('live-count', {}, target, store, { handlers: {} });
+      store.set('count', -1);
+      store.set('count', 5);
+    });
+
+    const hookWarns = warns.filter((w) =>
+      w.includes('BLOCK_AFTER_NOT_FOUND') || w.includes('BLOCK_BEFORE_NOT_FOUND'));
+    assert('zero hook-related warnings for a template with no data-after/before', hookWarns.length, 0);
+    assert('normal branch switching still works', !!target.querySelector('.positive'), true);
+
+    note('Templates that never opt into data-after/data-before are completely unaffected ✓');
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

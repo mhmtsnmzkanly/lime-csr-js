@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr conditionals — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/conditionals.js — verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { processAllIfs, evalCondition, OPERATORS } from '../src/conditionals.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(label) {
+    log.innerHTML += `<span class="note">   ↳ ${label}</span>\n`;
+  }
+
+  /**
+   * Test helper: writes HTML into a <div>, runs processAllIfs,
+   * returns the resulting element and adds it to the DOM.
+   */
+  function run(html, context = {}) {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    processAllIfs(host, context);
+    return host;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.textContent = el.innerHTML.replace(/\s+/g, ' ').trim() || '(empty)';
+    area.appendChild(box);
+  }
+
+  // ── 1. is-gt: true → then ────────────────────────────────────────────────
+  group('is-gt: true → then is selected');
+  {
+    const h = run(
+      `<if is-gt="score" than="10">
+         <p>high</p>
+         <else><p>low</p></else>
+       </if>`,
+      { score: 15 },
+    );
+    assert('then <p> present',       h.querySelector('p')?.textContent?.trim(), 'high');
+    assert('<if> did not stay in the DOM',  h.querySelector('if'),  null);
+    assert('<else> did not stay in the DOM',h.querySelector('else'), null);
+    show('1a. is-gt true (score=15 > 10)', h);
+  }
+
+  // ── 2. is-gt: false → else ───────────────────────────────────────────────
+  group('is-gt: false → else is selected');
+  {
+    const h = run(
+      `<if is-gt="score" than="10">
+         <p>high</p>
+         <else><p>low</p></else>
+       </if>`,
+      { score: 3 },
+    );
+    assert('else <p> present', h.querySelector('p')?.textContent?.trim(), 'low');
+    show('1b. is-gt false (score=3 < 10)', h);
+  }
+
+  // ── 3. is-lt, is-gte, is-lte, is-neq ─────────────────────────────────────
+  group('is-lt / is-gte / is-lte / is-neq');
+  {
+    const lt  = run(`<if is-lt="v" than="5"><b>low</b><else><b>high</b></else></if>`, { v: 2 });
+    const gte = run(`<if is-gte="n" than="10"><b>enough</b></if>`, { n: 10 });
+    const lte = run(`<if is-lte="n" than="10"><b>low</b></if>`,     { n: 10 });
+    const neq = run(`<if is-neq="m" to="dark"><b>light</b></if>`,   { m: 'light' });
+    assert('is-lt true',   lt.querySelector('b')?.textContent,  'low');
+    assert('is-gte equal', gte.querySelector('b')?.textContent, 'enough');
+    assert('is-lte equal', lte.querySelector('b')?.textContent, 'low');
+    assert('is-neq different', neq.querySelector('b')?.textContent, 'light');
+  }
+
+  // ── 4. is-eq string equality ───────────────────────────────────────────────
+  group('is-eq string equality');
+  {
+    const eqT = run(
+      `<if is-eq="status" to="active"><em>active</em><else><em>inactive</em></else></if>`,
+      { status: 'active' },
+    );
+    const eqF = run(
+      `<if is-eq="status" to="active"><em>active</em><else><em>inactive</em></else></if>`,
+      { status: 'banned' },
+    );
+    assert('is-eq equal → active',       eqT.querySelector('em')?.textContent, 'active');
+    assert('is-eq not equal → inactive', eqF.querySelector('em')?.textContent, 'inactive');
+  }
+
+  // ── 5. is-truthy ──────────────────────────────────────────────────────────
+  group('is-truthy');
+  {
+    const truthy = run(
+      `<if is-truthy="user.name"><b>logged in</b><else><b>guest</b></else></if>`,
+      { user: { name: 'Ali' } },
+    );
+    const falsy = run(
+      `<if is-truthy="user.name"><b>logged in</b><else><b>guest</b></else></if>`,
+      { user: { name: '' } },
+    );
+    const undef = run(
+      `<if is-truthy="user.name"><b>logged in</b><else><b>guest</b></else></if>`,
+      { user: {} },
+    );
+    assert('truthy: non-empty string → logged in', truthy.querySelector('b')?.textContent, 'logged in');
+    assert('truthy: empty string → guest',          falsy.querySelector('b')?.textContent,  'guest');
+    assert('truthy: undefined → guest',              undef.querySelector('b')?.textContent,  'guest');
+    show('5. is-truthy', truthy);
+  }
+
+  // ── 6. <if> WITHOUT <else>: false → nothing remains ──────────────────────
+  group('<if> without <else>');
+  {
+    const visible = run(`<if is-truthy="show"><p>visible</p></if>`, { show: true });
+    const gone    = run(`<if is-truthy="show"><p>visible</p></if>`, { show: false });
+    assert('content present when true',   visible.querySelector('p')?.textContent, 'visible');
+    assert('content ABSENT when false',   gone.querySelector('p'),                  null);
+    assert('host empty when false',       gone.innerHTML.trim(),                     '');
+    show('6a. no <else>, condition true', visible);
+    show('6b. no <else>, condition false (should be empty)', gone);
+  }
+
+  // ── 7. NESTED <if>: outer-to-inner, each <else> belongs to its own <if> ──
+  group('nested <if> — outer-to-inner processing');
+  {
+    const html = `
+      <if is-gt="x" than="10">
+        <p id="o">high</p>
+        <if is-eq="role" to="admin">
+          <p id="i">admin</p>
+          <else><p id="i">member</p></else>
+        </if>
+        <else>
+          <p id="o">low</p>
+        </else>
+      </if>`;
+
+    const admin = run(html, { x: 15, role: 'admin' });
+    const user  = run(html, { x: 15, role: 'user'  });
+    const low   = run(html, { x: 3,  role: 'admin' });
+
+    assert('outer+inner true → high + admin',
+      [admin.querySelector('#o')?.textContent?.trim(),
+       admin.querySelector('#i')?.textContent?.trim()].join(' | '),
+      'high | admin');
+    assert('outer true, inner false → high + member',
+      [user.querySelector('#o')?.textContent?.trim(),
+       user.querySelector('#i')?.textContent?.trim()].join(' | '),
+      'high | member');
+    assert('outer false → low, inner ABSENT', low.querySelector('#o')?.textContent?.trim(), 'low');
+    assert('outer false → #i absent',        low.querySelector('#i'), null);
+    assert('no <if> left (admin)',            admin.querySelector('if'), null);
+    show('7a. nested — outer+inner true', admin);
+    show('7b. nested — outer true, inner false', user);
+    show('7c. nested — outer false', low);
+  }
+
+  // ── 8. Each <else> belongs to its own <if> (mix-up test) ──────────────────
+  group('<else> mix-up test');
+  {
+    // a=T b=T → inner-then; a=T b=F → inner-else; a=F → outer-else
+    const html = `
+      <if is-truthy="a">
+        <if is-truthy="b">
+          <span>inner-then</span>
+          <else><span>inner-else</span></else>
+        </if>
+        <else><span>outer-else</span></else>
+      </if>`;
+
+    const tt = run(html, { a: true,  b: true  });
+    const tf = run(html, { a: true,  b: false });
+    const ft = run(html, { a: false, b: true  });
+
+    assert('a=T b=T → inner-then', tt.querySelector('span')?.textContent, 'inner-then');
+    assert('a=T b=F → inner-else', tf.querySelector('span')?.textContent, 'inner-else');
+    assert('a=F → outer-else',     ft.querySelector('span')?.textContent, 'outer-else');
+  }
+
+  // ── 9. <else> is empty inside → nothing remains when false ───────────────
+  group('<else> empty inside');
+  {
+    const h = run(
+      `<if is-truthy="x"><p>then</p><else></else></if>`,
+      { x: false },
+    );
+    assert('<else> empty → host empty when false', h.innerHTML.trim(), '');
+    show('9. <else> empty (condition false → empty)', h);
+  }
+
+  // ── 10. Sibling element after <else> → warning, but still works ──────────
+  group('sibling element after <else> — tolerance');
+  {
+    const warnings = [];
+    const origWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); origWarn(...args); };
+
+    // Misuse: a <p> follows <else>
+    const h = run(
+      `<if is-truthy="x">
+         <p>then-a</p>
+         <else><p>else</p></else>
+         <p>then-b — in the wrong place but counted as then</p>
+       </if>`,
+      { x: true },
+    );
+
+    console.warn = origWarn;
+
+    // Condition true: then = [<p>then-a</p>, <p>then-b...</p>], both should show
+    const ps = h.querySelectorAll('p');
+    assert('tolerance: warning issued',             warnings.some(m => typeof m === 'string' && m.includes('lime-csr')), true);
+    assert('tolerance: then-a visible',              ps[0]?.textContent?.trim(), 'then-a');
+    assert('tolerance: then-b (the misplaced one) is also visible', ps[1]?.textContent?.includes('then-b'), true);
+    note('↑ open devtools to inspect console.warn');
+    show('10. Tolerance — sibling after <else> (condition true, both count as then)', h);
+  }
+
+  // ── 11. Unknown operator → warning + false (else is selected) ────────────
+  group('unknown operator');
+  {
+    const warnings = [];
+    const origWarn = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const h = run(
+      `<if is-blah="x"><p>then</p><else><p>else</p></else></if>`,
+      { x: 99 },
+    );
+
+    console.warn = origWarn;
+    assert('unknown op → else selected', h.querySelector('p')?.textContent, 'else');
+    assert('console.warn called',        warnings.length > 0, true);
+    assert('warning contains "is-blah"', warnings[0]?.includes('is-blah'), true);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

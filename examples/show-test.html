@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr bindings-show — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+    .flex-box { display: flex; gap: .5rem; }
+  </style>
+</head>
+<body>
+<h1>src/bindings-show.js — verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore } from '../src/store.js';
+  import { setupShowBindings } from '../src/bindings-show.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  // ── 1. truthy → visible, falsy → display:none, truthy again → visible ──
+  group('basic: truthy → visible; store.set(falsy) → hidden; truthy again → visible');
+  {
+    const store = createStore({ open: true });
+    const host  = document.createElement('div');
+    host.innerHTML = `<div class="panel" data-show="open">content</div>`;
+
+    setupShowBindings(host, store);
+    const panel = host.querySelector('.panel');
+
+    assert('initial state: visible (display empty)', panel.style.display, '');
+
+    store.set('open', false);
+    assert('falsy → display:none', panel.style.display, 'none');
+
+    store.set('open', true);
+    assert('truthy again → visible (display empty)', panel.style.display, '');
+
+    show('1. basic toggle', host.cloneNode(true));
+  }
+
+  // ── 2. CSS display:flex must be preserved (no hardcoded "block") ────────
+  group('flex container: flex must RETURN after hide/show (not fall back to block)');
+  {
+    const store = createStore({ show: true });
+    const host  = document.createElement('div');
+    host.innerHTML = `<div class="flex-box" data-show="show" style="display:flex">a<span>b</span></div>`;
+
+    setupShowBindings(host, store);
+    const box = host.querySelector('.flex-box');
+
+    assert('initial state: flex preserved', box.style.display, 'flex');
+
+    store.set('show', false);
+    assert('when hidden: none', box.style.display, 'none');
+
+    store.set('show', true);
+    assert('when shown again: flex RETURNED (NOT block)', box.style.display, 'flex');
+
+    show('2. flex preservation', host.cloneNode(true));
+  }
+
+  // ── 3. falsy on first render → element hidden FROM THE START (no FOUC) ──
+  group('no FOUC: element is display:none from the start if falsy at initial setup');
+  {
+    const store = createStore({ open: false });
+    const host  = document.createElement('div'); // not yet added to the document
+
+    host.innerHTML = `<div class="modal" data-show="open">modal content</div>`;
+    setupShowBindings(host, store); // runs BEFORE the fragment is added to the DOM
+
+    const modal = host.querySelector('.modal');
+    assert('already hidden at setup time (before ever visible)', modal.style.display, 'none');
+
+    // Now add it to the document — there should be no "flash of visible content,
+    // then disappear," because display was already applied as "none" during setup.
+    document.body.appendChild(host);
+    assert('still hidden AFTER being added to the DOM (no late paint)', modal.style.display, 'none');
+    host.remove();
+
+    note('setupShowBindings applied the initial state before the fragment was added to the DOM');
+  }
+
+  // ── 4. Identity proof: input value must survive hide/show ────────────────
+  group('identity: &lt;input&gt; value MUST survive hide/show (difference from &lt;if data-live&gt;)');
+  {
+    const store = createStore({ visible: true });
+    const host  = document.createElement('div');
+    host.innerHTML = `<div data-show="visible"><input type="text" value="do-not-touch"></div>`;
+
+    setupShowBindings(host, store);
+    const input = host.querySelector('input');
+    input.value = 'user typed this';
+
+    store.set('visible', false);
+    assert('input STAYED in the DOM when hidden (not removed)', !!host.querySelector('input'), true);
+    assert('input value PRESERVED while hidden', host.querySelector('input').value, 'user typed this');
+
+    store.set('visible', true);
+    assert('input value STILL THE SAME after showing again (identity preserved)',
+      host.querySelector('input').value, 'user typed this');
+
+    note('the DOM element ITSELF never changed — only display was toggled');
+    show('4. identity (input value preserved)', host.cloneNode(true));
+  }
+
+  // ── 5. cleanup: store.set must NOT change visibility after unmount ───────
+  group('cleanup: store.set must NOT change visibility after cleanup');
+  {
+    const store = createStore({ open: true });
+    const host  = document.createElement('div');
+    host.innerHTML = `<div class="panel" data-show="open">x</div>`;
+
+    const cleanup = setupShowBindings(host, store);
+    const panel = host.querySelector('.panel');
+
+    cleanup();
+
+    store.set('open', false);
+    assert('store.set after cleanup → display UNCHANGED', panel.style.display, '');
+
+    note('unsubscribe happened (no leak)');
+  }
+
+  // ── 6. empty path → warning, no crash ────────────────────────────────────
+  group('data-show="" (empty path) → warning issued, no crash');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const store = createStore({});
+    const host  = document.createElement('div');
+    host.innerHTML = `<div data-show="">x</div>`;
+
+    let threw = false;
+    try { setupShowBindings(host, store); } catch { threw = true; }
+
+    console.warn = orig;
+
+    assert('no crash',              threw, false);
+    assert('warning issued',        warnings.length > 0, true);
+    assert('warning contains "data-show"', warnings[0]?.includes('data-show'), true);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

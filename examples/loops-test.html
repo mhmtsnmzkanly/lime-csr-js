@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr loops — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/loops.js — verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { expandLoops } from '../src/loops.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function run(html, context = {}) {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    expandLoops(host, context);
+    return host;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.textContent = el.innerHTML.replace(/\s+/g, ' ').trim() || '(empty)';
+    area.appendChild(box);
+  }
+
+  // ── 1. Simple <for>: array of 3 items ────────────────────────────────────
+  group('Simple <for>: 3 items → 3 <li>');
+  {
+    const host = run(
+      `<ul>
+         <for each="items" as="item">
+           <li>${'${item.name}'}</li>
+         </for>
+       </ul>`,
+      { items: [{ name: 'Ali' }, { name: 'Veli' }, { name: 'Zeynep' }] },
+    );
+    const lis = host.querySelectorAll('li');
+    assert('<for> did not stay in the DOM', host.querySelector('for'), null);
+    assert('3 <li> created',        lis.length, 3);
+    assert('item 1: Ali',           lis[0]?.textContent?.trim(), 'Ali');
+    assert('item 2: Veli',          lis[1]?.textContent?.trim(), 'Veli');
+    assert('item 3: Zeynep',        lis[2]?.textContent?.trim(), 'Zeynep');
+    show('1. Simple (3 items)', host);
+  }
+
+  // ── 2. Empty array → nothing is printed ──────────────────────────────────
+  group('Empty array → nothing is printed');
+  {
+    const host = run(
+      `<ul><for each="items" as="x"><li>${'${x.name}'}</li></for></ul>`,
+      { items: [] },
+    );
+    assert('<for> removed',   host.querySelector('for'), null);
+    assert('<ul> is empty',   host.querySelector('ul')?.children.length, 0);
+    show('2. Empty array', host);
+  }
+
+  // ── 3. Inherited context: both ${item} and ${title} resolve ───────────────
+  group('Inherited context: for + parent variable');
+  {
+    const host = run(
+      `<for each="items" as="item">
+         <span>${'${item.name}'} — ${'${title}'}</span>
+       </for>`,
+      { title: 'News', items: [{ name: 'A' }, { name: 'B' }] },
+    );
+    const spans = host.querySelectorAll('span');
+    assert('2 spans created',            spans.length, 2);
+    assert('item 1 + parent title',      spans[0]?.textContent?.trim(), 'A — News');
+    assert('item 2 + parent title',      spans[1]?.textContent?.trim(), 'B — News');
+    note('DIFFERENCE from partial: for inherits the parent context');
+    show('3. Inherited context (item + title)', host);
+  }
+
+  // ── 4. index attribute ────────────────────────────────────────────────────
+  group('index attribute: sequence number');
+  {
+    const host = run(
+      `<for each="items" as="x" index="i">
+         <span>${'${i}'}: ${'${x}'}</span>
+       </for>`,
+      { items: ['apple', 'pear', 'cherry'] },
+    );
+    const spans = host.querySelectorAll('span');
+    assert('3 spans created', spans.length, 3);
+    assert('0: apple',        spans[0]?.textContent?.trim(), '0: apple');
+    assert('1: pear',         spans[1]?.textContent?.trim(), '1: pear');
+    assert('2: cherry',       spans[2]?.textContent?.trim(), '2: cherry');
+    show('4. index attribute', host);
+  }
+
+  // ── 5. each is not an array → warning, no crash ──────────────────────────
+  group('each not an array → warning + continues');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const host = run(
+      `<p>before</p>
+       <for each="notArray" as="x"><p>never</p></for>
+       <p>after</p>`,
+      { notArray: 'string-not-array' },
+    );
+
+    console.warn = orig;
+
+    const ps = host.querySelectorAll('p');
+    assert('before/after intact', ps.length,      2);
+    assert('<for> removed',       host.querySelector('for'), null);
+    assert('warning issued',      warnings.length > 0,      true);
+    assert('warning contains "array"', warnings[0]?.includes('array'), true);
+  }
+
+  // ── 6. Missing "each" or "as" → warning ──────────────────────────────────
+  group('<for> missing "each"/"as" → warning');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const noEach = run(`<for as="x"><p>test</p></for>`, {});
+    const noAs   = run(`<for each="items"><p>test</p></for>`, { items: [] });
+
+    console.warn = orig;
+
+    assert('missing "each" → warning', warnings.some(w => w?.includes('each') || w?.includes('as')), true);
+    assert('<for> removed from DOM', noEach.querySelector('for'), null);
+    assert('<for> removed from DOM', noAs.querySelector('for'),   null);
+  }
+
+  // ── 7. Nested <for>: categories → products ───────────────────────────────
+  group('Nested <for>: categories → products');
+  {
+    const ctx = {
+      cats: [
+        { name: 'Electronics', products: [{ label: 'TV' }, { label: 'Laptop' }] },
+        { name: 'Apparel',     products: [{ label: 'Shirt' }] },
+      ],
+    };
+
+    const host = run(
+      `<for each="cats" as="cat">
+         <section>
+           <h3>${'${cat.name}'}</h3>
+           <for each="cat.products" as="p">
+             <em>${'${p.label}'}</em>
+           </for>
+         </section>
+       </for>`,
+      ctx,
+    );
+
+    const sections = host.querySelectorAll('section');
+    assert('no <for> left (any)',        host.querySelector('for'), null);
+    assert('2 sections created',        sections.length, 2);
+    assert('category 1 heading',        sections[0]?.querySelector('h3')?.textContent?.trim(), 'Electronics');
+    assert('category 1 has 2 products', sections[0]?.querySelectorAll('em').length, 2);
+    assert('product 1: TV',             sections[0]?.querySelectorAll('em')[0]?.textContent?.trim(), 'TV');
+    assert('product 2: Laptop',         sections[0]?.querySelectorAll('em')[1]?.textContent?.trim(), 'Laptop');
+    assert('category 2 heading',        sections[1]?.querySelector('h3')?.textContent?.trim(), 'Apparel');
+    assert('category 2 has 1 product',  sections[1]?.querySelectorAll('em').length, 1);
+    assert('Shirt',                     sections[1]?.querySelector('em')?.textContent?.trim(), 'Shirt');
+    show('7. Nested for (categories → products)', host);
+  }
+
+  // ── 8. Nested <for>: inner "as" shadows the outer one ────────────────────
+  group('Nested <for>: inner "as" shadows the outer "as"');
+  {
+    const host = run(
+      `<for each="outer" as="x">
+         <for each="x.inner" as="x">
+           <b>${'${x}'}</b>
+         </for>
+       </for>`,
+      { outer: [{ inner: ['α', 'β'] }, { inner: ['γ'] }] },
+    );
+    const bs = host.querySelectorAll('b');
+    assert('3 <b> created (total items)', bs.length, 3);
+    assert('α', bs[0]?.textContent?.trim(), 'α');
+    assert('β', bs[1]?.textContent?.trim(), 'β');
+    assert('γ', bs[2]?.textContent?.trim(), 'γ');
+    show('8. Nested — inner "as" shadows the outer one', host);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

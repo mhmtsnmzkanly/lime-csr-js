@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr bindings-loops — reactive &lt;for data-live&gt;</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; min-height: 1rem; }
+  </style>
+</head>
+<body>
+<h1>src/bindings-loops.js — reactive &lt;for data-live&gt; verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<!-- ══════════════ Template definitions ══════════════ -->
+
+<!-- Main list: key + input (for the identity test) -->
+<template id="tpl-live-list">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live>
+      <li data-key="${item.id}">
+        <span class="name">${item.name}</span>
+        <input class="inp" placeholder="type...">
+      </li>
+    </for>
+  </ul>
+</template>
+
+<!-- Inner binding cleanup test: each item is bound to a label in the store -->
+<template id="tpl-cleanup">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live>
+      <li data-key="${item.id}">
+        <span class="label" data-text="label"></span>
+      </li>
+    </for>
+  </ul>
+</template>
+
+<!-- missing key test -->
+<template id="tpl-nokey">
+  <ul>
+    <for each="items" as="item" data-live>
+      <li>${item.name}</li>
+    </for>
+  </ul>
+</template>
+
+<!-- Static for regression: without data-live it should still render once -->
+<template id="tpl-static">
+  <ul>
+    <for each="items" as="item">
+      <li class="static-item">${item.name}</li>
+    </for>
+  </ul>
+</template>
+
+<!-- data-diff strategy selection -->
+<template id="tpl-diff-default">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live>
+      <li data-key="${item.id}"><input class="inp" placeholder="type..."></li>
+    </for>
+  </ul>
+</template>
+<template id="tpl-diff-simple">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live data-diff="simple">
+      <li data-key="${item.id}"><input class="inp" placeholder="type..."></li>
+    </for>
+  </ul>
+</template>
+<template id="tpl-diff-lcs">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live data-diff="lcs">
+      <li data-key="${item.id}"><input class="inp" placeholder="type..."></li>
+    </for>
+  </ul>
+</template>
+<template id="tpl-diff-replace">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live data-diff="replace">
+      <li data-key="${item.id}"><input class="inp" placeholder="type..."></li>
+    </for>
+  </ul>
+</template>
+<template id="tpl-diff-unknown">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live data-diff="bogus">
+      <li data-key="${item.id}"><input class="inp" placeholder="type..."></li>
+    </for>
+  </ul>
+</template>
+<template id="tpl-diff-replace-cleanup">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live data-diff="replace">
+      <li data-key="${item.id}">
+        <span class="label" data-text="label"></span>
+      </li>
+    </for>
+  </ul>
+</template>
+
+<!-- el="tag" container option (2g) -->
+<template id="tpl-live-el">
+  <div class="wrap">
+    <for each="items" as="item" key="item.id" data-live el="ul" class="el-container" data-testid="list">
+      <li data-key="${item.id}">${item.name}</li>
+    </for>
+  </div>
+</template>
+
+<!-- block-level hooks: data-after / data-before -->
+<template id="tpl-live-hooks">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live data-after="onAfter" data-before="onBefore">
+      <li data-key="${item.id}">${item.name}</li>
+    </for>
+  </ul>
+</template>
+
+<!-- ══════════════ Test logic ══════════════ -->
+<script type="module">
+  import { createStore } from '../src/store.js';
+  import { mount, unmount } from '../src/index.js';
+  import { isDevMode } from '../src/errors.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    if (el) box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  /** Captures warnings; real console output is still preserved. */
+  function captureWarns(fn) {
+    const caught = [];
+    const orig = console.warn;
+    console.warn = (...args) => { caught.push(args.join(' ')); orig.apply(console, args); };
+    fn();
+    console.warn = orig;
+    return caught;
+  }
+
+  /**
+   * Counts Node.prototype.insertBefore calls made while `fn` runs, and
+   * returns the list of nodes each call moved/inserted (in call order).
+   * Used to measure actual DOM operation count for diff-strategy comparisons.
+   */
+  function countInsertBeforeCalls(fn) {
+    const orig = Node.prototype.insertBefore;
+    const movedNodes = [];
+    Node.prototype.insertBefore = function (node, ref) {
+      movedNodes.push(node);
+      return orig.call(this, node, ref);
+    };
+    try {
+      fn();
+    } finally {
+      Node.prototype.insertBefore = orig;
+    }
+    return movedNodes;
+  }
+
+  /** Filters insertBefore-call nodes down to elements (ignores whitespace text nodes between items). */
+  function elementMoves(movedNodes) {
+    return movedNodes.filter((n) => n.nodeType === Node.ELEMENT_NODE);
+  }
+
+  /** Finds an item's li element by the given selector. */
+  function item(target, id) {
+    return target.querySelector(`[data-key="${id}"]`);
+  }
+
+  // ── 1. Initial render: a list of 3 items ───────────────────────────────────
+  group('1. Initial render: a list of 3 items');
+  {
+    const store  = createStore({ items: [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+      { id: 3, name: 'C' },
+    ] });
+    const target = document.createElement('div');
+    mount('live-list', {}, target, store);
+
+    assert('<for> did not stay in the DOM', target.querySelector('for'), null);
+    assert('3 li rendered',               target.querySelectorAll('li').length, 3);
+    assert('item 1 name: A',              item(target, 1)?.querySelector('.name')?.textContent, 'A');
+    assert('item 2 name: B',              item(target, 2)?.querySelector('.name')?.textContent, 'B');
+    assert('item 3 name: C',              item(target, 3)?.querySelector('.name')?.textContent, 'C');
+
+    note('The comment anchor pair is in the DOM: <!-- live-for:lf1 --> ... <!-- /live-for:lf1 -->');
+    show('1. Initial render', target);
+  }
+
+  // ── 2. ADDING + identity test ────────────────────────────────────────────
+  group('2. Adding: a new block is inserted; the old input value is PRESERVED (identity)');
+  {
+    const store  = createStore({ items: [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+    ] });
+    const target = document.createElement('div');
+    mount('live-list', {}, target, store);
+
+    // User typed into item 1's input (at the property level — not the value attribute)
+    const inp1 = item(target, 1)?.querySelector('.inp');
+    inp1.value = 'user note';
+
+    // Add a new item (append)
+    store.set('items', [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+      { id: 3, name: 'C' },
+    ]);
+
+    assert('3 li present',           target.querySelectorAll('li').length, 3);
+    assert('new item 3 was added', !!item(target, 3), true);
+
+    // CRITICAL: input.value property was preserved because it's the SAME DOM node.
+    const inp1After = item(target, 1)?.querySelector('.inp');
+    assert('item 1\'s input is the SAME DOM node (inp1 === inp1After)',
+      inp1 === inp1After, true);
+    assert('input value PRESERVED (identity test)',
+      inp1After?.value, 'user note');
+
+    note('The DOM node moved via insertBefore was not recreated → .value stayed ✓');
+    show('2. Adding + identity', target);
+  }
+
+  // ── 3. DELETING: an item is removed from the middle, cleanup is called ────────────────
+  group('3. Deleting: a middle item is removed; others stay in place, subscription cancelled');
+  {
+    const store  = createStore({ items: [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+      { id: 3, name: 'C' },
+    ] });
+    const target = document.createElement('div');
+    mount('live-list', {}, target, store);
+
+    const liB = item(target, 2); // reference to item 2
+    assert('item 2 is initially in the DOM', !!liB, true);
+
+    // Delete from the middle
+    store.set('items', [{ id: 1, name: 'A' }, { id: 3, name: 'C' }]);
+
+    assert('item 2 left the DOM',       target.contains(liB), false);
+    assert('item 1 is still there',             !!item(target, 1), true);
+    assert('item 3 is still there',             !!item(target, 3), true);
+    assert('2 li present',                    target.querySelectorAll('li').length, 2);
+    assert('item 2 is not in the document',   document.contains(liB), false);
+
+    note('cleanup FIRST → DOM removal SECOND: cleanup does not break on a detached node ✓');
+    show('3. Deleting', target);
+  }
+
+  // ── 4. REORDERING + identity test ────────────────────────────────────────
+  group('4. Reordering: blocks are MOVED (not torn down); input value is preserved');
+  {
+    const store  = createStore({ items: [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+      { id: 3, name: 'C' },
+    ] });
+    const target = document.createElement('div');
+    mount('live-list', {}, target, store);
+
+    // Write a different value into each input
+    const inp1 = item(target, 1)?.querySelector('.inp');
+    const inp2 = item(target, 2)?.querySelector('.inp');
+    const inp3 = item(target, 3)?.querySelector('.inp');
+    inp1.value = 'one';
+    inp2.value = 'two';
+    inp3.value = 'three';
+
+    // Reverse order: [3, 2, 1]
+    store.set('items', [
+      { id: 3, name: 'C' },
+      { id: 2, name: 'B' },
+      { id: 1, name: 'A' },
+    ]);
+
+    const lis = target.querySelectorAll('li');
+    assert('order changed: item 3 first', lis[0]?.getAttribute('data-key'), '3');
+    assert('order changed: item 2 in the middle', lis[1]?.getAttribute('data-key'), '2');
+    assert('order changed: item 1 last', lis[2]?.getAttribute('data-key'), '1');
+
+    // Identity: are these the SAME DOM nodes?
+    assert('item 1 input SAME node (inp1)',  item(target, 1)?.querySelector('.inp') === inp1, true);
+    assert('item 2 input SAME node (inp2)',  item(target, 2)?.querySelector('.inp') === inp2, true);
+    assert('item 3 input SAME node (inp3)',  item(target, 3)?.querySelector('.inp') === inp3, true);
+
+    // input values PRESERVED
+    assert('item 1 input value stayed "one"',   inp1.value, 'one');
+    assert('item 2 input value stayed "two"',   inp2.value, 'two');
+    assert('item 3 input value stayed "three"', inp3.value, 'three');
+
+    note('insertBefore(node, endAnchor) moves the DOM node, does not recreate it ✓');
+    show('4. Reordering + identity', target);
+  }
+
+  // ── 5. MISSING KEY → errors.missingKey, not made reactive ──────────────────
+  group('5. missing key: errors.missingKey warning; list does NOT become reactive');
+  {
+    const store  = createStore({ items: [{ name: 'X' }] });
+    const target = document.createElement('div');
+
+    const warns = captureWarns(() => mount('nokey', {}, target, store));
+    const hasKeyWarn = warns.some(w => w.includes('FOR_MISSING_KEY'));
+    assert('FOR_MISSING_KEY warning arrived', hasKeyWarn, true);
+
+    // <for> is not reactive: the DOM does not update even if the list changes (already removed)
+    // Since the key is missing, setupLiveFors skipped it and <for> was removed via forEl.remove()
+    assert('<for> was removed (not reactive)',
+      target.querySelector('li'), null);
+    note('missing key → not a silently wrong behavior, an explicit warning + not made reactive ✓');
+  }
+
+  // ── 6. DUPLICATE KEY → errors.duplicateKey ────────────────────────────────
+  group('6. Duplicate key: the same key on two items → warning, the duplicate is skipped');
+  {
+    const store  = createStore({ items: [
+      { id: 1, name: 'A' },
+      { id: 1, name: 'B' },  // same id!
+      { id: 2, name: 'C' },
+    ] });
+    const target = document.createElement('div');
+
+    const warns = captureWarns(() => mount('live-list', {}, target, store));
+    const hasDupWarn = warns.some(w => w.includes('FOR_DUPLICATE_KEY'));
+    assert('FOR_DUPLICATE_KEY warning arrived', hasDupWarn, true);
+
+    // The duplicate key is skipped: 2 items should render (id:1 once, id:2 once)
+    assert('duplicate key skipped; 2 li present',
+      target.querySelectorAll('li').length, 2);
+    note('The duplicate key is skipped; the page does not crash, a warning is issued ✓');
+  }
+
+  // ── 7. INNER BINDING CLEANUP: data-text subscription cancelled when an item is removed ─────
+  group('7. Inner binding cleanup: is the data-text subscription cancelled when an item is removed?');
+  {
+    const store  = createStore({
+      items: [{ id: 1 }, { id: 2 }],
+      label: 'initial',
+    });
+    const target = document.createElement('div');
+    mount('cleanup', {}, target, store);
+
+    // Each item is bound with store.get('label') = 'initial'
+    assert('2 li present initially',       target.querySelectorAll('li').length, 2);
+    assert('item 1 label: initial',
+      item(target, 1)?.querySelector('.label')?.textContent, 'initial');
+
+    // Keep a reference to item 2's span
+    const span2 = item(target, 2)?.querySelector('.label');
+    assert('span2 obtained', !!span2, true);
+    assert('span2.textContent: initial', span2.textContent, 'initial');
+
+    // Remove item 2 → block.cleanup() → the label subscription should be cancelled
+    store.set('items', [{ id: 1 }]);
+    assert('item 2 left the DOM', target.contains(span2.closest('li')), false);
+
+    // Now change label — the cancelled subscription must not fire
+    store.set('label', 'changed');
+
+    // item 1 updated (its subscription is still active)
+    assert('item 1 label updated: changed',
+      item(target, 1)?.querySelector('.label')?.textContent, 'changed');
+
+    // item 2's span is now outside the DOM; if the subscription was cancelled, textContent stays old.
+    // (If it were a zombie subscription → span2.textContent would be 'changed')
+    assert('span2 (removed item): subscription cancelled → textContent unchanged',
+      span2.textContent, 'initial');
+    note('block.cleanup() cancelled the subscriptions → no zombie updates ✓');
+  }
+
+  // ── 8. Regression: static <for> (without data-live) still works ─────────
+  group('8. Regression: static <for> still renders once with devMode on');
+  {
+    const store  = createStore({ items: [{ name: 'X' }, { name: 'Y' }] });
+    const target = document.createElement('div');
+
+    // NOTE: static <for> reads from context (not the store) — store.get()
+    // must be passed as context instead of {}, otherwise "items" won't be found.
+    const warns = captureWarns(() => mount('static', store.get(), target, store));
+    const hasError = warns.some(w => w.includes('[lime-csr]'));
+    assert('static <for>: no warn issued', hasError, false);
+    assert('static <for>: 2 li rendered', target.querySelectorAll('.static-item').length, 2);
+    assert('static <for>: <for> not in the DOM', target.querySelector('for'), null);
+
+    // store.set → the DOM must NOT change (not reactive)
+    store.set('items', [{ name: 'Z' }, { name: 'W' }, { name: 'V' }]);
+    assert('static <for>: DOM unchanged after store.set (still 2 li)',
+      target.querySelectorAll('.static-item').length, 2);
+
+    note('loops.js (static) and bindings-loops.js (reactive) did not interfere with each other ✓');
+  }
+
+  // ── 9. mount cleanup: for subscriptions cancelled after unmount ──────────────
+  group('9. mount cleanup: the returned cleanup() cancels live-for subscriptions');
+  {
+    const store   = createStore({ items: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }] });
+    const target  = document.createElement('div');
+    const cleanup = mount('live-list', {}, target, store);
+
+    assert('initial: 2 li', target.querySelectorAll('li').length, 2);
+
+    cleanup();
+    store.set('items', [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }]);
+
+    assert('DOM unchanged after cleanup (subscription cancelled)',
+      target.querySelectorAll('li').length, 2);
+    note('cleanup() cancelled the live-for subscription + all block cleanups ✓');
+  }
+
+  // ── 10. el="tag" container option (2g) ─────────────────────────────────────
+  group('10. el="tag": persistent container instead of bare comment anchors');
+  {
+    const store  = createStore({ items: [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+    ] });
+    const target = document.createElement('div');
+    mount('live-el', {}, target, store);
+
+    const container = target.querySelector('.el-container');
+    assert('el="ul" created a container element', container?.tagName, 'UL');
+    assert('container has the class carried over from <for>', container?.classList.contains('el-container'), true);
+    assert('container has data-testid carried over from <for>', container?.getAttribute('data-testid'), 'list');
+    assert('container has no leaked "el" attribute', container?.hasAttribute('el'), false);
+    assert('2 li rendered inside the container', container?.querySelectorAll('li').length, 2);
+
+    const containerBefore = container;
+
+    // Add: item added inside the container
+    store.set('items', [
+      { id: 1, name: 'A' },
+      { id: 2, name: 'B' },
+      { id: 3, name: 'C' },
+    ]);
+    assert('container identity preserved after add', target.querySelector('.el-container'), containerBefore);
+    assert('3 li now inside the container', containerBefore.querySelectorAll('li').length, 3);
+    assert('new item is a child of the container', item(target, 3)?.parentElement, containerBefore);
+
+    // Remove: item removed from inside the container
+    store.set('items', [{ id: 1, name: 'A' }, { id: 3, name: 'C' }]);
+    assert('container identity preserved after remove', target.querySelector('.el-container'), containerBefore);
+    assert('2 li remain inside the container', containerBefore.querySelectorAll('li').length, 2);
+    assert('item 2 is gone from the container', !!item(target, 2), false);
+
+    note('Same container DOM node throughout — only its children were added/removed ✓');
+    show('10. el="tag" container', target);
+  }
+
+  // ── 11. no el= → original comment-anchor behavior is unchanged ─────────────
+  group('11. no el=: <for data-live> without el keeps using bare comment anchors');
+  {
+    const store  = createStore({ items: [{ id: 1, name: 'A' }] });
+    const target = document.createElement('div');
+    mount('live-list', {}, target, store);
+
+    // The rendered <li> should be a direct child of the template's own <ul>,
+    // not wrapped in any engine-introduced container.
+    const li = item(target, 1);
+    assert('item\'s parent is the template\'s own <ul> (no synthetic container)',
+      li?.parentElement?.tagName, 'UL');
+    assert('that <ul> has no el-container class (not the 2g container path)',
+      li?.parentElement?.classList.contains('el-container'), false);
+    note('Regression: adding el= support did not change the no-el code path ✓');
+  }
+
+  /** Builds an items array with letter ids, e.g. makeItems(['A','B']) -> [{id:'A',name:'A'},...]. */
+  function makeItems(ids) {
+    return ids.map((id) => ({ id, name: id }));
+  }
+
+  // ── 12. data-diff: default/simple/lcs reorder correctness + move count ────
+  group('12. data-diff: default==simple, lcs reorders correctly with fewer DOM moves');
+  {
+    const letters = ['A', 'B', 'C', 'D', 'E'];
+    const reversed = ['E', 'D', 'C', 'B', 'A'];
+
+    function runReversal(templateName) {
+      const store  = createStore({ items: makeItems(letters) });
+      const target = document.createElement('div');
+      mount(templateName, {}, target, store);
+
+      // Mark each input so we can later prove identity (same node) vs reset (new node).
+      for (const id of letters) {
+        item(target, id).querySelector('.inp').value = `marked-${id}`;
+      }
+      const before = Object.fromEntries(
+        letters.map((id) => [id, item(target, id).querySelector('.inp')]),
+      );
+
+      const moves = countInsertBeforeCalls(() => {
+        store.set('items', makeItems(reversed));
+      });
+
+      const order = Array.from(target.querySelectorAll('li')).map((li) => li.getAttribute('data-key'));
+      const identityPreserved = letters.every((id) => item(target, id).querySelector('.inp') === before[id]);
+      const valuesPreserved = letters.every(
+        (id) => item(target, id).querySelector('.inp').value === `marked-${id}`,
+      );
+
+      // Count LOGICAL (element-only) moves -- the <li> template also has
+      // surrounding whitespace text nodes, so each moved item corresponds to
+      // more than one raw insertBefore call; element count reflects intent.
+      return { moves: elementMoves(moves).length, order, identityPreserved, valuesPreserved };
+    }
+
+    const rDefault = runReversal('diff-default');
+    const rSimple  = runReversal('diff-simple');
+    const rLcs     = runReversal('diff-lcs');
+
+    assert('default: final order correct after full reversal', rDefault.order, reversed);
+    assert('default: identity preserved on all 5 items', rDefault.identityPreserved, true);
+    assert('simple: final order correct after full reversal', rSimple.order, reversed);
+    assert('simple: identity preserved on all 5 items', rSimple.identityPreserved, true);
+    assert('lcs: final order correct after full reversal', rLcs.order, reversed);
+    assert('lcs: identity preserved on all 5 items', rLcs.identityPreserved, true);
+    assert('lcs: input values preserved on all 5 items', rLcs.valuesPreserved, true);
+
+    assert('default and simple perform the SAME number of DOM moves (default IS simple)',
+      rDefault.moves, rSimple.moves);
+    assert('lcs performs FEWER DOM moves than simple on the same full reversal',
+      rLcs.moves < rSimple.moves, true);
+
+    note(`move counts — default: ${rDefault.moves}, simple: ${rSimple.moves}, lcs: ${rLcs.moves} ` +
+      '(full reversal is close to worst-case for LIS, so the lcs margin here is modest; ' +
+      'partial reorders show a much larger gap — see test 13)');
+  }
+
+  // ── 13. data-diff=lcs: a partial reorder moves only the displaced item ────
+  group('13. data-diff="lcs": [A,B,C,D,E] → [A,D,B,C,E] moves only D');
+  {
+    const store  = createStore({ items: makeItems(['A', 'B', 'C', 'D', 'E']) });
+    const target = document.createElement('div');
+    mount('diff-lcs', {}, target, store);
+
+    const moves = countInsertBeforeCalls(() => {
+      store.set('items', makeItems(['A', 'D', 'B', 'C', 'E']));
+    });
+
+    const order = Array.from(target.querySelectorAll('li')).map((li) => li.getAttribute('data-key'));
+    assert('final order correct', order, ['A', 'D', 'B', 'C', 'E']);
+    assert('exactly 1 logical item (element) moved for a single-item displacement (only D)',
+      elementMoves(moves).length, 1);
+
+    note('Matches the spec\'s own illustrative example: only the truly-displaced ' +
+      'item moves; A/B/C/E keep their relative order and are left untouched ✓');
+  }
+
+  // ── 14. data-diff=lcs: appending only inserts the new tail, zero moves ────
+  group('14. data-diff="lcs": append-only causes zero moves of existing items');
+  {
+    const store  = createStore({ items: makeItems(['A', 'B', 'C', 'D', 'E']) });
+    const target = document.createElement('div');
+    mount('diff-lcs', {}, target, store);
+
+    const existingNodes = ['A', 'B', 'C', 'D', 'E'].map((id) => item(target, id));
+
+    const moves = countInsertBeforeCalls(() => {
+      store.set('items', makeItems(['A', 'B', 'C', 'D', 'E', 'F']));
+    });
+
+    const anyExistingMoved = existingNodes.some((li) => moves.includes(li));
+    assert('none of the 5 existing <li> nodes were passed to insertBefore', anyExistingMoved, false);
+    assert('6 items present after append', target.querySelectorAll('li').length, 6);
+    assert('new item F is last', target.querySelectorAll('li')[5]?.getAttribute('data-key'), 'F');
+
+    note('Pure append takes the shared append fast-path (used by simple AND lcs alike) — ' +
+      'only the new node is inserted, zero moves for existing items ✓');
+  }
+
+  // ── 15. data-diff=replace: reorder does NOT preserve identity ─────────────
+  group('15. data-diff="replace": reorder resets identity (new DOM nodes, values lost)');
+  {
+    const store  = createStore({ items: makeItems(['A', 'B', 'C']) });
+    const target = document.createElement('div');
+    mount('diff-replace', {}, target, store);
+
+    const inpA = item(target, 'A').querySelector('.inp');
+    inpA.value = 'typed value';
+
+    store.set('items', makeItems(['C', 'B', 'A'])); // reorder only, same keys
+
+    const inpAAfter = item(target, 'A').querySelector('.inp');
+    assert('order still correct after replace',
+      Array.from(target.querySelectorAll('li')).map((li) => li.getAttribute('data-key')),
+      ['C', 'B', 'A']);
+    assert('input is a DIFFERENT DOM node after replace (identity NOT preserved)',
+      inpAAfter === inpA, false);
+    assert('new input value is reset to empty (old value lost, as expected for replace)',
+      inpAAfter.value, '');
+    assert('old input node is detached from the document', document.contains(inpA), false);
+
+    note('This is the expected, documented trade-off for data-diff="replace" — ' +
+      'no diffing means no identity preservation, even for surviving keys ✓');
+  }
+
+  // ── 16. data-diff=replace: old blocks are genuinely cleaned up, not just removed
+  group('16. data-diff="replace": old blocks\' subscriptions are cancelled (no zombie updates)');
+  {
+    const store  = createStore({ items: [{ id: 1 }, { id: 2 }], label: 'initial' });
+    const target = document.createElement('div');
+    mount('diff-replace-cleanup', {}, target, store);
+
+    const span1Before = item(target, 1)?.querySelector('.label');
+    assert('initial label bound correctly', span1Before?.textContent, 'initial');
+
+    // Even "unchanged" items get torn down + rebuilt under replace.
+    store.set('items', [{ id: 1 }, { id: 2 }]);
+
+    const span1After = item(target, 1)?.querySelector('.label');
+    assert('item 1 got a brand-new span (identity not preserved, even for the same key)',
+      span1After === span1Before, false);
+
+    store.set('label', 'changed');
+    assert('new span reflects the label change (its subscription is live)',
+      span1After?.textContent, 'changed');
+    assert('OLD span does NOT reflect the change (its subscription was cancelled by cleanup())',
+      span1Before?.textContent, 'initial');
+
+    note('block.cleanup() was genuinely called for every prior block, not just DOM removal ✓');
+  }
+
+  // ── 17. data-diff="unknown-value" → warning, falls back to simple ─────────
+  group('17. data-diff="bogus": warns and behaves like simple');
+  {
+    const store  = createStore({ items: makeItems(['A', 'B', 'C']) });
+    const target = document.createElement('div');
+
+    const warns = captureWarns(() => mount('diff-unknown', {}, target, store));
+    const hasWarn = warns.some((w) => w.includes('UNKNOWN_DIFF_STRATEGY'));
+    assert('UNKNOWN_DIFF_STRATEGY warning issued', hasWarn, true);
+    assert('warning mentions the bad value "bogus"', warns.some((w) => w.includes('bogus')), true);
+
+    // Should still behave correctly (fallback to simple) despite the warning.
+    const inpA = item(target, 'A').querySelector('.inp');
+    inpA.value = 'kept';
+    store.set('items', makeItems(['C', 'B', 'A']));
+
+    assert('reorder still works correctly after fallback',
+      Array.from(target.querySelectorAll('li')).map((li) => li.getAttribute('data-key')),
+      ['C', 'B', 'A']);
+    assert('identity still preserved under the simple fallback',
+      item(target, 'A').querySelector('.inp'), inpA);
+
+    note('Unknown data-diff value does not break the list — it degrades to simple ✓');
+  }
+
+  // ── 18. data-after/data-before block-level hooks (per item) ───────────────
+  group('18. data-after/data-before: fire per new/removed item, not on moves');
+  {
+    const store  = createStore({ items: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }] });
+    const target = document.createElement('div');
+    const calls  = [];
+
+    mount('live-hooks', {}, target, store, {
+      handlers: {
+        onAfter(rootEl, s) {
+          calls.push({
+            kind: 'after',
+            key: rootEl?.getAttribute('data-key'),
+            stillInDom: target.contains(rootEl),
+            storeMatches: s === store,
+          });
+        },
+        onBefore(rootEl, s) {
+          calls.push({
+            kind: 'before',
+            key: rootEl?.getAttribute('data-key'),
+            stillInDom: target.contains(rootEl),
+            storeMatches: s === store,
+          });
+        },
+      },
+    });
+
+    // Initial render: data-after fires once per item.
+    const initialAfters = calls.filter((c) => c.kind === 'after');
+    assert('data-after fired once per item on the initial render', initialAfters.length, 2);
+    assert('initial after-hook keys are 1 and 2',
+      initialAfters.map((c) => c.key).sort(), ['1', '2']);
+    assert('initial after-hook received the store instance', initialAfters[0].storeMatches, true);
+
+    calls.length = 0;
+    store.set('items', [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }]);
+    assert('adding one item fires data-after exactly once', calls.length, 1);
+    assert('the fired hook is data-after', calls[0].kind, 'after');
+    assert('it fired for the new item (key 3)', calls[0].key, '3');
+    assert('the new item is in the DOM when data-after fires', calls[0].stillInDom, true);
+
+    calls.length = 0;
+    store.set('items', [{ id: 1, name: 'A' }, { id: 3, name: 'C' }]); // remove item 2 (middle)
+    assert('removing one item fires data-before exactly once', calls.length, 1);
+    assert('the fired hook is data-before', calls[0].kind, 'before');
+    assert('it fired for the removed item (key 2)', calls[0].key, '2');
+    assert('the removed item was STILL in the DOM when data-before fired', calls[0].stillInDom, true);
+
+    calls.length = 0;
+    store.set('items', [{ id: 3, name: 'C' }, { id: 1, name: 'A' }]); // reorder only, no add/remove
+    assert('a pure reorder triggers NEITHER hook (a move is not a destroy)', calls.length, 0);
+
+    note('data-after fires only for genuinely NEW nodes, data-before only for genuinely ' +
+      'REMOVED ones; moved/reordered survivors trigger neither, since their DOM node is ' +
+      'never destroyed ✓');
+    show('18. Block-level hooks (per item)', target);
+  }
+
+  // ── 19. data-after/data-before: missing handler warns, no crash ───────────
+  group('19. Missing data-after/data-before handler: warning issued, no crash');
+  {
+    const store  = createStore({ items: [{ id: 1, name: 'A' }] });
+    const target = document.createElement('div');
+    let threw = false;
+
+    const warns1 = captureWarns(() => {
+      try {
+        mount('live-hooks', {}, target, store, { handlers: {} }); // onAfter/onBefore undefined
+      } catch { threw = true; }
+    });
+    assert('no crash on mount with missing handlers', threw, false);
+    assert('BLOCK_AFTER_NOT_FOUND warning issued for the initial render',
+      warns1.some((w) => w.includes('BLOCK_AFTER_NOT_FOUND')), true);
+
+    const warns2 = captureWarns(() => {
+      store.set('items', [{ id: 1, name: 'A' }, { id: 2, name: 'B' }]);
+    });
+    assert('BLOCK_AFTER_NOT_FOUND warning issued for the newly added item',
+      warns2.some((w) => w.includes('BLOCK_AFTER_NOT_FOUND')), true);
+
+    const warns3 = captureWarns(() => {
+      store.set('items', [{ id: 1, name: 'A' }]);
+    });
+    assert('BLOCK_BEFORE_NOT_FOUND warning issued for the removed item',
+      warns3.some((w) => w.includes('BLOCK_BEFORE_NOT_FOUND')), true);
+
+    assert('list still rendered correctly despite missing handlers', target.querySelectorAll('li').length, 1);
+    note('Missing handlers degrade gracefully — warned, but rendering is unaffected ✓');
+  }
+
+  // ── Summary ────────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr bindings-events — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/bindings-events.js — verification tests</h1>
+
+<!-- ═══════════════════════ Template definitions ════════════════════════════ -->
+
+<template id="tpl-events-basic">
+  <div>
+    <button data-on-click="handleClick" data-id="42">Click</button>
+  </div>
+</template>
+
+<template id="tpl-events-list">
+  <ul>
+    <for each="items" as="item" key="item.id" data-live>
+      <li>
+        <button data-on-click="removeItem" data-id="${item.id}">${item.label}</button>
+      </li>
+    </for>
+  </ul>
+</template>
+
+<template id="tpl-events-submit">
+  <form data-on-submit="handleSubmit">
+    <button type="submit">Submit</button>
+  </form>
+</template>
+
+<!-- Unknown event type: data-on-foo is not supported -->
+<template id="tpl-events-bad">
+  <button data-on-foo="whatever">x</button>
+</template>
+
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore, mount, unmount } from '../src/index.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  // ── 1. click: is the handler called, is (event, element) correct ─────────
+  group('click: handler is called, is (event, element) correct');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let calledWith = null;
+
+    const cleanup = mount('events-basic', {}, target, store, {
+      handlers: {
+        handleClick(e, el) {
+          calledWith = { type: e.type, tag: el.tagName };
+        },
+      },
+    });
+
+    target.querySelector('button').click();
+
+    assert('handler called',        !!calledWith, true);
+    assert('event.type: click',     calledWith?.type, 'click');
+    assert('element: BUTTON',       calledWith?.tag, 'BUTTON');
+
+    cleanup();
+    show('1. click handler', target.cloneNode(true));
+  }
+
+  // ── 2. dataset access: button with data-id ────────────────────────────────
+  group('dataset access: can the handler read el.dataset.id');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let readId = null;
+
+    const cleanup = mount('events-basic', {}, target, store, {
+      handlers: {
+        handleClick(e, el) { readId = el.dataset.id; },
+      },
+    });
+
+    target.querySelector('button').click();
+
+    assert('dataset.id read correctly', readId, '42');
+
+    cleanup();
+  }
+
+  // ── 3. DELEGATION PROOF: newly added element works WITHOUT extra setup ───
+  group('delegation proof: adding a new element to a reactive &lt;for data-live&gt; → its button works with no extra setup');
+  {
+    const store = createStore({ items: [{ id: 1, label: 'A' }] });
+    const target = document.createElement('div');
+    const removedIds = [];
+
+    const cleanup = mount('events-list', {}, target, store, {
+      handlers: {
+        removeItem(e, el) { removedIds.push(el.dataset.id); },
+      },
+    });
+
+    // A NEW element is added reactively — NO extra setup call is made for
+    // bindings-events.js (setupEventBindings was called ONLY ONCE, during mount()).
+    store.set('items', [...store.get('items'), { id: 2, label: 'B' }]);
+
+    const buttons = target.querySelectorAll('button');
+    assert('two buttons rendered (reactive add worked)', buttons.length, 2);
+
+    buttons[1].click(); // the newly added item's button
+    assert('the new item\'s button worked via delegation', removedIds, ['2']);
+
+    buttons[0].click(); // the original item's button should still work too
+    assert('the original item\'s button also works', removedIds, ['2', '1']);
+
+    cleanup();
+    note('setupEventBindings was set up ONCE on root (target); ' +
+      'no separate listener was added for the new &lt;li&gt;/&lt;button&gt;');
+    show('3. delegation proof (reactive for)', target.cloneNode(true));
+  }
+
+  // ── 4. submit: the preventDefault decision ─────────────────────────────────
+  group('submit: data-on-submit always calls preventDefault');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let submitted = false;
+
+    const cleanup = mount('events-submit', {}, target, store, {
+      handlers: {
+        handleSubmit() { submitted = true; },
+      },
+    });
+
+    const form = target.querySelector('form');
+    const evt = new Event('submit', { bubbles: true, cancelable: true });
+    form.dispatchEvent(evt);
+
+    assert('submit handler called',            submitted, true);
+    assert('preventDefault was called (native submit blocked)', evt.defaultPrevented, true);
+
+    cleanup();
+  }
+
+  // ── 5. no handler: unknown name → warning, no crash ────────────────────
+  group('handler not found: unknown name → warning, no crash');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const store = createStore({});
+    const target = document.createElement('div');
+    let threw = false;
+
+    try {
+      mount('events-basic', {}, target, store, { handlers: {} }); // handleClick NOT DEFINED
+      target.querySelector('button').click();
+    } catch { threw = true; }
+
+    console.warn = orig;
+
+    assert('no crash', threw, false);
+    assert('HANDLER_NOT_FOUND warning issued',
+      warnings.some((w) => typeof w === 'string' && w.includes('HANDLER_NOT_FOUND')), true);
+  }
+
+  // ── 6. unknown event type (data-on-foo) → warning, skipped ────────────────
+  group('unknown event type: data-on-foo → warning, skipped');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const store = createStore({});
+    const target = document.createElement('div');
+    mount('events-bad', {}, target, store, { handlers: {} });
+
+    console.warn = orig;
+
+    const unknownWarn = warnings.find((w) =>
+      typeof w === 'string' && w.includes('UNKNOWN_EVENT'));
+    assert('UNKNOWN_EVENT warning issued',       !!unknownWarn, true);
+    assert('warning contains "data-on-foo"',     unknownWarn?.includes('data-on-foo'), true);
+  }
+
+  // ── 7. cleanup: click does NOT call the handler after unmount ────────────
+  group('cleanup: click does not call the handler after unmount');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let called = false;
+
+    mount('events-basic', {}, target, store, {
+      handlers: { handleClick() { called = true; } },
+    });
+
+    const btn = target.querySelector('button');
+    unmount(target); // content is cleared AND the delegation listener is removed
+
+    // To prevent content-clearing from "accidentally" passing the test: put
+    // the same button back into target by hand and click it — if the
+    // listener was REALLY removed, the handler won't fire even though
+    // bubbling still reaches target.
+    target.appendChild(btn);
+    btn.click();
+
+    assert('handler NOT CALLED after cleanup', called, false);
+    note('removeEventListener happened — proof INDEPENDENT of content clearing');
+  }
+
+  // ── 8. no handlers given: event system is not set up, zero warnings ──────
+  group('no handlers given: event system is never set up, zero warnings');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const store = createStore({});
+    const target = document.createElement('div');
+    let threw = false;
+
+    try {
+      mount('events-basic', {}, target, store); // NO handlers
+      target.querySelector('button').click();
+    } catch { threw = true; }
+
+    console.warn = orig;
+
+    assert('click did not crash',           threw, false);
+    assert('zero warnings (system not set up)', warnings.length, 0);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

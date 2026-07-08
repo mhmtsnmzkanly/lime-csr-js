@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr bindings — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+    button { margin: .25rem .5rem .25rem 0; padding: .2rem .6rem;
+             background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+             border-radius: 4px; cursor: pointer; font: inherit; font-size: .8rem; }
+  </style>
+</head>
+<body>
+<h1>src/bindings.js — verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore } from '../src/store.js';
+  import { setupBindings } from '../src/bindings.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  // ── 1. data-text: store.set → span is updated ─────────────────────────────
+  group('data-text: basic reactive text');
+  {
+    const store = createStore({ count: 0 });
+    const host = document.createElement('div');
+    host.innerHTML = `<span data-text="count"></span>`;
+
+    const cleanup = setupBindings(host, store);
+
+    const span = host.querySelector('span');
+    assert('initial value: 0',        span.textContent, '0');
+
+    store.set('count', 5);
+    assert('store.set(5) → text 5',   span.textContent, '5');
+
+    store.set('count', 99);
+    assert('store.set(99) → text 99', span.textContent, '99');
+
+    store.set('count', 0);
+    assert('store.set(0) → 0 (falsy but printed)', span.textContent, '0');
+
+    cleanup();
+    note('cleanup called; test 5 continues');
+    show('1. data-text', host);
+  }
+
+  // ── 2. Same path, two spans ────────────────────────────────────────────────
+  group('data-text: same path → both spans update together');
+  {
+    const store = createStore({ score: 10 });
+    const host = document.createElement('div');
+    host.innerHTML = `
+      <span id="a" data-text="score"></span>
+      <span id="b" data-text="score"></span>`;
+
+    setupBindings(host, store);
+
+    const a = host.querySelector('#a');
+    const b = host.querySelector('#b');
+    assert('both start at 10',       [a.textContent, b.textContent], ['10', '10']);
+
+    store.set('score', 42);
+    assert('both become 42',         [a.textContent, b.textContent], ['42', '42']);
+
+    show('2. data-text two spans', host);
+  }
+
+  // ── 3. Reactive attribute: href + {x}/data-x ───────────────────────────────
+  group('reactive attribute: href="/u/{h}" data-h="user.handle"');
+  {
+    const store = createStore({ user: { handle: 'ali' } });
+    const host = document.createElement('div');
+    host.innerHTML = `<a href="/u/{h}" data-h="user.handle">profile</a>`;
+
+    setupBindings(host, store);
+
+    const a = host.querySelector('a');
+    assert('initial href: /u/ali',    a.getAttribute('href'), '/u/ali');
+    assert('data-h removed',           a.hasAttribute('data-h'), false);
+    assert('data-ref added',           a.hasAttribute('data-ref'), true);
+
+    store.set('user.handle', 'memo');
+    assert('store.set → /u/memo',     a.getAttribute('href'), '/u/memo');
+
+    store.set('user.handle', 'zeynep');
+    assert('store.set → /u/zeynep',   a.getAttribute('href'), '/u/zeynep');
+
+    show('3. Reactive attribute (href)', host);
+  }
+
+  // ── 4. Multiple {x}: two placeholders, either changing re-resolves from scratch ──
+  group('multiple {x}: /user/{a}/post/{b} — href re-resolved from scratch when a or b changes');
+  {
+    const store = createStore({ user: { handle: 'ali' }, post: { id: '7' } });
+    const host = document.createElement('div');
+    host.innerHTML =
+      `<a href="/user/{a}/post/{b}" data-a="user.handle" data-b="post.id">show</a>`;
+
+    setupBindings(host, store);
+
+    const a = host.querySelector('a');
+    assert('initial href',            a.getAttribute('href'), '/user/ali/post/7');
+    assert('data-a removed',          a.hasAttribute('data-a'), false);
+    assert('data-b removed',          a.hasAttribute('data-b'), false);
+    assert('data-ref present',        a.hasAttribute('data-ref'), true);
+
+    store.set('user.handle', 'veli');
+    assert('href updated when a changes', a.getAttribute('href'), '/user/veli/post/7');
+
+    store.set('post.id', '99');
+    assert('href updated when b changes', a.getAttribute('href'), '/user/veli/post/99');
+
+    show('4. Multiple {x}', host);
+  }
+
+  // ── 5. cleanup(): subscription must be cancelled ──────────────────────────
+  group('cleanup: after calling it, store.set must NOT update the DOM');
+  {
+    const store = createStore({ val: 'before' });
+    const host = document.createElement('div');
+    host.innerHTML = `<span data-text="val"></span>`;
+
+    const cleanup = setupBindings(host, store);
+    const span = host.querySelector('span');
+
+    assert('initial: before',      span.textContent, 'before');
+
+    store.set('val', 'during');
+    assert('updated before cleanup', span.textContent, 'during');
+
+    cleanup(); // cancel the subscription
+
+    store.set('val', 'after');
+    assert('after cleanup: DOM UNCHANGED (stale value)',
+      span.textContent, 'during'); // should NOT be "after"
+
+    note('cleanup() really did cancel the subscription ✓');
+    show('5. cleanup', host);
+  }
+
+  // ── 6. cleanup() double call must be safe ──────────────────────────────────
+  group('cleanup: double call must not crash');
+  {
+    const store = createStore({ x: 1 });
+    const host = document.createElement('div');
+    host.innerHTML = `<span data-text="x"></span>`;
+    const cleanup = setupBindings(host, store);
+
+    cleanup();
+    let threw = false;
+    try { cleanup(); } catch { threw = true; }
+    assert('double cleanup did not crash', threw, false);
+  }
+
+  // ── 7. Missing path → warning, no crash ─────────────────────────────────────
+  group('missing / empty path → warning, no crash');
+  {
+    const warns = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warns.push(args[0]); };
+
+    const store = createStore({});
+    const host  = document.createElement('div');
+    // data-text value is empty + no data-z for {z}
+    host.innerHTML = `
+      <span data-text=""></span>
+      <a href="/u/{z}">link</a>`;
+
+    setupBindings(host, store);
+
+    console.warn = orig;
+
+    assert('warning issued (empty path)', warns.length >= 1, true);
+    assert('page did not crash', true, true);
+    note(`${warns.length} warning(s) issued`);
+  }
+
+  // ── 8. URL safety: dangerous protocol is blocked ─────────────────────────
+  group('URL safety: javascript: protocol must be blocked');
+  {
+    const store = createStore({ link: 'javascript:alert(1)' });
+    const host  = document.createElement('div');
+    host.innerHTML = `<a href="{h}" data-h="link">click</a>`;
+
+    setupBindings(host, store);
+
+    const a = host.querySelector('a');
+    assert('javascript: blocked → empty href', a.getAttribute('href'), '');
+
+    store.set('link', '/safe/path');
+    assert('safe path → passed through', a.getAttribute('href'), '/safe/path');
+
+    show('8. URL safety', host);
+  }
+
+  // ── 9. data-text null value → empty string ──────────────────────────────
+  group('data-text: null value → empty string (no crash)');
+  {
+    const store = createStore({ name: null });
+    const host  = document.createElement('div');
+    host.innerHTML = `<span data-text="name"></span>`;
+
+    setupBindings(host, store);
+
+    const span = host.querySelector('span');
+    assert('null → ""', span.textContent, '');
+
+    store.set('name', 'Ahmet');
+    assert('"Ahmet" arrives', span.textContent, 'Ahmet');
+
+    store.set('name', null);
+    assert('null again → ""', span.textContent, '');
+
+    show('9. null value', host);
+  }
+
+  // ── 10. Reserved placeholder names (2b) → warning, valid name passes ────────
+  group('reserved names: {text}/{model}/{on-click} warn; a valid name does not');
+  {
+    const store = createStore({ user: { name: 'Ali' } });
+    const host  = document.createElement('div');
+    host.innerHTML = `
+      <span title="{text}">a</span>
+      <span title="{model}">b</span>
+      <button title="{on-click}">c</button>`;
+
+    const warns1 = [];
+    const orig1  = console.warn;
+    console.warn = (...args) => { warns1.push(args[0]); };
+    setupBindings(host, store);
+    console.warn = orig1;
+
+    const reservedWarns = warns1.filter((w) => typeof w === 'string' && w.includes('RESERVED_ATTR_NAME'));
+    assert('3 reserved-name warnings issued (text/model/on-click)', reservedWarns.length, 3);
+    assert('warning mentions "text"',     reservedWarns.some((w) => w.includes('"text"')), true);
+    assert('warning mentions "model"',    reservedWarns.some((w) => w.includes('"model"')), true);
+    assert('warning mentions "on-click"', reservedWarns.some((w) => w.includes('"on-click"')), true);
+
+    // Reserved attrs are rejected: reactive binding must NOT be set up for them
+    assert('{text} attribute left unresolved (binding rejected)',
+      host.querySelectorAll('span')[0].getAttribute('title'), '{text}');
+
+    // A valid, non-reserved placeholder name should bind normally, no warning
+    const host2 = document.createElement('div');
+    host2.innerHTML = `<span title="{username}" data-username="user.name">d</span>`;
+
+    const warns2 = [];
+    const orig2  = console.warn;
+    console.warn = (...args) => { warns2.push(args[0]); };
+    setupBindings(host2, store);
+    console.warn = orig2;
+
+    assert('valid name ({username}): no warning', warns2.length, 0);
+    assert('valid name ({username}): resolved normally', host2.querySelector('span').getAttribute('title'), 'Ali');
+
+    note('Reserved names: text, model, show, live, ref, diff, and any "on-" prefix ✓');
+    show('10. Reserved placeholder names', host);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

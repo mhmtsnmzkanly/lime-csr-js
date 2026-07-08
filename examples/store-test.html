@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr store — verification</title>
+  <style>
+    body { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1   { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+<h1>src/store.js — verification tests</h1>
+<pre id="output"></pre>
+
+<script type="module">
+  import { getByPath, setByPath, createStore } from "../src/store.js";
+
+  const out = document.getElementById("output");
+  let passed = 0;
+  let failed = 0;
+
+  function group(label) {
+    out.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function assert(label, actual, expected) {
+    const ok = JSON.stringify(actual) === JSON.stringify(expected);
+    const icon = ok ? "✓" : "✗";
+    const cls  = ok ? "pass" : "fail";
+    const detail = ok ? "" : `  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    out.innerHTML += `<span class="${cls}">${icon} ${label}${detail}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  // ── 1. getByPath ──────────────────────────────────────────────────────────
+  group("getByPath");
+  const obj = { user: { profile: { name: "Ali" } }, count: 0 };
+  assert("flat key",              getByPath(obj, "count"),                0);
+  assert("nested 3 levels",       getByPath(obj, "user.profile.name"),    "Ali");
+  assert("missing path → undefined", getByPath(obj, "user.missing.key"),  undefined);
+
+  // ── 2. setByPath ──────────────────────────────────────────────────────────
+  group("setByPath");
+  const target = {};
+  const r1 = setByPath(target, "a.b.c", 42);
+  assert("writes a new nested path",  getByPath(target, "a.b.c"),  42);
+  assert("returns changed: true",     r1.changed,                  true);
+  assert("previousValue: undefined",  r1.previousValue,            undefined);
+
+  const r2 = setByPath(target, "a.b.c", 42);
+  assert("same value → changed: false", r2.changed, false);
+
+  const r3 = setByPath(target, "a.b.c", 99);
+  assert("different value → changed: true",  r3.changed,        true);
+  assert("previousValue holds the old value", r3.previousValue, 42);
+
+  // ── 3. createStore — basic get/set ────────────────────────────────────────
+  group("createStore — basic get/set");
+  const store = createStore({ x: 1, user: { name: "Veli" } });
+  assert("get flat key",          store.get("x"),         1);
+  assert("get nested",            store.get("user.name"), "Veli");
+  assert("get '' → entire state", typeof store.get(""),   "object");
+
+  store.set("x", 99);
+  assert("get after set",         store.get("x"), 99);
+
+  // ── 4. nested path get/set ────────────────────────────────────────────────
+  group("nested path — user.profile.name");
+  const store2 = createStore({});
+  store2.set("user.profile.name", "Zeynep");
+  assert("nested set+get",             store2.get("user.profile.name"), "Zeynep");
+  assert("intermediate object created", typeof store2.get("user"),      "object");
+
+  // ── 5. subscribe — upward path notification ───────────────────────────────
+  group("subscribe — upward path notification");
+  const store3 = createStore({ user: { profile: { name: "A" } } });
+  let userCallCount = 0;
+  let nameCallCount = 0;
+
+  store3.subscribe("user", () => userCallCount++);
+  store3.subscribe("user.profile.name", () => nameCallCount++);
+
+  store3.set("user.profile.name", "B");
+
+  assert('"user" subscriber fired on "user.profile.name" change', userCallCount, 1);
+  assert('"user.profile.name" subscriber fired',                   nameCallCount, 1);
+
+  // ── 6. Object.is — no trigger on same value ───────────────────────────────
+  group("Object.is — no trigger on same value");
+  const store4 = createStore({ v: 10 });
+  let callCount = 0;
+  store4.subscribe("v", () => callCount++);
+
+  store4.set("v", 10); // same value
+  assert("same value → subscriber not triggered", callCount, 0);
+
+  store4.set("v", 11);
+  assert("different value → subscriber triggered", callCount, 1);
+
+  // ── 7. cleanup — no trigger after unsubscribe ─────────────────────────────
+  group("cleanup — unsubscribe");
+  const store5 = createStore({ n: 0 });
+  let cleanupCount = 0;
+  const unsubscribe = store5.subscribe("n", () => cleanupCount++);
+
+  store5.set("n", 1);
+  assert("triggers while subscription is active", cleanupCount, 1);
+
+  unsubscribe();
+  store5.set("n", 2);
+  assert("no trigger after unsubscribe", cleanupCount, 1);
+
+  // ── 8. update ─────────────────────────────────────────────────────────────
+  group("update");
+  const store6 = createStore({ counter: 5 });
+  store6.update("counter", (v) => v + 1);
+  assert("update increments the existing value", store6.get("counter"), 6);
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  out.innerHTML += `\n<span class="${failed === 0 ? "pass" : "fail"}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

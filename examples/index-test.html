@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr index — full integration</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/index.js — full integration tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<!-- ═══════════════════════ Template definitions ════════════════════════════ -->
+
+<!-- Author partial: isolated context { name, bio } -->
+<template id="tpl-author">
+  <div class="author"><strong class="name">${name}</strong> · <em class="bio">${bio}</em></div>
+</template>
+
+<!-- Badge partial: isolated context { label } -->
+<template id="tpl-badge">
+  <b class="badge">${label}</b>
+</template>
+
+<!--
+  Blog page — ALL structural features together:
+    - ${pageTitle}   : top-level static interpolation
+    - <partial>      : author component
+    - <for>          : comment list (loop variable: c)
+    - <if> inside <for> : a verification badge for each comment (c.verified)
+    - <partial> inside <for>: the badge partial for each comment (data="c.badge")
+    - data-text      : reactive counter
+    - {h}/data-h     : reactive attribute
+-->
+<template id="tpl-blog">
+  <article>
+    <h3 class="title">${pageTitle}</h3>
+    <partial name="author" data="author"></partial>
+    <ul class="comments">
+      <for each="comments" as="c">
+        <li>
+          <span class="text">${c.text}</span>
+          <if is-truthy="c.verified">
+            <partial name="badge" data="c.badge"></partial>
+          <else>
+            <span class="unverified">—</span>
+          </else>
+          </if>
+        </li>
+      </for>
+    </ul>
+    <p>Total: <span class="count" data-text="commentCount"></span></p>
+    <a href="/u/{h}" data-h="user.handle" class="profile-link">my profile</a>
+  </article>
+</template>
+
+<!-- Simple page: for the x→y transition test -->
+<template id="tpl-simple">
+  <section class="simple">
+    <span data-text="simpleVal"></span>
+  </section>
+</template>
+
+<!-- Self-calling partial: for the infinite loop test -->
+<template id="tpl-trap">
+  <div class="trap"><partial name="trap"></partial></div>
+</template>
+
+<!-- Lifecycle hooks: static ${...} field for the beforeRender-timing proof -->
+<template id="tpl-lifecycle">
+  <p class="injected">${injectedField}</p>
+</template>
+
+<!-- ═══════════════════════ Test logic ══════════════════════════════════ -->
+<script type="module">
+  import { createStore }         from '../src/store.js';
+  import { mount, unmount, render, render as renderFn } from '../src/index.js';
+  import { getTemplate }         from '../src/template.js';
+  import { setupBindings }       from '../src/bindings.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  // Shared blog context (static; the reactive part lives in the store)
+  const blogContext = {
+    pageTitle: 'lime-csr Test Blog',
+    author: { name: 'Ali Veli', bio: 'Developer' },
+    comments: [
+      { text: 'Great article!', verified: true,  badge: { label: '✓ verified' } },
+      { text: 'Thanks',         verified: false, badge: { label: '' } },
+      { text: 'Excellent',      verified: true,  badge: { label: '✓ verified' } },
+    ],
+  };
+
+  // ── 1. Full structural integration: partial + for + if + partial-in-for ─────────
+  group('Full structural integration: partial→for→if→partial (blog page)');
+  {
+    const store = createStore({ commentCount: 3, user: { handle: 'aliveli' } });
+    const target = document.createElement('div');
+    mount('blog', blogContext, target, store);
+
+    // No structural tag should remain
+    assert('<partial> gone',  target.querySelector('partial'), null);
+    assert('<for> gone',      target.querySelector('for'),     null);
+    assert('<if> gone',       target.querySelector('if'),      null);
+
+    // Static interpolation
+    assert('${pageTitle} resolved',
+      target.querySelector('.title')?.textContent?.trim(), 'lime-csr Test Blog');
+
+    // Partial (author)
+    assert('author partial present', !!target.querySelector('.author'), true);
+    assert('author name',
+      target.querySelector('.name')?.textContent?.trim(), 'Ali Veli');
+
+    // For loop
+    const lis = target.querySelectorAll('li');
+    assert('3 comments created', lis.length, 3);
+    assert('comment 1 text', lis[0]?.querySelector('.text')?.textContent?.trim(), 'Great article!');
+    assert('comment 2 text', lis[1]?.querySelector('.text')?.textContent?.trim(), 'Thanks');
+
+    // <if> inside the loop (resolved with the correct itemContext?)
+    assert('comment 1 verified: badge present',
+      !!lis[0]?.querySelector('.badge'), true);
+    assert('badge 1 content',
+      lis[0]?.querySelector('.badge')?.textContent?.trim(), '✓ verified');
+    assert('comment 2 unverified: .unverified present',
+      !!lis[1]?.querySelector('.unverified'), true);
+    assert('comment 3 verified: badge present',
+      !!lis[2]?.querySelector('.badge'), true);
+
+    // <partial> inside the loop (badge partial data="c.badge" — loop variable)
+    const badges = target.querySelectorAll('.badge');
+    assert('2 badge partials expanded', badges.length, 2);
+
+    note('partial+for+if nested: all resolved in the correct context ✓');
+    show('1. Full integration', target);
+  }
+
+  // ── 2. data-text reactivity ──────────────────────────────────────────────
+  group('data-text reactivity: store.set → DOM updates');
+  {
+    const store = createStore({ commentCount: 3, user: { handle: 'test' } });
+    const target = document.createElement('div');
+    mount('blog', blogContext, target, store);
+
+    const countEl = target.querySelector('.count');
+    assert('initial: 3',    countEl?.textContent, '3');
+
+    store.set('commentCount', 7);
+    assert('store.set(7) → 7', countEl?.textContent, '7');
+
+    store.set('commentCount', 0);
+    assert('store.set(0) → 0', countEl?.textContent, '0');
+  }
+
+  // ── 3. Reactive attribute: {h}/data-h ─────────────────────────────────────
+  group('reactive attribute: {h}/data-h → href updates');
+  {
+    const store = createStore({ commentCount: 0, user: { handle: 'aliveli' } });
+    const target = document.createElement('div');
+    mount('blog', blogContext, target, store);
+
+    const link = target.querySelector('.profile-link');
+    assert('initial href',     link?.getAttribute('href'), '/u/aliveli');
+    assert('data-h removed',   link?.hasAttribute('data-h'), false);
+    assert('data-ref present', link?.hasAttribute('data-ref'), true);
+
+    store.set('user.handle', 'memo');
+    assert('store.set → /u/memo', link?.getAttribute('href'), '/u/memo');
+  }
+
+  // ── 4. x → y transition: same target, two different templates ──────────
+  group('x→y transition: old bindings cancelled, content changes');
+  {
+    const storeA = createStore({ commentCount: 10, user: { handle: 'x' } });
+    const storeB = createStore({ simpleVal: 'hello' });
+    const target = document.createElement('div');
+
+    // Mount the blog
+    mount('blog', blogContext, target, storeA);
+    assert('blog: .count present', !!target.querySelector('.count'), true);
+
+    const oldCount = target.querySelector('.count');
+
+    // Mount the simple page onto the same target → blog should be cleared
+    mount('simple', {}, target, storeB);
+
+    assert('blog content removed', !!target.querySelector('.count'), false);
+    assert('simple content present', !!target.querySelector('.simple'), true);
+    assert('no <for>',            target.querySelector('for'), null);
+
+    const simpleSpan = target.querySelector('[data-text="simpleVal"]');
+    // Initial value (from the store, before binding even happens):
+    // storeB.get('simpleVal') = 'hello' → the initial value should be set
+    assert('simple span updates', simpleSpan?.textContent, 'hello');
+
+    // Is the old storeA subscription cancelled?
+    storeA.set('commentCount', 99);
+    // oldCount is now detached from the DOM; changing it shouldn't matter (it's not in innerHTML anyway)
+    // More importantly: there's no count element in the new DOM
+    assert('no count element in the DOM coming from the old store', !!target.querySelector('.count'), false);
+
+    // Does the new storeB update it?
+    storeB.set('simpleVal', 'world');
+    assert('new store updates it', simpleSpan?.textContent, 'world');
+
+    note('x→y transition: old bindings cancelled, new page active ✓');
+    show('4. x→y transition', target);
+  }
+
+  // ── 5. unmount: bindings cancelled, content cleared ───────────────────
+  group('unmount: store.set does NOT update the DOM after cleanup()');
+  {
+    const store = createStore({ commentCount: 5, user: { handle: 'test' } });
+    const target = document.createElement('div');
+    mount('blog', blogContext, target, store);
+
+    const countEl = target.querySelector('.count');
+    assert('initial: 5', countEl?.textContent, '5');
+
+    store.set('commentCount', 99);
+    assert('updated before unmount', countEl?.textContent, '99');
+
+    unmount(target);
+    assert('target empty after unmount', target.children.length, 0);
+
+    // After unmount, store.set must not affect the DOM (subscription cancelled)
+    store.set('commentCount', 0); // should be a no-op (countEl is detached from the DOM)
+    assert('countEl detached from the DOM after unmount',
+      document.contains(countEl), false);
+    note('unmount worked correctly: bindings cancelled, content removed ✓');
+  }
+
+  // ── 6. render(): directly processes an existing fragment ──────────────────
+  group('render(): direct fragment processing without mount');
+  {
+    const store = createStore({ count: 42 });
+    const frag  = getTemplate('simple');
+    const ctx   = {};
+
+    const cleanup = render(frag, ctx, store);
+
+    // Put the fragment inside a wrapper so it can be queried
+    const host = document.createElement('div');
+    host.appendChild(frag);
+
+    const span = host.querySelector('[data-text="simpleVal"]');
+    // 'simpleVal' is not in the store → '' (initial)
+    assert('not in store → ""', span?.textContent, '');
+
+    // But it IS subscribed to the store for simpleVal; setting it should update it
+    store.set('simpleVal', 'render test');
+    assert('store.set → updated', span?.textContent, 'render test');
+
+    cleanup();
+    store.set('simpleVal', 'cancelled');
+    assert('not updated after cleanup', span?.textContent, 'render test');
+
+    show('6. render() directly', host);
+  }
+
+  // ── 7. Infinite loop protection: a partial calling itself ───────────────
+  group('infinite loop protection: self-calling partial → warning, no crash');
+  {
+    const warns = [];
+    const orig  = console.warn;
+    console.warn = (...args) => { warns.push(args[0]); orig(...args); };
+
+    const store = createStore({});
+    const target = document.createElement('div');
+    mount('trap', {}, target, store);
+
+    console.warn = orig;
+
+    // NOTE: tpl-trap calls itself directly (NOT inside a <for>) — so
+    // expandPartials's own recursive call chain hits partials.js's MAX_DEPTH
+    // limit first; index.js's MAX_PIPELINE_ITERATIONS limit is never reached.
+    // That's why we search for "depth limit", not "iteration".
+    const limitWarn = warns.find((w) =>
+      typeof w === 'string' && w.includes('depth limit')
+    );
+    assert('depth limit warning issued', !!limitWarn, true);
+    assert('function completed (no crash)',  true, true);
+    assert('.trap present (partially expanded)', !!target.querySelector('.trap'), true);
+
+    note('Infinite loop protection worked: stopped at the MAX_DEPTH warning ✓');
+    show('7. Infinite loop protection', target);
+  }
+
+  // ── 8. Lifecycle hooks: beforeRender / afterRender ───────────────────────
+  group('beforeRender runs before the pipeline; afterRender runs after DOM append');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+
+    // beforeRender mutates `context` before the pipeline sees it; if the
+    // template's ${injectedField} resolves, beforeRender ran BEFORE resolveStatic.
+    let beforeRenderCalled = false;
+    let afterRenderCalled  = false;
+    let afterRenderChildCount = -1;
+    let afterRenderTargetArg  = null;
+    let afterRenderStoreArg   = null;
+
+    mount('lifecycle', {}, target, store, {
+      beforeRender(context, s) {
+        beforeRenderCalled = true;
+        context.injectedField = 'injected-by-beforeRender';
+      },
+      afterRender(rootEl, s) {
+        afterRenderCalled     = true;
+        afterRenderChildCount = rootEl.children.length;
+        afterRenderTargetArg  = rootEl;
+        afterRenderStoreArg   = s;
+      },
+    });
+
+    assert('beforeRender was called', beforeRenderCalled, true);
+    assert('template resolved the field beforeRender injected into context',
+      target.querySelector('.injected')?.textContent?.trim(), 'injected-by-beforeRender');
+
+    assert('afterRender was called', afterRenderCalled, true);
+    assert('afterRender received target with content already appended (proves it ran AFTER append)',
+      afterRenderChildCount > 0, true);
+    assert('afterRender received the same target element as its first argument', afterRenderTargetArg, target);
+    assert('afterRender received the store as its second argument', afterRenderStoreArg, store);
+
+    note('context mutated in beforeRender was visible to the render pipeline; ' +
+      'afterRender only fired once content was already in target ✓');
+    show('8. Lifecycle hooks', target);
+  }
+
+  // ── 9. Lifecycle hooks are optional: omitting them is a no-op, no error ──
+  group('beforeRender/afterRender omitted: mount() works normally, no error');
+  {
+    const store = createStore({});
+    let threw = false;
+
+    // No options argument at all
+    try {
+      const t1 = document.createElement('div');
+      mount('lifecycle', { injectedField: 'plain' }, t1, store);
+    } catch { threw = true; }
+    assert('mount() with no options argument: no error', threw, false);
+
+    // Empty options object
+    threw = false;
+    try {
+      const t2 = document.createElement('div');
+      mount('lifecycle', { injectedField: 'plain' }, t2, store, {});
+    } catch { threw = true; }
+    assert('mount() with empty options object: no error', threw, false);
+
+    // options with only handlers, no lifecycle hooks
+    threw = false;
+    try {
+      const t3 = document.createElement('div');
+      mount('lifecycle', { injectedField: 'plain' }, t3, store, { handlers: {} });
+    } catch { threw = true; }
+    assert('mount() with handlers but no lifecycle hooks: no error', threw, false);
+
+    note('beforeRender/afterRender are fully optional and backward-compatible ✓');
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

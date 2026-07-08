@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr template — verification</title>
+  <style>
+    body  { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1    { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2    { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .4rem; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; }
+    pre   { margin: 0; }
+    .rendered { border: 1px solid #334155; padding: .75rem; border-radius: 4px; margin-top: .4rem; }
+  </style>
+</head>
+<body>
+<h1>src/template.js — verification tests</h1>
+
+<!-- ── Template definitions ────────────────────────────────────────────── -->
+
+<!-- 1. Plain ${path} -->
+<template id="tpl-user-card">
+  <div class="card">
+    <strong>${user.name}</strong>
+    <span>${user.role}</span>
+  </div>
+</template>
+
+<!-- 2. ${} in the middle of text -->
+<template id="tpl-greeting">
+  <p>Hello ${user.name}, welcome! Your role: ${user.role}.</p>
+</template>
+
+<!-- 3. ${} inside an attribute -->
+<template id="tpl-link">
+  <a href="/u/${user.handle}" title="View ${user.name}'s profile">
+    ${user.name}
+  </a>
+</template>
+
+<!-- 4. Nested path -->
+<template id="tpl-nested">
+  <p>Written by ${post.meta.author} — ${post.meta.date}</p>
+</template>
+
+<!-- 5. XSS attempt -->
+<template id="tpl-xss">
+  <span>${malicious}</span>
+</template>
+
+<!-- 6a. <if> written inside <table> → foster-parenting victim (WARNING expected) -->
+<template id="tpl-table-bad">
+  <table>
+    <if is-truthy="hasRows">
+      <tr><td>${row}</td></tr>
+    </if>
+  </table>
+</template>
+
+<!-- 6b. Normal <table>, no special tag (NO WARNING — false-positive check) -->
+<template id="tpl-table-normal">
+  <table>
+    <tbody>
+      <tr><td>1</td></tr>
+    </tbody>
+  </table>
+</template>
+
+<!-- 6c. <if> OUTSIDE <table> + plain content unrelated to the table (NO WARNING) -->
+<template id="tpl-table-if-outside">
+  <if is-truthy="flag">
+    <p>notice</p>
+  </if>
+  <table>
+    <tbody>
+      <tr><td>plain</td></tr>
+    </tbody>
+  </table>
+</template>
+
+<!-- Output area -->
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { renderTemplate, getTemplate } from "../src/template.js";
+  import { escapeHtml, safeAttr, safeUrl, safeStyleUrl } from "../src/utils.js";
+
+  const log  = document.getElementById("log");
+  const area = document.getElementById("renders");
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = actual === expected;
+    const cls = ok ? "pass" : "fail";
+    const detail = ok ? "" : `\n  expected : ${JSON.stringify(expected)}\n  actual   : ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${cls}">${ok ? "✓" : "✗"} ${label}${detail}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function show(title, fragment) {
+    const h = document.createElement("h2");
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement("div");
+    box.className = "rendered";
+    if (fragment) box.appendChild(fragment);
+    area.appendChild(box);
+  }
+
+  // ── 1. utils ──────────────────────────────────────────────────────────────
+  log.innerHTML += `<span class="pass">── utils.js</span>\n`;
+  assert("escapeHtml: &",               escapeHtml("a & b"),          "a &amp; b");
+  assert("escapeHtml: <script>",        escapeHtml("<script>"),        "&lt;script&gt;");
+  assert("escapeHtml: quotes",          escapeHtml(`"'`),              "&quot;&#039;");
+  assert("safeAttr: backtick",          safeAttr("a`b"),               "a&#096;b");
+  assert("safeUrl: https passes",       safeUrl("https://example.com"), "https://example.com");
+  assert("safeUrl: / passes",           safeUrl("/profile"),            "/profile");
+  assert("safeUrl: # passes",           safeUrl("#top"),                "#top");
+  assert("safeUrl: javascript: blocked", safeUrl("javascript:alert(1)"), "");
+  assert("safeUrl: // blocked",         safeUrl("//evil.com"),          "");
+  assert("safeUrl: data: blocked",      safeUrl("data:text/html,x"),    "");
+  assert("safeStyleUrl: wrap",          safeStyleUrl("/img/bg.jpg"),    "url('/img/bg.jpg')");
+  assert("safeStyleUrl: empty input",   safeStyleUrl("javascript:x"),   "");
+
+  // ── 2. Template reading & cache ──────────────────────────────────────────────
+  log.innerHTML += `\n<span class="pass">── getTemplate</span>\n`;
+  const frag1 = getTemplate("user-card");
+  assert("getTemplate: returns a fragment",     frag1 instanceof DocumentFragment, true);
+  const frag2 = getTemplate("user-card");
+  assert("getTemplate: two clones have independent DOM",
+    frag1 !== frag2, true);
+
+  const fragNull = getTemplate("tpl-no-such-thing");
+  assert("getTemplate: unknown → null", fragNull, null);
+
+  // ── 3. ${path} resolution — plain ──────────────────────────────────────────
+  log.innerHTML += `\n<span class="pass">── renderTemplate — plain \${path}</span>\n`;
+  const ctx = { user: { name: "Zeynep", role: "editor", handle: "zeynep42" } };
+  const card = renderTemplate("user-card", ctx);
+  const strong = card?.querySelector("strong");
+  const span   = card?.querySelector("span");
+  assert("plain path: name correct",  strong?.textContent?.trim(), "Zeynep");
+  assert("plain path: role correct",  span?.textContent?.trim(),   "editor");
+  show("1. Plain ${path}", card);
+
+  // ── 4. ${} in the middle of text ───────────────────────────────────────────
+  log.innerHTML += `\n<span class="pass">── renderTemplate — mid-text \${}</span>\n`;
+  const greet = renderTemplate("greeting", ctx);
+  const p = greet?.querySelector("p");
+  assert("mid-text: full sentence correct",
+    p?.textContent?.trim(),
+    "Hello Zeynep, welcome! Your role: editor.");
+  show("2. ${} in the middle of text", greet);
+
+  // ── 5. ${} inside an attribute ───────────────────────────────────────────────
+  log.innerHTML += `\n<span class="pass">── renderTemplate — attribute \${}</span>\n`;
+  const link = renderTemplate("link", ctx);
+  const a = link?.querySelector("a");
+  assert("attribute href resolved", a?.getAttribute("href"),  "/u/zeynep42");
+  assert("attribute title resolved", a?.getAttribute("title"), "View Zeynep's profile");
+  show("3. ${} inside an attribute", link);
+
+  // ── 6. Nested path ────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="pass">── renderTemplate — nested path</span>\n`;
+  const postCtx = { post: { meta: { author: "Ali", date: "2026-06-28" } } };
+  const nested = renderTemplate("nested", postCtx);
+  const np = nested?.querySelector("p");
+  assert("nested path resolved",
+    np?.textContent?.trim(),
+    "Written by Ali — 2026-06-28");
+  show("4. Nested path", nested);
+
+  // ── 7. XSS safety ──────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="pass">── XSS safety</span>\n`;
+  // NOTE: if the raw form of a closing script tag is written INSIDE an
+  // inline <script> block (whether in code or a comment), the HTML parser
+  // doesn't understand JS syntax and treats that sequence as the tag that
+  // CLOSES the script — the script gets cut off early here, and the rest of
+  // the JS throws a SyntaxError (the whole file silently breaks). Escaping
+  // with "\/" breaks up the sequence; it still produces the same string
+  // value in JS.
+  const xssCtx = { malicious: '<script>alert("xss")<\/script>' };
+  const xss = renderTemplate("xss", xssCtx);
+  const xspan = xss?.querySelector("span");
+  // textContent only returns text; innerHTML contains entities if escaped
+  const rawHtml = xspan?.innerHTML ?? "";
+  assert("XSS: script tag was escaped",
+    rawHtml.includes("<script>"), false);
+  assert("XSS: entities are present",
+    rawHtml.includes("&lt;script&gt;"), true);
+  show("5. XSS attempt (should be safe)", xss);
+
+  // ── 8. Missing path returns an empty string ───────────────────────────────
+  log.innerHTML += `\n<span class="pass">── Missing path</span>\n`;
+  const missing = renderTemplate("user-card", { user: { name: "Veli" } });
+  const ms = missing?.querySelector("span");
+  assert("missing path → empty string", ms?.textContent?.trim(), "");
+  show("6. Missing path (role should be empty)", missing);
+
+  // ── 9. <table> foster-parenting detection ─────────────────────────────────
+  log.innerHTML += `\n<span class="pass">── &lt;table&gt; foster-parenting detection</span>\n`;
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    getTemplate("table-bad");         // <if> written inside <table> → warning expected
+    getTemplate("table-normal");      // no special tag → NO warning
+    getTemplate("table-if-outside");  // <if> OUTSIDE the table, unrelated → NO warning
+
+    console.warn = orig;
+
+    const fosterWarns = warnings.filter((w) =>
+      typeof w === "string" && w.includes("TABLE_FOSTER_PARENTING"));
+    assert("exactly 1 foster-parenting warning issued", fosterWarns.length, 1);
+    assert("warning points to the correct template",
+      fosterWarns[0]?.includes("table-bad"), true);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? "pass" : "fail"}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

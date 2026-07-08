@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Filtre Kahve Günlüğü — V60 ile evde demleme</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="shell">
+    <section id="app" class="app" aria-live="polite"></section>
+  </main>
+
+  <!-- ═══════════════ Navigation: session state + admin badge ═══════════════ -->
+  <template id="tpl-nav">
+    <header class="site-header">
+      <nav class="site-nav">
+        <a class="brand" href="/">Filtre Kahve Günlüğü</a>
+        <div class="site-links">
+          <a href="/rehber">Rehberler</a>
+          <a href="/ekipman">Ekipman</a>
+          <a href="/hakkinda">Hakkında</a>
+        </div>
+        <!--
+          NOTE: {x}/data-x reactive bindings ALWAYS expect an absolute store
+          path (read via store.get) — the partial's isolated ${} context does
+          not apply here. The "session" partial's isolated context only
+          affects context-based resolution like static ${...}/is-truthy;
+          store paths (data-*) are always written from the root (e.g.
+          "session.user.avatarUrl").
+        -->
+        <if is-truthy="loggedIn">
+          <div class="session">
+            <img class="session-avatar" src="{avatarurl}" alt="{avatarname}"
+                 data-avatarurl="session.user.avatarUrl" data-avatarname="session.user.name">
+            <span class="session-greeting">
+              Merhaba, <strong data-text="session.user.name"></strong>
+            </span>
+            <if is-truthy="user.isAdmin">
+              <span class="badge-admin">Ekip</span>
+            </if>
+          </div>
+          <else>
+            <a class="session-login" href="/giris">Giriş yap</a>
+          </else>
+        </if>
+      </nav>
+    </header>
+  </template>
+
+  <!-- ═══════════════ Footer ═══════════════ -->
+  <template id="tpl-footer">
+    <footer class="site-footer">
+      <p>© 2026 Filtre Kahve Günlüğü. Demleme notları özenle yazılır.</p>
+      <div class="site-links">
+        <a href="/rss">RSS</a>
+        <a href="/iletisim">İletişim</a>
+      </div>
+    </footer>
+  </template>
+
+  <!-- ═══════════════ Author card ═══════════════ -->
+  <template id="tpl-author-card">
+    <div class="author-card">
+      <img class="avatar" src="${avatarUrl}" alt="${name}" width="52" height="52">
+      <div class="author-copy">
+        <div class="author-row">
+          <strong class="author-name">${name}</strong>
+          <if is-truthy="verified">
+            <span class="verified">doğrulanmış yazar</span>
+          </if>
+        </div>
+        <p class="author-bio">${bio}</p>
+        <div class="author-meta">
+          <time datetime="${publishedAt}">${dateLabel}</time>
+          <!-- The URL safety whitelist is in effect here: href only allows
+               http(s)/root-relative/#anchor protocols. -->
+          <a class="author-website" href="{website}" data-website="post.author.website" title="Yazarın sitesi">
+            kişisel site
+          </a>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ═══════════════ Tag pill (also used for the category) ═══════════════ -->
+  <template id="tpl-tag">
+    <span class="tag" data-action="filter-by-tag" data-tag-slug="${slug}">${label}</span>
+  </template>
+
+  <!-- ═══════════════ Similar-post card: static <for> + <partial> showcase ═══════════════ -->
+  <template id="tpl-similar-post">
+    <li>
+      <a href="${href}">${title}</a>
+      <p>${excerpt}</p>
+    </li>
+  </template>
+
+  <!-- ═══════════════ Like button: shared partial for both the post and comments ═══════════════ -->
+  <template id="tpl-like-button">
+    <button class="like-button {stateclass}" type="button"
+            data-action="${action}" data-target-id="${targetId}"
+            title="{status}" aria-label="{status}"
+            data-stateclass="${stateClassPath}" data-status="${statusPath}">
+      <if is-truthy="${likedPath}" data-live="${likedPath}">
+        <span class="heart is-on">♥</span>
+        <else>
+          <span class="heart">♡</span>
+        </else>
+      </if>
+      <span class="like-count" data-text="${countPath}"></span>
+    </button>
+  </template>
+
+  <!--
+    ═══════════════ Comment: recursive — a reply is itself a comment ═══════════════
+    This partial, placed inside a <for data-live>, resolves with its own
+    isolated context (the comment object); the admin badge (<if>) and the
+    like button (<partial>) also work correctly through that same context.
+  -->
+  <template id="tpl-comment">
+    <article class="comment" data-comment-id="${id}">
+      <div class="comment-head">
+        <img class="avatar avatar--sm" src="${author.avatarUrl}" alt="${author.name}" width="36" height="36">
+        <div class="comment-byline">
+          <strong>${author.name}</strong>
+          <if is-truthy="author.isAdmin">
+            <span class="badge-admin">Ekip</span>
+          </if>
+          <time datetime="${publishedAt}">${dateLabel}</time>
+        </div>
+      </div>
+      <p class="comment-body">${body}</p>
+      <div class="comment-actions">
+        <partial name="like-button" data="likeButton"></partial>
+        <button class="reply-trigger" type="button" data-action="reply-to" data-comment-id="${id}">
+          Yanıtla
+        </button>
+        <button class="delete-trigger" type="button" data-action="delete-comment" data-comment-id="${id}">
+          Sil
+        </button>
+      </div>
+      <if is-gt="${replyCountPath}" than="0" data-live="${replyCountPath}">
+        <section class="replies">
+          <for each="${repliesPath}" as="comment" key="comment.id" data-live>
+            <partial name="comment" data="comment"></partial>
+          </for>
+        </section>
+        <else>
+          <p class="empty-replies">Henüz yanıt yok — ilk yanıtı sen yaz.</p>
+        </else>
+      </if>
+    </article>
+  </template>
+
+  <!-- ═══════════════ Page: nav + hero + author + body + comments + footer ═══════════════ -->
+  <template id="tpl-page">
+    <partial name="nav" data="session"></partial>
+
+    <article class="post">
+      <header class="post-header">
+        <if is-truthy="post.featured">
+          <p class="featured-flag">Öne çıkan yazı</p>
+        </if>
+        <p class="post-kicker">${post.kicker}</p>
+        <h1 class="post-title">${post.title}</h1>
+        <p class="post-subtitle">${post.subtitle}</p>
+        <img class="hero" src="${post.heroUrl}" alt="${post.heroAlt}">
+        <partial name="author-card" data="post.author"></partial>
+      </header>
+
+      <div class="post-body">
+        <p>${post.bodyIntro}</p>
+        <p>${post.bodyMethod}</p>
+        <p>${post.bodyClosing}</p>
+      </div>
+
+      <section class="post-tags">
+        <if is-gt="post.tagCount" than="0">
+          <div class="tag-list">
+            <for each="post.tags" as="tag" key="tag.slug" data-live>
+              <partial name="tag" data="tag"></partial>
+            </for>
+          </div>
+          <else>
+            <p class="empty-tags">Bu yazı henüz etiketlenmedi.</p>
+          </else>
+        </if>
+      </section>
+
+      <div class="post-actions">
+        <partial name="like-button" data="post.postLikeButton"></partial>
+      </div>
+
+      <if is-truthy="session.loggedIn">
+        <section class="composer">
+          <div class="composer-head">
+            <h2>Yorum yaz</h2>
+            <p class="composer-hint">Yazarken diğer etkileşimler input'u bozmaz — dener misin?</p>
+          </div>
+          <textarea
+            id="comment-draft"
+            class="composer-input"
+            rows="4"
+            placeholder="Demlemenle ilgili görüşünü yaz..."></textarea>
+          <div class="composer-actions">
+            <button class="submit-button" type="button" data-action="add-comment">Yorum ekle</button>
+            <button class="cancel-button" type="button" data-action="cancel-reply">Yanıt modunu kapat</button>
+          </div>
+          <p class="reply-target">
+            <if is-truthy="replyTargetId" data-live="replyTargetId">
+              Yanıtlanan yorum: <strong data-text="replyTargetLabel"></strong>
+              <else>
+                Yeni yorum yazılıyor.
+              </else>
+            </if>
+          </p>
+        </section>
+        <else>
+          <p class="login-hint">Yorum yazmak için <a href="/giris">giriş yapmalısın</a>.</p>
+        </else>
+      </if>
+
+      <section class="comments">
+        <header class="comments-head">
+          <h2>Yorumlar (<span data-text="commentCount"></span>)</h2>
+        </header>
+
+        <if is-gt="commentCount" than="0" data-live>
+          <for each="comments" as="comment" key="comment.id" data-live>
+            <partial name="comment" data="comment"></partial>
+          </for>
+          <else>
+            <p class="empty-state">Henüz hiç yorum yok. İlk yorumu sen yaz!</p>
+          </else>
+        </if>
+      </section>
+
+      <section class="similar">
+        <h2>Benzer yazılar</h2>
+        <!--
+          NOTE: passing a loop item to a partial inside a static
+          (non-data-live) <for> — now safe thanks to the inUnexpandedFor()
+          guard in src/partials.js. <for> here is deliberately NOT data-live:
+          what's actually being showcased is that a plain static <for> +
+          <partial data="item"> combination now works correctly.
+        -->
+        <ul class="similar-list">
+          <for each="similarPosts" as="item">
+            <partial name="similar-post" data="item"></partial>
+          </for>
+        </ul>
+      </section>
+    </article>
+
+    <partial name="footer"></partial>
+  </template>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

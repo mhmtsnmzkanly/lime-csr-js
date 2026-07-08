@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr errors — dev_mode warning layer verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+  </style>
+</head>
+<body>
+<h1>src/errors.js — dev_mode warning layer verification tests</h1>
+<pre id="log"></pre>
+
+<!-- A valid template — for integration tests -->
+<template id="tpl-valid">
+  <p class="valid-content">Valid partial content.</p>
+</template>
+
+<script type="module">
+  import { setDevMode, isDevMode, warn, errors } from '../src/errors.js';
+  import { mount } from '../src/index.js';
+  import { createStore } from '../src/store.js';
+
+  const log = document.getElementById('log');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  /** Captures console.warn; the real output is still printed. */
+  function captureWarns(fn) {
+    const caught = [];
+    const original = console.warn;
+    console.warn = (...args) => {
+      caught.push(args.join(' '));
+      original.apply(console, args); // still shows up in the console
+    };
+    fn();
+    console.warn = original;
+    return caught;
+  }
+
+  // ── 1. setDevMode / isDevMode ──────────────────────────────────────────────
+  group('1. setDevMode / isDevMode');
+  {
+    // Default: on
+    assert('default devMode is on', isDevMode(), true);
+
+    setDevMode(false);
+    assert('setDevMode(false) → off', isDevMode(), false);
+
+    setDevMode(true);
+    assert('setDevMode(true) → on again', isDevMode(), true);
+  }
+
+  // ── 2. warn() — message format ─────────────────────────────────────────────
+  group('2. warn() basics: format and code');
+  {
+    setDevMode(true);
+    const caught = captureWarns(() => {
+      warn('TEST_CODE', 'test message');
+    });
+    assert('warning was printed (1)',   caught.length, 1);
+    assert('has the [lime-csr] prefix', caught[0].startsWith('[lime-csr]'), true);
+    assert('contains the code: TEST_CODE', caught[0].includes('TEST_CODE'),    true);
+    assert('contains the message',      caught[0].includes('test message'),  true);
+  }
+
+  // ── 3. dev_mode OFF → silence ────────────────────────────────────────────
+  group('3. devMode=false → silent console');
+  {
+    setDevMode(false);
+    const caught = captureWarns(() => {
+      warn('SILENT_CODE', 'this should not show');
+    });
+    assert('devMode=false: no warn printed', caught.length, 0);
+    setDevMode(true); // turn back on for later tests
+  }
+
+  // ── 4. errors helpers — format verification ───────────────────────────────
+  group('4. errors.* helpers: format and actionable message');
+  {
+    setDevMode(true);
+
+    const cases = [
+      ['unknownOperator',       () => errors.unknownOperator('is-magic', ['is-gt','is-lt'], null),      'UNKNOWN_OPERATOR'],
+      ['missingOperator',       () => errors.missingOperator(null),                                      'MISSING_OPERATOR'],
+      ['elseAfterContent',      () => errors.elseAfterContent(null),                                     'ELSE_AFTER_CONTENT'],
+      ['partialNotFound',       () => errors.partialNotFound('missing', ['valid'], null),                'PARTIAL_NOT_FOUND'],
+      ['partialMissingName',    () => errors.partialMissingName(null),                                   'PARTIAL_MISSING_NAME'],
+      ['partialDepthLimit',     () => errors.partialDepthLimit(50, null),                                'PARTIAL_DEPTH_LIMIT'],
+      ['templateNotFound',      () => errors.templateNotFound('ghost'),                                  'TEMPLATE_NOT_FOUND'],
+      ['forMissingAttr',        () => errors.forMissingAttr(null),                                      'FOR_MISSING_ATTR'],
+      ['forNotArray',           () => errors.forNotArray('items', 'string', null),                       'FOR_NOT_ARRAY'],
+      ['bindingMissingPath',    () => errors.bindingMissingPath(null),                                   'BINDING_MISSING_PATH'],
+      ['bindingMissingDataAttr',() => errors.bindingMissingDataAttr('href', 'url', null),               'BINDING_MISSING_DATA_ATTR'],
+      ['liveIfMissingOperator', () => errors.liveIfMissingOperator(null),                               'LIVE_IF_MISSING_OP'],
+      ['pipelineDepthLimit',    () => errors.pipelineDepthLimit(100, null),                             'PIPELINE_DEPTH_LIMIT'],
+      ['mountTemplateNotFound', () => errors.mountTemplateNotFound('x', ['y'], null),                   'MOUNT_TEMPLATE_NOT_FOUND'],
+      ['missingKey',            () => errors.missingKey('tpl-list'),                                     'FOR_MISSING_KEY'],
+      ['duplicateKey',          () => errors.duplicateKey('abc', 'tpl-list'),                           'FOR_DUPLICATE_KEY'],
+    ];
+
+    for (const [name, fn, code] of cases) {
+      const caught = captureWarns(fn);
+      assert(`errors.${name}: 1 warning printed`,  caught.length >= 1, true);
+      assert(`errors.${name}: has code "${code}"`, caught[0]?.includes(code), true);
+    }
+  }
+
+  // ── 5. dev_mode=false → ALL helpers silent ───────────────────────────────
+  group('5. devMode=false → all helpers silent');
+  {
+    setDevMode(false);
+
+    const allFns = [
+      () => errors.unknownOperator('x', [], null),
+      () => errors.missingOperator(null),
+      () => errors.partialNotFound('x', [], null),
+      () => errors.templateNotFound('x'),
+      () => errors.forMissingAttr(null),
+      () => errors.forNotArray('p', 'string', null),
+      () => errors.bindingMissingPath(null),
+      () => errors.liveIfMissingOperator(null),
+      () => errors.pipelineDepthLimit(100, null),
+      () => errors.mountTemplateNotFound('x', [], null),
+    ];
+
+    let totalCaught = 0;
+    for (const fn of allFns) {
+      totalCaught += captureWarns(fn).length;
+    }
+    assert('devMode=false: no warn printed (all helpers)', totalCaught, 0);
+    note('Page does not crash; every module degrades safely ✓');
+    setDevMode(true);
+  }
+
+  // ── 6. Integration: partials.js → errors.partialNotFound ──────────────────
+  group('6. Integration: mount() skips a missing partial with a warning');
+  {
+    // This template uses a partial that doesn't exist
+    const tpl = document.createElement('template');
+    tpl.id = 'tpl-partial-test';
+    tpl.innerHTML = `<partial name="nonexistent"></partial><p class="after">after</p>`;
+    document.body.appendChild(tpl);
+
+    setDevMode(true);
+    const store  = createStore({});
+    const target = document.createElement('div');
+
+    let caughtMsgs = [];
+    const origWarn = console.warn;
+    console.warn = (...args) => { caughtMsgs.push(args.join(' ')); origWarn.apply(console, args); };
+
+    mount('partial-test', {}, target, store);
+    console.warn = origWarn;
+
+    const hasPartialError = caughtMsgs.some((m) => m.includes('PARTIAL_NOT_FOUND'));
+    assert('PARTIAL_NOT_FOUND warning arrived', hasPartialError, true);
+
+    // Page did not crash; partial was removed but the following element remains
+    assert('partial skipped; following element remains',
+      !!target.querySelector('.after'), true);
+    assert('<partial> left no trace in the DOM',
+      target.querySelector('partial'), null);
+    note('A broken partial did not crash the page; remaining content rendered ✓');
+
+    document.body.removeChild(tpl);
+  }
+
+  // ── 7. Integration: mount() with a missing template ──────────────────────
+  group('7. Integration: mount() skips a missing template with a warning');
+  {
+    setDevMode(true);
+    const store  = createStore({});
+    const target = document.createElement('div');
+
+    let caughtMsgs = [];
+    const origWarn = console.warn;
+    console.warn = (...args) => { caughtMsgs.push(args.join(' ')); origWarn.apply(console, args); };
+
+    const cleanup = mount('totally-missing', {}, target, store);
+    console.warn = origWarn;
+
+    const hasMountError = caughtMsgs.some((m) => m.includes('MOUNT_TEMPLATE_NOT_FOUND'));
+    assert('MOUNT_TEMPLATE_NOT_FOUND warning arrived', hasMountError, true);
+
+    // target stays empty, but cleanup is still callable (no crash)
+    assert('target stays empty', target.childElementCount, 0);
+    assert('cleanup returned a function (no crash)', typeof cleanup, 'function');
+    cleanup(); // must not blow up
+    note('cleanup() was callable safely ✓');
+  }
+
+  // ── 8. Integration: devMode=false → mount errors silent ─────────────────
+  group('8. Integration: devMode=false → mount errors silent + page keeps working');
+  {
+    setDevMode(false);
+    const store  = createStore({ });
+    const target = document.createElement('div');
+
+    let caughtCount = 0;
+    const origWarn = console.warn;
+    console.warn = (...args) => { caughtCount++; origWarn.apply(console, args); };
+
+    mount('also-missing', {}, target, store);
+    console.warn = origWarn;
+
+    assert('devMode=false: mount error silent (0 warn)', caughtCount, 0);
+    assert('target is empty but exists (no crash)', target instanceof Element, true);
+    note('In production mode, end users see no console noise ✓');
+    setDevMode(true);
+  }
+
+  // ── 9. Integration: regression with a valid template (did earlier tests break it?)
+  group('9. Regression: a valid mount still works with devMode on');
+  {
+    setDevMode(true);
+    const store  = createStore({ });
+    const target = document.createElement('div');
+
+    let caughtCount = 0;
+    const origWarn = console.warn;
+    console.warn = (...args) => { caughtCount++; origWarn.apply(console, args); };
+
+    mount('valid', {}, target, store);
+    console.warn = origWarn;
+
+    assert('valid mount: no warn issued', caughtCount, 0);
+    assert('valid mount: content rendered',
+      !!target.querySelector('.valid-content'), true);
+    note('Adding the errors layer did not break existing tests ✓');
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr partials — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/partials.js — verification tests</h1>
+
+<!-- ═══════════════════════ Template definitions ════════════════════════════ -->
+
+<!-- Simple avatar: name + URL -->
+<template id="tpl-avatar">
+  <span class="avatar" title="${name}">[${name}]</span>
+</template>
+
+<!-- Author card: its own fields + an avatar partial inside -->
+<template id="tpl-author">
+  <div class="author">
+    <partial name="avatar" data="profile"></partial>
+    <em>${role}</em>
+  </div>
+</template>
+
+<!-- Comment: body + nested author (avatar inside author) -->
+<template id="tpl-comment">
+  <article class="comment">
+    <partial name="author" data="author"></partial>
+    <p class="body">${body}</p>
+  </article>
+</template>
+
+<!-- Recursive: calls itself → for the infinite loop test -->
+<template id="tpl-recursive">
+  <div class="r">
+    <partial name="recursive"></partial>
+  </div>
+</template>
+
+<!-- No data: always the same content -->
+<template id="tpl-hero">
+  <header class="hero"><h2>Welcome!</h2></header>
+</template>
+
+<!-- Multi-prop: data (base) + attributes OTHER THAN name/data (props) -->
+<template id="tpl-like-button">
+  <button class="like-button" data-action-name="${action}">
+    ${label} (<span class="count">${count}</span>)
+  </button>
+</template>
+
+<!-- Prop-vs-data override + data-* prop-exclusion probe -->
+<template id="tpl-override">
+  <span class="override-label">${label}</span>
+  <span class="custom-field">${custom}</span>
+</template>
+
+<!-- ═══════════════════════ Test output ══════════════════════════════════ -->
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { expandPartials } from '../src/partials.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  /** Test helper: writes innerHTML into a host, runs expandPartials. */
+  function run(html, context = {}) {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    expandPartials(host, context);
+    return host;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.textContent = el.innerHTML.replace(/\s+/g, ' ').trim() || '(empty)';
+    area.appendChild(box);
+  }
+
+  // ── 1. Simple partial: data path → isolated context ─────────────────────
+  group('Simple partial: data="user" → avatar renders');
+  {
+    const host = run(
+      `<partial name="avatar" data="user"></partial>`,
+      { user: { name: 'Ali' } },
+    );
+    assert('<partial> did not stay in the DOM', host.querySelector('partial'), null);
+    assert('avatar span present',       !!host.querySelector('.avatar'), true);
+    assert('name correct',              host.querySelector('.avatar')?.textContent?.trim(), '[Ali]');
+    show('1. Simple partial (avatar)', host);
+  }
+
+  // ── 2. data isolation: same partial, different data ───────────────────────
+  group('data isolation: same partial, with different data');
+  {
+    const host = run(
+      `<partial name="avatar" data="users.0"></partial>
+       <partial name="avatar" data="users.1"></partial>`,
+      { users: [{ name: 'Ali' }, { name: 'Veli' }] },
+    );
+    const spans = host.querySelectorAll('.avatar');
+    assert('two avatars present', spans.length, 2);
+    assert('first: Ali',          spans[0]?.textContent?.trim(), '[Ali]');
+    assert('second: Veli',        spans[1]?.textContent?.trim(), '[Veli]');
+    assert('parent ctx invisible (no "users" field)',
+      // partial context = {name:'Ali'}, there's no "users" field
+      spans[0]?.getAttribute('title'), 'Ali');
+    show('2. Isolation (two different avatars)', host);
+  }
+
+  // ── 3. no data → empty context, partial still renders ───────────────────
+  group('no data → renders with an empty context');
+  {
+    const host = run(`<partial name="hero"></partial>`, {});
+    assert('hero header present', !!host.querySelector('.hero'), true);
+    assert('<partial> gone',       host.querySelector('partial'), null);
+    show('3. no data → hero (always the same content)', host);
+  }
+
+  // ── 4. Nested partial: comment → author → avatar ────────────────────────
+  group('Nested: comment → author → avatar (3 levels)');
+  {
+    const ctx = {
+      c: {
+        body: 'Great article!',
+        author: {
+          role: 'editor',
+          profile: { name: 'Zeynep' },
+        },
+      },
+    };
+    const host = run(`<partial name="comment" data="c"></partial>`, ctx);
+
+    assert('no <partial> left (any)',  host.querySelector('partial'), null);
+    assert('comment article present', !!host.querySelector('article.comment'), true);
+    assert('body correct',            host.querySelector('.body')?.textContent?.trim(), 'Great article!');
+    assert('author div present',      !!host.querySelector('.author'), true);
+    assert('avatar span present',     !!host.querySelector('.avatar'), true);
+    assert('avatar name is Zeynep',   host.querySelector('.avatar')?.textContent?.trim(), '[Zeynep]');
+    assert('role editor',             host.querySelector('em')?.textContent?.trim(), 'editor');
+    show('4. Nested partial (3 levels)', host);
+  }
+
+  // ── 5. Partial not found → warning, page does not crash ────────────────────
+  group('Partial not found → warning + continues');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const host = run(
+      `<p>before</p>
+       <partial name="ghost-partial"></partial>
+       <p>after</p>`,
+      {},
+    );
+
+    console.warn = orig;
+
+    const ps = host.querySelectorAll('p');
+    assert('before/after paragraphs intact',   ps.length, 2);
+    assert('<partial> removed from the DOM',    host.querySelector('partial'), null);
+    assert('warning issued',                   warnings.length > 0, true);
+    assert('warning contains "ghost-partial"', warnings[0]?.includes('ghost-partial'), true);
+    note('The list of available partials should be listed in the warning message → check devtools');
+  }
+
+  // ── 6. "name" attribute missing → warning ────────────────────────────────
+  group('<partial> missing "name" → warning + removed');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    const host = run(`<partial data="x"></partial>`, { x: {} });
+
+    console.warn = orig;
+    assert('<partial> removed from the DOM', host.querySelector('partial'), null);
+    assert('warning issued',                warnings.length > 0, true);
+    assert('warning contains "name"',       warnings[0]?.includes('name'), true);
+  }
+
+  // ── 7. Recursive guard: a partial calling itself → stops at MAX_DEPTH ───
+  group('Recursive guard: infinite loop → warning at depth limit');
+  {
+    const warnings = [];
+    const orig = console.warn;
+    console.warn = (...args) => { warnings.push(args[0]); };
+
+    // The "recursive" template contains <partial name="recursive"> inside itself
+    const host = run(`<partial name="recursive"></partial>`, {});
+
+    console.warn = orig;
+
+    // A depth limit warning should have been issued
+    const depthWarn = warnings.find((w) =>
+      typeof w === 'string' && w.includes('depth limit'),
+    );
+    assert('depth limit warning issued', !!depthWarn, true);
+    // Page did not crash; something is in the DOM (partially expanded)
+    assert('function completed (no crash)', true, true);
+    // <partial> should not remain in the DOM, or something outermost should exist
+    note('Recursive partial was partially expanded and stopped at the depth limit');
+    show('7. Recursive partial (partially expanded)', host);
+  }
+
+  // ── 8. Multi-prop: data (base) + props together ──────────────────────────
+  group('Multi-prop: data="post" + action/count props');
+  {
+    const ctx = {
+      post: { label: 'Like' },
+      likeAction: 'toggle-like',
+      likeCount: 42,
+    };
+    const host = run(
+      `<partial name="like-button" data="post" action="likeAction" count="likeCount"></partial>`,
+      ctx,
+    );
+    const btn = host.querySelector('.like-button');
+    assert('<partial> gone',            host.querySelector('partial'), null);
+    assert('button present',            !!btn, true);
+    assert('label from data',           btn?.textContent?.includes('Like'), true);
+    assert('prop: action correct',      btn?.getAttribute('data-action-name'), 'toggle-like');
+    assert('prop: count correct',       btn?.querySelector('.count')?.textContent?.trim(), '42');
+    show('8. Multi-prop (data + action + count)', host);
+  }
+
+  // ── 9. Props only (no data) ─────────────────────────────────────────────
+  group('Props only: data not given');
+  {
+    const ctx = { likeAction: 'toggle-like', likeCount: 7 };
+    const host = run(
+      `<partial name="like-button" action="likeAction" count="likeCount"></partial>`,
+      ctx,
+    );
+    const btn = host.querySelector('.like-button');
+    assert('button present',            !!btn, true);
+    assert('label empty (no data)',     btn?.textContent?.trim().startsWith('('), true);
+    assert('prop: action correct',      btn?.getAttribute('data-action-name'), 'toggle-like');
+    assert('prop: count correct',       btn?.querySelector('.count')?.textContent?.trim(), '7');
+    show('9. Props only (no data)', host);
+  }
+
+  // ── 10. Prop path unresolvable → undefined, no warning (getByPath is silent) ─
+  group('Unresolvable prop path: not in context');
+  {
+    const ctx = { post: { label: 'Like' } }; // "likeAction"/"likeCount" ARE MISSING
+    const host = run(
+      `<partial name="like-button" data="post" action="likeAction" count="likeCount"></partial>`,
+      ctx,
+    );
+    const btn = host.querySelector('.like-button');
+    assert('button still renders (no crash)', !!btn, true);
+    assert('unresolvable prop: action → empty attribute',
+      btn?.getAttribute('data-action-name'), '');
+    assert('unresolvable prop: count → empty',
+      btn?.querySelector('.count')?.textContent?.trim(), '');
+    note('getByPath returns undefined for a missing path; template.js prints it as an empty string — no warning (silent/safe behavior)');
+    show('10. Unresolvable prop path (undefined)', host);
+  }
+
+  // ── 11. Prop overrides a same-named data field ───────────────────────────
+  group('Prop wins over data on a name collision');
+  {
+    const ctx = { post: { label: 'from-data' }, altLabel: 'from-prop' };
+    const host = run(
+      `<partial name="override" data="post" label="altLabel"></partial>`,
+      ctx,
+    );
+    assert('prop "label" overrides data.label',
+      host.querySelector('.override-label')?.textContent?.trim(), 'from-prop');
+    note('partialContext = {...baseContext}; props are assigned on top, so a ' +
+      'same-named prop always wins over the value data resolved ✓');
+    show('11. Prop overrides data', host);
+  }
+
+  // ── 12. data-* attribute is NOT treated as a prop (reserved for engine) ──
+  group('A data-* prefixed attribute is excluded from props');
+  {
+    const ctx = { post: { label: 'from-data' }, x: 'should-not-leak' };
+    const host = run(
+      `<partial name="override" data="post" data-custom="x"></partial>`,
+      ctx,
+    );
+    assert('data.label is unaffected (no accidental override)',
+      host.querySelector('.override-label')?.textContent?.trim(), 'from-data');
+    assert('data-custom was NOT resolved as a "custom" prop (stays empty, not "should-not-leak")',
+      host.querySelector('.custom-field')?.textContent?.trim(), '');
+    note('attr.name.startsWith("data-") is skipped entirely in expandPartials — ' +
+      'data-* is reserved for engine attributes (data-model, data-text, ...) ✓');
+    show('12. data-* excluded from props', host);
+  }
+
+  // ── Summary ────────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

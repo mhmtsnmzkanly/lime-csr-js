@@ -1,0 +1,39 @@
+# lime-csr.js
+
+> An eval-free, build-less, HTML-first reactive render engine; works under a strict CSP.
+
+Core rule: if an element carries no `data-*` (or a special tag like `<if>`/`<for>`/`<partial>`), the engine never touches it — it stays plain, static HTML. Once `data-*` is added, that element binds to the store and becomes reactive. It is close in spirit to Alpine.js, but unlike directives such as `x-on`/`x-show`/`x-model` that EXECUTE a JS expression, lime-csr only does name/path MATCHING (`data-on-click="deleteItem"` is a dictionary key, not an expression) — no `eval`/`new Function` is ever used.
+
+## Directory Structure & Modules
+- `src/index.js`: Main entry point. Orchestrates `mount()`, `unmount()`, and `render()`.
+- `src/store.js`: Path-based reactive state (`createStore`, `getByPath`, `setByPath`). Supports upward/downward notifications, computed values, and prototype pollution guards.
+- `src/template.js`: Template cache and static `${path}` interpolation. Detects table foster parenting.
+- `src/conditionals.js`: Statically evaluates `<if>`/`<else>` conditions against the context.
+- `src/partials.js`: Expands `<partial>` tags recursively with isolated contexts and custom props.
+- `src/loops.js`: Expands static `<for>` loops with inherited contexts.
+- `src/bindings.js`: Reactive bindings for `data-text` and `{x}`/`data-x` attributes.
+- `src/bindings-model.js`: Two-way form binding for `data-model` (inputs, textareas, selects, checkboxes, radios).
+- `src/bindings-show.js`: Reactive visibility using `data-show` (CSS display toggle).
+- `src/bindings-events.js`: Event delegation with `data-on-*`.
+- `src/bindings-blocks.js`: Reactive `<if data-live>` blocks with lifecycle hooks and container element wrapper (`el="..."`).
+- `src/bindings-loops.js`: Reactive `<for data-live key="...">` loops with diffing strategies (`simple`, `lcs`, `replace`), lifecycle hooks, and container element wrapper (`el="..."`).
+- `src/errors.js`: Developer mode warnings (via `console.warn`).
+- `src/utils.js`: XSS escaping and URL sanitization.
+
+## Core APIs
+- `createStore(initialState)`: Returns a new reactive store.
+  - `store.get(path?)`: Gets value at path or entire state if path is omitted.
+  - `store.set(path, value)`: Sets value at path. Notifies subscribers. Returns boolean (if changed). Compares via `Object.is`.
+  - `store.update(path, fn)`: Updates value at path via a function.
+  - `store.subscribe(path, callback)`: Listens for changes. Returns unsubscribe function.
+  - `store.computed(path, deps, fn)`: Registers a derived value that automatically recomputes when dependencies change.
+- `mount(templateName, context, target, store, options?)`: Mounts a template. Returns a cleanup function.
+  - `options.handlers`: Dictionary of event and lifecycle hook callbacks.
+  - `options.beforeRender(context, store)`: Lifecycle hook before render.
+  - `options.afterRender(target, store)`: Lifecycle hook after target is populated.
+- `unmount(target)`: Cleans up all bindings on the target element and empties it.
+- `setDevMode(boolean)`: Toggles developer mode warnings on or off.
+
+## Documentation
+- [README.md](README.md): High-level overview, philosophy, quick start, and feature guide.
+- [DOCS.md](DOCS.md): Full technical reference detailing syntax, behavior, common mistakes, APIs, lifecycle hooks, error codes, limitations, and architecture.

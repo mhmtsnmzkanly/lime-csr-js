@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr store.computed — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+  </style>
+</head>
+<body>
+<h1>src/store.js — store.computed() verification tests</h1>
+<pre id="log"></pre>
+
+<script type="module">
+  import { createStore } from '../src/store.js';
+  // store.js emits dev-mode warnings via an injected function to avoid a
+  // circular import; errors.js performs that injection as a module-load
+  // side effect, so it must be imported (even unused) for store-level
+  // warnings like COMPUTED_MANUAL_SET/IN_PLACE_MUTATION to actually fire.
+  import '../src/errors.js';
+
+  const log = document.getElementById('log');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  /** Captures console.warn calls; real console output is still preserved. */
+  function captureWarns(fn) {
+    const caught = [];
+    const orig = console.warn;
+    console.warn = (...args) => { caught.push(args.join(' ')); orig.apply(console, args); };
+    fn();
+    console.warn = orig;
+    return caught;
+  }
+
+  // ── 1. Basic: computed auto-updates when a dep changes ─────────────────────
+  group('1. Basic: computed("remaining", ["todos"], fn) auto-updates on dep change');
+  {
+    const store = createStore({
+      todos: [{ done: false }, { done: false }, { done: true }],
+    });
+
+    store.computed('remaining', ['todos'], () =>
+      store.get('todos').filter((t) => !t.done).length,
+    );
+
+    assert('initial computed value: 2 remaining', store.get('remaining'), 2);
+
+    store.set('todos', [...store.get('todos'), { done: false }]);
+    assert('after adding an undone todo: 3 remaining', store.get('remaining'), 3);
+
+    store.set('todos', store.get('todos').map((t) => ({ ...t, done: true })));
+    assert('after marking all done: 0 remaining', store.get('remaining'), 0);
+
+    note('computed recomputed automatically on every "todos" change ✓');
+  }
+
+  // ── 2. Chained: computed A feeds computed B ─────────────────────────────────
+  group('2. Chained: computed B depends on computed A');
+  {
+    const store = createStore({ price: 10, qty: 2 });
+
+    store.computed('subtotal', ['price', 'qty'], () =>
+      store.get('price') * store.get('qty'),
+    );
+    store.computed('total', ['subtotal'], () => store.get('subtotal') + 5);
+
+    assert('initial subtotal: 20', store.get('subtotal'), 20);
+    assert('initial total (chained): 25', store.get('total'), 25);
+
+    store.set('price', 20);
+    assert('subtotal recomputed: 40', store.get('subtotal'), 40);
+    assert('total recomputed via the chain: 45', store.get('total'), 45);
+
+    note('A computed path can itself be a dep of another computed ✓');
+  }
+
+  // ── 3. Manual set warning: store.set() on a computed path warns ────────────
+  group('3. Manual set on a computed path warns in dev-mode');
+  {
+    const store = createStore({ a: 1 });
+    store.computed('b', ['a'], () => store.get('a') + 1);
+
+    assert('initial computed value: 2', store.get('b'), 2);
+
+    const warns = captureWarns(() => store.set('b', 99));
+    const hasWarn = warns.some((w) => w.includes('COMPUTED_MANUAL_SET'));
+    assert('COMPUTED_MANUAL_SET warning issued', hasWarn, true);
+
+    // The manual write is not blocked -- it's overwritten on the next dep change.
+    store.set('a', 5);
+    assert('next dep change overwrites the manual value', store.get('b'), 6);
+
+    note('Manual store.set() on a computed path is not blocked, only warned about; ' +
+      'the next dep change silently overwrites it ✓');
+  }
+
+  // ── 4. Dispose: no further updates after dispose() ─────────────────────────
+  group('4. dispose(): computed stops updating after disposal');
+  {
+    const store = createStore({ x: 1 });
+    let calls = 0;
+    const dispose = store.computed('y', ['x'], () => {
+      calls++;
+      return store.get('x') * 10;
+    });
+
+    assert('initial computed value: 10', store.get('y'), 10);
+    assert('fn called once so far', calls, 1);
+
+    dispose();
+
+    store.set('x', 2);
+    assert('value unchanged after dispose (dep subscription cancelled)', store.get('y'), 10);
+    assert('fn was NOT called again after dispose', calls, 1);
+
+    note('dispose() cancelled every dep subscription ✓');
+  }
+
+  // ── 5. Loop guard: a computed setting its own dep does not recurse forever ─
+  group('5. Loop guard: computed fn setting its own dep does not recurse infinitely');
+  {
+    const store = createStore({ n: 1 });
+    let fnCallCount = 0;
+    let maxDepth = 0;
+    let depth = 0;
+    let threw = false;
+
+    store.computed('doubled', ['n'], () => {
+      fnCallCount++;
+      depth++;
+      maxDepth = Math.max(maxDepth, depth);
+      const current = store.get('n');
+      if (current === 3) {
+        // Reentrant attempt: set our own dep from inside the computed fn.
+        store.set('n', 4);
+      }
+      depth--;
+      return current * 2;
+    });
+
+    // Reset counters: only measure what happens from this external trigger on.
+    fnCallCount = 0;
+    maxDepth = 0;
+
+    try {
+      store.set('n', 3); // triggers recompute('doubled'), whose fn tries to re-trigger itself
+    } catch {
+      threw = true;
+    }
+
+    assert('no crash / no stack overflow', threw, false);
+    assert('computed fn ran exactly once (reentrant call was swallowed)', fnCallCount, 1);
+    assert('recursion never went past depth 1', maxDepth, 1);
+    assert('the reentrant store.set("n", 4) still took effect at the store level', store.get('n'), 4);
+
+    note('computedUpdating guard prevented the nested recompute("doubled") call from ' +
+      're-running fn(); only the outermost invocation executed ✓');
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>
