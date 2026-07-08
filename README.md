@@ -20,7 +20,7 @@ own template languages. Most pages don't need that. lime-csr.js is designed
 for people who want "HTML + a bit of logic" — in the spirit of Alpine.js, but
 with its own composition and template system.
 
-- **No build.** The source is plain JavaScript. Grab the file, run it.
+- **Zero build step for development.** The source modules work directly in the browser via `<script type="module">`. A pre-built `dist/index.min.js` is included for production/convenience. Run `npm run build` to regenerate it.
 - **HTML-first.** Templates live inside standard `<template>` tags.
 - **Opt-in reactivity.** Only what you want comes alive; the rest stays static.
 - **Small.** A single file, a handful of concepts.
@@ -304,7 +304,7 @@ data-live>`/`<if data-live>` need NO extra setup.
 ```
 src/        Source code (store, template, conditionals, partials, loops,
             bindings, bindings-model, bindings-show, bindings-events,
-            bindings-blocks, bindings-loops, errors, utils, index)
+            bindings-blocks, bindings-loops, errors, utils, shared, index)
 examples/   Usage examples
 ```
 

@@ -143,6 +143,10 @@ The exact rationale for each step's position in this order is in
 
 ## 3. Template syntax
 
+The template syntax is split into two categories to help you learn and prioritize:
+- **Essentials (start here)**: `${path}` (§3.1), `data-text` (§3.2), `data-model` (§3.4), `<if>`/`<else>` (§3.6), `<for>` (§3.8), and `<partial>` (§3.10). These six cover most typical use cases.
+- **Advanced (reach for when needed)**: `{x}`/`data-x` (§3.3), `data-show` (§3.5), `<if data-live>` (§3.7), `<for data-live>` (§3.9), `data-on-*` (§3.11), lifecycle hooks (§6), container mode (`el=`), and `store.computed` (§4.6).
+
 ### 3.1 `${path}` — static interpolation
 
 Prints a value from **context** once; never watched again.
@@ -1360,6 +1364,7 @@ itself) — only `index.js` decides call order.
 | `bindings-blocks.js` | Reactive `<if data-live>` (tear-down/rebuild, `el=`, hooks) | `setupLiveIfs` |
 | `bindings-loops.js` | Reactive `<for data-live key>` (key-based diff, `data-diff`, `el=`, hooks) | `setupLiveFors` |
 | `errors.js` | dev_mode warning layer — the bottom-most layer | `setDevMode`, `isDevMode`, `warn`, `errors` (namespace) |
+| `shared.js` | Pure utility helpers: inLiveBlock, inUnexpandedFor, LIS indices computation | `inLiveBlock`, `inUnexpandedFor`, `longestIncreasingSubsequenceIndices` |
 | `index.js` | Orchestration: `render`/`mount`/`unmount` + re-exports of everything above | `render`, `mount`, `unmount`, ... |
 
 ### 9.2 Pipeline order and why
@@ -1416,32 +1421,13 @@ mount(templateName, context, target, store, options?)
 `setupLiveFors`, so a branch switch or a new list item runs this ENTIRE
 pipeline again, recursively, for just that subtree.
 
-### 9.3 The `inLiveBlock` pattern, duplicated on purpose
+### 9.3 Centralized Utility Helpers (shared.js)
 
-`template.js`, `loops.js`, `partials.js`, `conditionals.js`, `bindings.js`,
-`bindings-model.js`, `bindings-show.js`, and `index.js` each carry their own
-copy of essentially:
+To keep the codebase DRY (Don't Repeat Yourself) and highly maintainable, shared utility functions such as `inLiveBlock(node)`, `inUnexpandedFor(node)`, and `longestIncreasingSubsequenceIndices(seq)` are centralized in `src/shared.js`. 
 
-```js
-function inLiveBlock(el) {
-  return !!(el.closest?.('if[data-live]') || el.closest?.('for[data-live]'));
-}
-```
-
-Content inside a not-yet-expanded `<if data-live>`/`<for data-live>` is
-skipped by every one of these modules during the main pipeline pass —
-the correct (branch/item) context is only ever known inside
-`setupLiveIfs`/`setupLiveFors`'s own recursive `render()` call. Binding too
-early would leak (the subscription stays attached to a node that gets
-discarded once the live-block does its own first render). This helper is
-duplicated rather than centralized because the project's own rule is that
-modules don't import each other (except `errors.js`) — a shared
-`bindings-shared.js` would need to be imported everywhere, which is exactly
-the coupling that rule exists to avoid. A few duplicated one-liners is the
-accepted, cheaper cost. `template.js`/`loops.js`/`partials.js` also carry an
-`inUnexpandedFor(node)` counterpart, the same idea applied to a not-yet-expanded
-*ordinary* (non-`data-live`) `<for>`. `bindings-events.js` needs neither
-pattern — delegation never binds per-element early in the first place.
+- **Leaf Dependency**: `shared.js` does not import any other modules. This allows it to be imported by any other module in the codebase without introducing circular dependency risks.
+- **`inLiveBlock(node)` and `inUnexpandedFor(node)`**: Content inside a not-yet-expanded `<if data-live>`/`<for data-live>` (or static `<for>`) block must be skipped during the main pipeline passes, as their correct context is only known inside their own recursive `render()` call. If bound too early, subscriptions would leak or resolve against the wrong context.
+- **`longestIncreasingSubsequenceIndices(seq)`**: The math utility used by the `"lcs"` loop diffing strategy is placed here to keep `bindings-loops.js` focused entirely on DOM reconciliation.
 
 ### 9.4 Security model
 

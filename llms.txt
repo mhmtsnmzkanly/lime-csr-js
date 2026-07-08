@@ -19,6 +19,7 @@ Core rule: if an element carries no `data-*` (or a special tag like `<if>`/`<for
 - `src/bindings-loops.js`: Reactive `<for data-live key="...">` loops with diffing strategies (`simple`, `lcs`, `replace`), lifecycle hooks, and container element wrapper (`el="..."`).
 - `src/errors.js`: Developer mode warnings (via `console.warn`).
 - `src/utils.js`: XSS escaping and URL sanitization.
+- `src/shared.js`: Pure utility helper functions (inLiveBlock, inUnexpandedFor, longestIncreasingSubsequenceIndices).
 
 ## Core APIs
 - `createStore(initialState)`: Returns a new reactive store.
