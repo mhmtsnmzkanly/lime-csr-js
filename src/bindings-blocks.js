@@ -70,6 +70,7 @@
 
 import { OPERATORS } from './conditionals.js';
 import { errors } from './errors.js';
+import { inLiveBlock } from './shared.js';
 
 const OPERATOR_NAMES = /** @type {string[]} */ (Object.keys(OPERATORS));
 
@@ -235,8 +236,7 @@ export function setupLiveIfs(root, context, store, renderFn, handlers) {
 
   const liveIfs = Array.from(root.querySelectorAll('if[data-live]')).filter(
     (el) =>
-      !el.parentElement?.closest('if[data-live]') &&
-      !el.parentElement?.closest('for[data-live]'),
+      !inLiveBlock(el),
   );
 
   for (const ifEl of liveIfs) {

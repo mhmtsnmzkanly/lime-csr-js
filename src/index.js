@@ -85,6 +85,7 @@ import { setupEventBindings } from './bindings-events.js';
 import { setupLiveIfs }   from './bindings-blocks.js';
 import { setupLiveFors }  from './bindings-loops.js';
 import { errors }         from './errors.js';
+import { inLiveBlock }    from './shared.js';
 
 // ── Re-exports for external consumers ────────────────────────────────────────
 export { createStore, getByPath, setByPath } from './store.js';
@@ -108,16 +109,7 @@ const MAX_PIPELINE_ITERATIONS = 100;
 // WeakMap: automatically cleaned up when the target element is GC'd.
 const mountedTargets = new WeakMap();
 
-/**
- * Is the element inside a not-yet-expanded <if data-live> or <for data-live>
- * block? (Consistent with the same pattern in bindings.js.)
- *
- * @param {Element} el
- * @returns {boolean}
- */
-function inLiveBlock(el) {
-  return !!(el.closest?.('if[data-live]') || el.closest?.('for[data-live]'));
-}
+
 
 /**
  * Is there a structural tag under root that the pipeline can STILL process?

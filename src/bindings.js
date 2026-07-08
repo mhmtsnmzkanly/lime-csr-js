@@ -36,6 +36,7 @@
 
 import { errors } from './errors.js';
 import { isSafeUrlProtocol } from './utils.js';
+import { inLiveBlock } from './shared.js';
 
 // URL attributes: protocol check required before assignment.
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'cite', 'poster', 'ping']);
@@ -71,7 +72,7 @@ function setupTextBindings(root, store) {
     // data-text inside <if data-live> and <for data-live> is bound by renderFn.
     // If we bound it here, the old subscription couldn't be cancelled when the
     // branch/block changes → leak.
-    if (el.closest('if[data-live]') || el.closest('for[data-live]')) continue;
+    if (inLiveBlock(el)) continue;
 
     const path = el.getAttribute('data-text');
 
@@ -116,9 +117,7 @@ function setupAttrBindings(root, store) {
   // Elements inside <if data-live> and <for data-live> are bound separately by
   // renderFn; if we processed them here, the old subscriptions couldn't be
   // cancelled when the branch/block changes → leak.
-  function inLiveBlock(el) {
-    return !!(el.closest?.('if[data-live]') || el.closest?.('for[data-live]'));
-  }
+
   const elements = [
     ...(root.nodeType === Node.ELEMENT_NODE && !inLiveBlock(root) ? [root] : []),
     ...Array.from(root.querySelectorAll('*')).filter((el) => !inLiveBlock(el)),

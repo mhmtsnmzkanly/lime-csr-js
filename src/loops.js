@@ -26,17 +26,9 @@
 import { getByPath } from './store.js';
 import { resolveStatic } from './template.js';
 import { errors } from './errors.js';
+import { inLiveBlock } from './shared.js';
 
-/**
- * Is the element inside a not-yet-expanded <if data-live> or <for data-live>
- * block? (Consistent with the same pattern in bindings.js.)
- *
- * @param {Element} el
- * @returns {boolean}
- */
-function inLiveBlock(el) {
-  return !!(el.closest?.('if[data-live]') || el.closest?.('for[data-live]'));
-}
+
 
 /**
  * Expands every <for> element under root.

@@ -56,39 +56,12 @@
 import { getByPath } from './store.js';
 import { renderTemplate } from './template.js';
 import { errors } from './errors.js';
+import { inLiveBlock, inUnexpandedFor } from './shared.js';
 
 /** Maximum recursion depth against infinite loops. */
 const MAX_DEPTH = 50;
 
-/**
- * Is the element inside a not-yet-expanded <if data-live> or <for data-live>
- * block? (Consistent with the same pattern in bindings.js.)
- *
- * @param {Element} el
- * @returns {boolean}
- */
-function inLiveBlock(el) {
-  return !!(el.closest?.('if[data-live]') || el.closest?.('for[data-live]'));
-}
 
-/**
- * Is the element inside a not-yet-expanded ordinary (non-data-live) <for> block?
- *
- * WHY THIS IS NEEDED: expandPartials runs BEFORE expandLoops in the same
- * runPipeline pass (see index.js). If a <partial data="item"> is inside a
- * not-yet-expanded <for as="item">, "item" is NOT YET bound in context —
- * the partial would render early with the wrong (outer) context, and the
- * loop item would be invisible. So such a <partial> is SKIPPED here; the
- * correct (item) context is supplied by expandLoops's pipeline() call in the
- * SAME pass (see loops.js) — the counterpart of the inLiveBlock pattern for
- * non-data-live <for>.
- *
- * @param {Element} el
- * @returns {boolean}
- */
-function inUnexpandedFor(el) {
-  return !!el.closest?.('for:not([data-live])');
-}
 
 /**
  * Expands every <partial> element under root.

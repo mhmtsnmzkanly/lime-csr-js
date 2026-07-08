@@ -46,19 +46,11 @@
  */
 
 import { errors } from './errors.js';
+import { inLiveBlock } from './shared.js';
 
 const SHOW_ATTR = 'data-show';
 
-/**
- * Is the element inside a not-yet-expanded <if data-live> or <for data-live>
- * block? (Consistent with the same pattern in bindings.js.)
- *
- * @param {Element} el
- * @returns {boolean}
- */
-function inLiveBlock(el) {
-  return !!(el.closest?.('if[data-live]') || el.closest?.('for[data-live]'));
-}
+
 
 /**
  * Reactively binds every [data-show] element under root to the store.

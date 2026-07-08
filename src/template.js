@@ -26,6 +26,7 @@
 
 import { getByPath } from "./store.js";
 import { errors, isDevMode } from "./errors.js";
+import { inLiveBlock, inUnexpandedFor } from "./shared.js";
 
 /** @type {Map<string, DocumentFragment>} Holds original fragments; used before cloning. */
 const templateCache = new Map();
@@ -87,15 +88,7 @@ function resolveString(str, context) {
  * @param {Node} node
  * @returns {boolean}
  */
-function inLiveBlock(node) {
-  if (node.nodeType !== Node.ELEMENT_NODE) {
-    const parent = node.parentElement;
-    return !!(parent?.closest?.('if[data-live]') || parent?.closest?.('for[data-live]'));
-  }
-  const isLiveRoot = node.matches?.('if[data-live]') || node.matches?.('for[data-live]');
-  if (isLiveRoot) return false;
-  return !!(node.closest?.('if[data-live]') || node.closest?.('for[data-live]'));
-}
+
 
 /**
  * Is the node INSIDE the content of a not-yet-expanded ordinary
@@ -119,15 +112,7 @@ function inLiveBlock(node) {
  * @param {Node} node
  * @returns {boolean}
  */
-function inUnexpandedFor(node) {
-  if (node.nodeType !== Node.ELEMENT_NODE) {
-    const parent = node.parentElement;
-    return !!parent?.closest?.('for:not([data-live])');
-  }
-  const isForRoot = node.matches?.('for:not([data-live])');
-  if (isForRoot) return false;
-  return !!node.closest?.('for:not([data-live])');
-}
+
 
 /**
  * Are the <table>s in the fragment victims of a special tag that got moved

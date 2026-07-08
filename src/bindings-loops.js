@@ -112,6 +112,7 @@
 
 import { getByPath } from './store.js';
 import { errors } from './errors.js';
+import { inLiveBlock, longestIncreasingSubsequenceIndices } from './shared.js';
 
 let forCounter = 0;
 function nextForRef() { return `lf${++forCounter}`; }
@@ -172,56 +173,7 @@ function cloneToFragment(nodes) {
   return frag;
 }
 
-/**
- * Longest Increasing Subsequence, via patience sorting — O(n log n).
- *
- * Given a sequence of numbers, returns the SET of indices (into `seq`) that
- * form one valid longest increasing subsequence. Used by the "lcs" diff
- * strategy: `seq` is the OLD position of each surviving item, listed in NEW
- * order — the LIS is the maximal set of survivors whose relative order is
- * unchanged, and can therefore stay physically untouched in the DOM.
- *
- * @param {number[]} seq
- * @returns {Set<number>} indices into `seq`
- */
-function longestIncreasingSubsequenceIndices(seq) {
-  const n = seq.length;
-  if (n === 0) return new Set();
 
-  // tails[k] = index (into seq) of the smallest possible tail value for an
-  // increasing subsequence of length k+1 found so far.
-  const tails = [];
-  // predecessors[i] = index (into seq) of the previous element in the
-  // increasing subsequence that ends at i, or -1 if i starts one.
-  const predecessors = new Array(n).fill(-1);
-
-  for (let i = 0; i < n; i++) {
-    const val = seq[i];
-
-    // Binary search: first position in `tails` whose seq-value is >= val.
-    let lo = 0;
-    let hi = tails.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (seq[tails[mid]] < val) lo = mid + 1;
-      else hi = mid;
-    }
-
-    if (lo > 0) predecessors[i] = tails[lo - 1];
-    if (lo === tails.length) tails.push(i);
-    else tails[lo] = i;
-  }
-
-  // Reconstruct the subsequence by walking predecessors backward from the
-  // last element of the longest tail found.
-  const result = new Set();
-  let k = tails[tails.length - 1];
-  while (k !== -1) {
-    result.add(k);
-    k = predecessors[k];
-  }
-  return result;
-}
 
 /**
  * Sets up every <for data-live> element inside root.
@@ -244,8 +196,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
   // Nested ones are handled inside renderFn's recursive call (once per item).
   const liveFors = Array.from(root.querySelectorAll('for[data-live]')).filter(
     (el) =>
-      !el.parentElement?.closest('for[data-live]') &&
-      !el.parentElement?.closest('if[data-live]'),
+      !inLiveBlock(el),
   );
 
   for (const forEl of liveFors) {

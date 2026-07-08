@@ -25,6 +25,7 @@
 
 import { getByPath } from './store.js';
 import { errors } from './errors.js';
+import { inLiveBlock } from './shared.js';
 
 /**
  * Supported condition operators.
@@ -141,8 +142,7 @@ export function processAllIfs(root, context) {
       (el) =>
         !el.parentElement?.closest('if') &&
         !el.hasAttribute('data-live') &&
-        !el.parentElement?.closest('if[data-live]') &&
-        !el.parentElement?.closest('for[data-live]'),
+        !inLiveBlock(el),
     );
     if (outermost.length === 0) break; // deadlock guard (also exits if only live-ifs remain)
 

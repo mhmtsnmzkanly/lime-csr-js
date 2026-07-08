@@ -1,6 +1,6 @@
 {
   "name": "lime-csr-js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Client-side rendering with pure javascript with W3 Standarts",
   "type": "module",
   "main": "src/index.js",
