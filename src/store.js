@@ -17,6 +17,7 @@
  *   - store.computed(path, deps, fn): registers a derived value that auto-updates
  *     when any dep changes. Returns a dispose function.
  */
+import { warn } from './errors.js';
 
 /**
  * @typedef {Object} Store
@@ -156,23 +157,18 @@ export function createStore(initialState = {}) {
     set(path, value) {
       // Dev-mode: warn about direct writes to computed paths
       if (computedPaths.has(path) && !computedUpdating.has(path)) {
-        // Import warn lazily to avoid circular deps — access via global devMode check
-        if (typeof __limeWarn === 'function') {
-          __limeWarn('COMPUTED_MANUAL_SET',
-            `Path "${path}" is managed by store.computed(). Manual store.set() will be ` +
-            `overwritten on next dep change. Use store.computed() or a different path.`);
-        }
+        warn('COMPUTED_MANUAL_SET',
+          `Path "${path}" is managed by store.computed(). Manual store.set() will be ` +
+          `overwritten on next dep change. Use store.computed() or a different path.`);
       }
 
       // Dev-mode: warn about in-place mutation (same object/array reference)
       const existing = getByPath(initialState, path);
       if (value !== null && typeof value === 'object' && Object.is(existing, value)) {
-        if (typeof __limeWarn === 'function') {
-          __limeWarn('IN_PLACE_MUTATION',
-            `store.set("${path}", value): value is the SAME reference as the stored object/array. ` +
-            `In-place mutation detected — subscriber will NOT fire. Pass a new reference: ` +
-            `e.g. store.set("${path}", [...arr]) or store.set("${path}", {...obj}).`);
-        }
+        warn('IN_PLACE_MUTATION',
+          `store.set("${path}", value): value is the SAME reference as the stored object/array. ` +
+          `In-place mutation detected — subscriber will NOT fire. Pass a new reference: ` +
+          `e.g. store.set("${path}", [...arr]) or store.set("${path}", {...obj}).`);
         return false;
       }
 
@@ -263,18 +259,4 @@ export function createStore(initialState = {}) {
   };
 }
 
-/**
- * Internal hook for errors.js warnings inside store.js.
- * Set by errors.js on first import (avoids circular dependency).
- * @type {function(string, string): void | undefined}
- */
-let __limeWarn;
 
-/**
- * Called by errors.js to inject the warn function into store.js.
- * This breaks the circular dependency: store.js does not import errors.js.
- * @param {function(string, string): void} warnFn
- */
-export function _injectWarn(warnFn) {
-  __limeWarn = warnFn;
-}

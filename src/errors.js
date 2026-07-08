@@ -10,8 +10,6 @@
  * Default: ON. Enabled by default for developer convenience; disable in production with setDevMode(false).
  */
 
-import { _injectWarn } from './store.js';
-
 /** @type {boolean} */
 let devMode = true;
 
@@ -43,10 +41,6 @@ export function warn(code, message, context) {
     console.warn(`[lime-csr] ${code}: ${message}`);
   }
 }
-
-// Inject warn into store.js so that store can issue dev-mode warnings
-// without importing errors.js (which would create a circular dependency).
-_injectWarn((code, message, context) => warn(code, message, context));
 
 /**
  * Known error scenario wrappers.
