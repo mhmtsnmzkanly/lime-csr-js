@@ -27,6 +27,51 @@ export function isDevMode() {
 }
 
 /**
+ * Shows a red error overlay in the bottom right corner of the page (dev mode only).
+ *
+ * @param {string} code
+ * @param {string} message
+ */
+function showOverlay(code, message) {
+  if (typeof document === 'undefined') return;
+  let container = document.getElementById('lime-csr-error-overlay-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'lime-csr-error-overlay-container';
+    container.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999999;max-width:350px;display:flex;flex-direction:column;gap:8px;font-family:sans-serif;font-size:13px;';
+    document.body.appendChild(container);
+  }
+
+  const el = document.createElement('div');
+  el.style.cssText = 'background:#f87171;color:#fff;padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;animation:lime-fade-in 0.2s ease;border-left:4px solid #b91c1c;';
+
+  const content = document.createElement('div');
+  content.innerHTML = `<strong style="display:block;margin-bottom:4px;font-weight:bold;">[lime-csr] ${code}</strong><span style="opacity:0.95;line-height:1.4;">${message}</span>`;
+  el.appendChild(content);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '&times;';
+  closeBtn.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:0.7;padding:0;line-height:1;font-weight:bold;';
+  closeBtn.onmouseover = () => { closeBtn.style.opacity = '1'; };
+  closeBtn.onmouseout = () => { closeBtn.style.opacity = '0.7'; };
+  closeBtn.onclick = () => {
+    el.remove();
+    if (container.childNodes.length === 0) {
+      container.remove();
+    }
+  };
+  el.appendChild(closeBtn);
+  container.appendChild(el);
+
+  if (!document.getElementById('lime-csr-overlay-style')) {
+    const style = document.createElement('style');
+    style.id = 'lime-csr-overlay-style';
+    style.textContent = '@keyframes lime-fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }';
+    document.head.appendChild(style);
+  }
+}
+
+/**
  * Primary warning function. Does nothing if dev mode is off.
  *
  * @param {string} code     - Error code (e.g. "PARTIAL_NOT_FOUND")
@@ -40,6 +85,7 @@ export function warn(code, message, context) {
   } else {
     console.warn(`[lime-csr] ${code}: ${message}`);
   }
+  showOverlay(code, message);
 }
 
 /**
