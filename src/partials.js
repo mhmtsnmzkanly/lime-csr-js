@@ -60,6 +60,7 @@ import { inLiveBlock, inUnexpandedFor } from './shared.js';
 
 /** Maximum recursion depth against infinite loops. */
 const MAX_DEPTH = 50;
+const UNSAFE_PROP_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 
 
 
@@ -126,6 +127,7 @@ export function expandPartials(root, context, depth = 0, pipeline = null) {
     for (const attr of Array.from(partialEl.attributes)) {
       if (attr.name === 'name' || attr.name === 'data') continue;
       if (attr.name.startsWith('data-')) continue; // 2f: reserved for engine
+      if (UNSAFE_PROP_NAMES.has(attr.name)) continue;
       partialContext[attr.name] = getByPath(context, attr.value);
     }
 

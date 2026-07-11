@@ -8,8 +8,8 @@ lives there (why lime-csr exists, the Alpine.js comparison) is **not
 repeated here**.
 
 Every code example on this page is written against the real, current API in
-`src/`. If something here and the code ever disagree, the code wins — please
-file that as a bug.
+`src/`. Documentation and implementation are expected to agree. A mismatch is
+a bug; please report it with a minimal reproduction.
 
 ## Table of contents
 

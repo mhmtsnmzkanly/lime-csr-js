@@ -46,11 +46,17 @@ function showOverlay(code, message) {
   el.style.cssText = 'background:#f87171;color:#fff;padding:12px 16px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;animation:lime-fade-in 0.2s ease;border-left:4px solid #b91c1c;';
 
   const content = document.createElement('div');
-  content.innerHTML = `<strong style="display:block;margin-bottom:4px;font-weight:bold;">[lime-csr] ${code}</strong><span style="opacity:0.95;line-height:1.4;">${message}</span>`;
+  const title = document.createElement('strong');
+  title.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;';
+  title.textContent = `[lime-csr] ${code}`;
+  const detail = document.createElement('span');
+  detail.style.cssText = 'opacity:0.95;line-height:1.4;';
+  detail.textContent = message;
+  content.append(title, detail);
   el.appendChild(content);
 
   const closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '&times;';
+  closeBtn.textContent = '\u00d7';
   closeBtn.style.cssText = 'background:none;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:0.7;padding:0;line-height:1;font-weight:bold;';
   closeBtn.onmouseover = () => { closeBtn.style.opacity = '1'; };
   closeBtn.onmouseout = () => { closeBtn.style.opacity = '0.7'; };

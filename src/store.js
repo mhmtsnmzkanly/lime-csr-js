@@ -39,9 +39,13 @@ import { warn } from './errors.js';
  * @returns {*} The found value; `undefined` if any segment is missing.
  */
 export function getByPath(source, path) {
-  return String(path)
-    .split(".")
-    .reduce((value, key) => (value == null ? undefined : value[key]), source);
+  const keys = String(path).split('.');
+  if (keys.some((key) => UNSAFE_PATH_SEGMENTS.has(key))) return undefined;
+
+  return keys.reduce((value, key) => {
+    if (value == null || !Object.hasOwn(value, key)) return undefined;
+    return value[key];
+  }, source);
 }
 
 // __proto__/constructor/prototype are never accepted as a path segment.
@@ -258,5 +262,4 @@ export function createStore(initialState = {}) {
     },
   };
 }
-
 

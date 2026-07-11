@@ -82,7 +82,7 @@ export function setupShowBindings(root, store) {
     const originalDisplay = el.style.display;
 
     const apply = (val) => {
-      el.style.display = Boolean(val) ? originalDisplay : 'none';
+      el.style.display = val ? originalDisplay : 'none';
     };
 
     apply(store.get(path)); // initial state — before the fragment is added to the DOM (no FOUC)

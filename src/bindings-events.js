@@ -155,7 +155,7 @@ export function setupEventBindings(root, store, handlers) {
       if (type === 'submit') event.preventDefault();
 
       const handlerName = el.getAttribute(attrName);
-      const handler = handlers[handlerName];
+      const handler = Object.hasOwn(handlers, handlerName) ? handlers[handlerName] : undefined;
 
       if (!handler) {
         errors.handlerNotFound(handlerName, Object.keys(handlers), el);

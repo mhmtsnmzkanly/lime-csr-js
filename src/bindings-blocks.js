@@ -93,7 +93,9 @@ const RESERVED_IF_ATTRS = new Set([
  */
 function callBlockHook(handlerName, rootEl, store, handlers, kind) {
   if (!handlerName) return;
-  const handler = handlers ? handlers[handlerName] : undefined;
+  const handler = handlers && Object.hasOwn(handlers, handlerName)
+    ? handlers[handlerName]
+    : undefined;
   if (typeof handler !== 'function') {
     const available = handlers ? Object.keys(handlers) : [];
     if (kind === 'after') errors.blockAfterNotFound(handlerName, available, rootEl);
