@@ -27,6 +27,7 @@ a bug; please report it with a minimal reproduction.
    - [3.9 `<for data-live>` — reactive list rendering](#39-for-data-live--reactive-list-rendering)
    - [3.10 `<partial>` — template composition](#310-partial--template-composition)
    - [3.11 `data-on-*` — event handling](#311-data-on---event-handling)
+   - [3.12 `data-lime-ignore` — escape hatch for third-party markup](#312-data-lime-ignore--escape-hatch-for-third-party-markup)
 4. [Store API](#4-store-api)
 5. [Mount API](#5-mount-api)
 6. [Lifecycle hooks](#6-lifecycle-hooks)
@@ -972,6 +973,93 @@ RIGHT:  <button data-on-click="increment">Increment</button>
         mount('page', ctx, target, store, {
           handlers: { increment(e, el) { store.update('count', (v) => v + 1); } },
         });
+```
+
+---
+
+### 3.12 `data-lime-ignore` — escape hatch for third-party markup
+
+Marks an element and its entire subtree as invisible to the lime-csr engine.
+The engine will not process any `${...}`, `data-*` attributes, or special
+tags (`<if>`, `<for>`, `<partial>`) inside an ignored block — useful for
+embedding third-party widgets that manage their own DOM and data-* attributes.
+
+**Syntax**
+```html
+<div data-lime-ignore>
+  <!-- third-party widget markup, untouched by lime-csr -->
+</div>
+```
+
+**Parameters**
+- `data-lime-ignore` (attribute, presence-based): the value is irrelevant;
+  presence alone marks the region as ignored. Any non-empty value is fine.
+  A common convention: `data-lime-ignore` (the value is often omitted entirely
+  in HTML).
+
+**Behavior**
+- The element carrying `data-lime-ignore` is itself part of the ignored
+  region (its attributes and children are skipped).
+- All descendants are completely ignored — `${...}` placeholders are left as-is,
+  `data-*` attributes are never processed, and special tags are never
+  expanded.
+- Nesting: if an ancestor already has `data-lime-ignore`, inner `data-lime-ignore`
+  attributes are redundant (all descendants are already ignored).
+- Events: if a `data-on-*` event bubbles FROM an ignored subtree TO a listener
+  on a non-ignored ancestor, the event is silently discarded and no handler is
+  invoked — the ignored region is event-isolated.
+- The attribute name `lime-ignore` cannot be used as a `{x}` placeholder in
+  reactive attributes (e.g. `href="/u/{lime-ignore}"`) — reserved to prevent
+  confusion with the actual `data-lime-ignore` attribute.
+
+**Example — Turnstile CAPTCHA**
+```html
+<template id="tpl-contact-form">
+  <form data-on-submit="submitForm">
+    <input type="email" data-model="email" placeholder="Email">
+    <input type="text" data-model="name" placeholder="Name">
+    
+    <!-- Turnstile manages its own data-* attributes; leave it untouched -->
+    <div data-lime-ignore>
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>
+      <div class="cf-turnstile" data-sitekey="..."></div>
+    </div>
+    
+    <button>Send</button>
+  </form>
+</template>
+```
+```js
+const store = createStore({ email: '', name: '' });
+mount('contact-form', {}, target, store, { handlers: { submitForm() { /* ... */ } } });
+```
+
+**⚠ Common mistakes**
+```
+WRONG:  <div data-lime-ignore="${shouldIgnore}">
+        -- Conditional ignore via ${...} — not supported. The attribute
+           either exists (always ignored) or doesn't (always processed).
+           Use static `data-lime-ignore` or put the widget conditionally
+           with <if> (still static) instead.
+
+RIGHT:  <!-- Conditional widget rendering -->
+        <if is-truthy="showWidget">
+          <div data-lime-ignore>
+            <!-- widget HTML here -->
+          </div>
+        </if>
+        -- The <if> is lime-csr's responsibility; the <div> inside it is
+           ignored. When the condition changes, the entire block is rebuilt.
+```
+```
+WRONG:  <span title="{lime-ignore}" data-lime-ignore="msg"></span>
+        -- "lime-ignore" is RESERVED → RESERVED_ATTR_NAME warning, this
+           placeholder binding is rejected.
+
+RIGHT:  <span title="{msg}" data-msg="msg"></span>
+        -- Don't use "lime-ignore" as a placeholder name. Use a different
+           name or omit the reactive binding if the attribute is outside the
+           ignored block.
 ```
 
 ---

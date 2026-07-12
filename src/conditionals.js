@@ -25,7 +25,7 @@
 
 import { getByPath } from './store.js';
 import { errors } from './errors.js';
-import { inLiveBlock } from './shared.js';
+import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 /**
  * Supported condition operators.
@@ -134,7 +134,8 @@ export function processAllIfs(root, context) {
 
   while ((candidates = Array.from(root.querySelectorAll('if'))).length > 0) {
     // Outermost <if>s: no ancestor is an <if>, does not carry data-live, AND
-    // is not inside a not-yet-expanded <if data-live>/<for data-live> block.
+    // is not inside a not-yet-expanded <if data-live>/<for data-live> block,
+    // AND is not inside an ignored block.
     // Ones carrying data-live are left to bindings-blocks.js (reactive tear-down/rebuild);
     // ordinary <if>s INSIDE a live block are not processed early here, since
     // they'll only get the correct (branch/item) context via renderFn's (render()) call.
@@ -142,7 +143,8 @@ export function processAllIfs(root, context) {
       (el) =>
         !el.parentElement?.closest('if') &&
         !el.hasAttribute('data-live') &&
-        !inLiveBlock(el),
+        !inLiveBlock(el) &&
+        !inIgnoredBlock(el),
     );
     if (outermost.length === 0) break; // deadlock guard (also exits if only live-ifs remain)
 

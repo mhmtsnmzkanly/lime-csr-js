@@ -112,7 +112,7 @@
 
 import { getByPath } from './store.js';
 import { errors } from './errors.js';
-import { inLiveBlock, longestIncreasingSubsequenceIndices } from './shared.js';
+import { inLiveBlock, inIgnoredBlock, longestIncreasingSubsequenceIndices } from './shared.js';
 
 let forCounter = 0;
 function nextForRef() { return `lf${++forCounter}`; }
@@ -192,11 +192,12 @@ function cloneToFragment(nodes) {
 export function setupLiveFors(root, context, store, renderFn, handlers) {
   const allCleanups = [];
 
-  // Only the outermost live-fors: not nested inside another live-for or live-if.
+  // Only the outermost live-fors: not nested inside another live-for or live-if,
+  // and not inside an ignored block.
   // Nested ones are handled inside renderFn's recursive call (once per item).
   const liveFors = Array.from(root.querySelectorAll('for[data-live]')).filter(
     (el) =>
-      !inLiveBlock(el),
+      !inLiveBlock(el) && !inIgnoredBlock(el),
   );
 
   for (const forEl of liveFors) {

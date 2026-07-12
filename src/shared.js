@@ -5,6 +5,27 @@
  */
 
 /**
+ * Checks if a given node is inside an ignored block (has data-lime-ignore).
+ * If the node itself carries data-lime-ignore, it returns true (the node is
+ * part of the ignored region).
+ *
+ * Used by: template.js, partials.js, loops.js, conditionals.js,
+ * bindings.js, bindings-model.js, bindings-show.js, bindings-blocks.js,
+ * bindings-loops.js, bindings-events.js.
+ *
+ * @param {Node} node
+ * @returns {boolean}
+ */
+export function inIgnoredBlock(node) {
+  if (!node) return false;
+  if (node.nodeType !== 1) { // Node.ELEMENT_NODE is 1
+    const parent = node.parentElement;
+    return !!parent?.closest?.('[data-lime-ignore]');
+  }
+  return !!node.closest?.('[data-lime-ignore]');
+}
+
+/**
  * Checks if a given node is inside a not-yet-expanded reactive block
  * (<if data-live> or <for data-live>).
  * If the node itself is the root of the live block, it returns false

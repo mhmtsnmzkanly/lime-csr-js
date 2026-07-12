@@ -79,6 +79,7 @@
  */
 
 import { errors } from './errors.js';
+import { inIgnoredBlock } from './shared.js';
 
 /** @type {Set<string>} Event types supported as data-on-{event}. */
 const SUPPORTED_EVENTS = new Set(['click', 'input', 'change', 'submit', 'keydown']);
@@ -148,6 +149,9 @@ export function setupEventBindings(root, store, handlers) {
     const onEvent = (event) => {
       const el = event.target.closest?.(`[${attrName}]`);
       if (!el || !root.contains(el)) return;
+
+      // Skip events from ignored blocks — third-party widget markup
+      if (inIgnoredBlock(el)) return;
 
       // data-on-submit ALWAYS calls preventDefault (see the "MODIFIER"
       // section in the module JSDoc) — even if the handler isn't found, to

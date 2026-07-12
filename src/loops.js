@@ -26,7 +26,7 @@
 import { getByPath } from './store.js';
 import { resolveStatic } from './template.js';
 import { errors } from './errors.js';
-import { inLiveBlock } from './shared.js';
+import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 
 
@@ -48,6 +48,9 @@ export function expandLoops(root, context, pipeline = null) {
 
     // data-live → reactive list; left to bindings-loops.js, don't touch here.
     if (forEl.hasAttribute('data-live')) continue;
+
+    // Don't touch it if it's inside an ignored block — third-party widget markup.
+    if (inIgnoredBlock(forEl)) continue;
 
     // Also don't touch it if it's inside a not-yet-expanded live-if/live-for block —
     // the correct (branch/item) context only arrives via renderFn's (render()) call.

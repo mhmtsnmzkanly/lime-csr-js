@@ -56,7 +56,7 @@
 import { getByPath } from './store.js';
 import { renderTemplate } from './template.js';
 import { errors } from './errors.js';
-import { inLiveBlock, inUnexpandedFor } from './shared.js';
+import { inLiveBlock, inUnexpandedFor, inIgnoredBlock } from './shared.js';
 
 /** Maximum recursion depth against infinite loops. */
 const MAX_DEPTH = 50;
@@ -102,6 +102,9 @@ export function expandPartials(root, context, depth = 0, pipeline = null) {
     // Don't touch it if it's inside a live-if/live-for — the correct context
     // will already be supplied per branch/item by renderFn (render()).
     if (inLiveBlock(partialEl)) continue;
+
+    // Don't touch it if it's inside an ignored block — third-party widget markup.
+    if (inIgnoredBlock(partialEl)) continue;
 
     // Also don't touch it if it's inside a not-yet-expanded ordinary <for> —
     // the "as" variable isn't in context yet; the correct context will be

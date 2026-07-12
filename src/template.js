@@ -26,7 +26,7 @@
 
 import { getByPath } from "./store.js";
 import { errors, isDevMode } from "./errors.js";
-import { inLiveBlock, inUnexpandedFor } from "./shared.js";
+import { inLiveBlock, inUnexpandedFor, inIgnoredBlock } from "./shared.js";
 
 /** @type {Map<string, DocumentFragment>} Holds original fragments; used before cloning. */
 const templateCache = new Map();
@@ -218,7 +218,7 @@ export function resolveStatic(root, context) {
 
   let node = walker.nextNode();
   while (node) {
-    if (inLiveBlock(node) || inUnexpandedFor(node)) {
+    if (inLiveBlock(node) || inUnexpandedFor(node) || inIgnoredBlock(node)) {
       node = walker.nextNode();
       continue;
     }

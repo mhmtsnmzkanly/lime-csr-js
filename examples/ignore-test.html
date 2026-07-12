@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr data-lime-ignore — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+    .widget-style { border: 2px dashed #60a5fa; padding: .5rem; margin: .5rem 0; }
+  </style>
+</head>
+<body>
+<h1>src/shared.js — data-lime-ignore verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore, mount, render } from '../src/index.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  // ── 1. ${...} inside data-lime-ignore must NOT be resolved ──────────────
+  group('${...} inside data-lime-ignore is NOT interpolated');
+  {
+    const template = document.createElement('template');
+    template.id = 'tpl-widget';
+    template.innerHTML = `
+      <div>
+        <p>${'before-ignore'}</p>
+        <div data-lime-ignore>
+          <p>${'inside-ignore'}</p>
+          <span data-x="${'should-not-be-resolved'}">test</span>
+        </div>
+        <p>${'after-ignore'}</p>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement('div');
+    const ctx = { 'before-ignore': 'RESOLVED', 'inside-ignore': 'MUST-STAY', 'should-not-be-resolved': 'bad' };
+    const store = createStore({});
+
+    const frag = document.importNode(template.content, true);
+    const cleanup = render(frag, ctx, store);
+    host.appendChild(frag);
+
+    const paragraphs = host.querySelectorAll('p');
+    assert('before-ignore: ${...} IS resolved', paragraphs[0].textContent.includes('RESOLVED'), true);
+    assert('inside-ignore: ${...} is NOT resolved (raw text stays)', paragraphs[1].textContent.includes('${'), true);
+    assert('after-ignore: ${...} IS resolved', paragraphs[2].textContent.includes('RESOLVED'), true);
+
+    show('1. static ${...} in ignored block', host.cloneNode(true));
+    template.remove();
+    cleanup();
+  }
+
+  // ── 2. data-text inside data-lime-ignore must NOT be bound ───────────────
+  group('data-text inside data-lime-ignore is NOT bound to the store');
+  {
+    const template = document.createElement('template');
+    template.id = 'tpl-text-ignore';
+    template.innerHTML = `
+      <div>
+        <span id="before" data-text="msg">before</span>
+        <div data-lime-ignore>
+          <span id="inside" data-text="msg">inside (should stay untouched)</span>
+        </div>
+        <span id="after" data-text="msg">after</span>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const store = createStore({ msg: 'STORE-VALUE' });
+    const host = document.createElement('div');
+
+    const frag = document.importNode(template.content, true);
+    const cleanup = render(frag, {}, store);
+    host.appendChild(frag);
+
+    const before = host.getElementById('before');
+    const inside = host.getElementById('inside');
+    const after = host.getElementById('after');
+
+    assert('before-ignore: data-text IS bound', before.textContent, 'STORE-VALUE');
+    assert('inside-ignore: data-text is NOT bound (stays as-is)', inside.textContent, 'inside (should stay untouched)');
+    assert('after-ignore: data-text IS bound', after.textContent, 'STORE-VALUE');
+
+    // Now change the store
+    store.set('msg', 'UPDATED');
+    assert('before-ignore: updates on store.set', before.textContent, 'UPDATED');
+    assert('inside-ignore: does NOT update (not subscribed)', inside.textContent, 'inside (should stay untouched)');
+    assert('after-ignore: updates on store.set', after.textContent, 'UPDATED');
+
+    show('2. data-text in ignored block', host.cloneNode(true));
+    template.remove();
+    cleanup();
+  }
+
+  // ── 3. <if> inside data-lime-ignore must NOT be processed ───────────────
+  group('<if> inside data-lime-ignore is NOT expanded');
+  {
+    const template = document.createElement('template');
+    template.id = 'tpl-if-ignore';
+    template.innerHTML = `
+      <div>
+        <if is-truthy="x"><span id="before">if-before</span></if>
+        <div data-lime-ignore>
+          <if is-truthy="x"><span id="inside">if-inside (should stay)</span></if>
+        </div>
+        <if is-truthy="x"><span id="after">if-after</span></if>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement('div');
+    const frag = document.importNode(template.content, true);
+    const cleanup = render(frag, { x: true }, createStore({}));
+    host.appendChild(frag);
+
+    const before = host.querySelector('#before');
+    const inside = host.querySelector('#inside');
+    const after = host.querySelector('#after');
+    const ifTag = host.querySelector('if');
+
+    assert('before-ignore: <if> IS expanded', !!before, true);
+    assert('inside-ignore: <if> still exists (NOT expanded)', !!ifTag, true);
+    assert('after-ignore: <if> IS expanded', !!after, true);
+
+    note('the <if> element inside data-lime-ignore persists in the DOM untouched');
+    show('3. <if> in ignored block', host.cloneNode(true));
+    template.remove();
+    cleanup();
+  }
+
+  // ── 4. <for> inside data-lime-ignore must NOT be processed ──────────────
+  group('<for> inside data-lime-ignore is NOT expanded');
+  {
+    const template = document.createElement('template');
+    template.id = 'tpl-for-ignore';
+    template.innerHTML = `
+      <div>
+        <for each="items" as="item"><span>${'item.name'}</span></for>
+        <div data-lime-ignore>
+          <for each="items" as="item"><span>${'item.name'}</span></for>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement('div');
+    const items = [{ name: 'A' }, { name: 'B' }];
+    const frag = document.importNode(template.content, true);
+    const cleanup = render(frag, { items }, createStore({}));
+    host.appendChild(frag);
+
+    const spans = host.querySelectorAll('span');
+    const forTag = host.querySelector('for');
+
+    assert('before-ignore: <for> IS expanded (2 spans)', spans.length >= 2, true);
+    assert('inside-ignore: <for> still exists (NOT expanded)', !!forTag, true);
+
+    note('the <for> element inside data-lime-ignore persists in the DOM untouched');
+    show('4. <for> in ignored block', host.cloneNode(true));
+    template.remove();
+    cleanup();
+  }
+
+  // ── 5. Fake third-party widget: foreign data-* attributes stay intact ────
+  group('third-party widget: foreign data-* attributes (not lime-csr) untouched');
+  {
+    const template = document.createElement('template');
+    template.id = 'tpl-widget-sim';
+    template.innerHTML = `
+      <div>
+        <form data-on-submit="submit">
+          <input type="text" data-model="name">
+
+          <!-- Fake third-party CAPTCHA widget -->
+          <div data-lime-ignore class="widget-style">
+            <div class="captcha-widget"
+                 data-sitekey="test-key-123"
+                 data-callback="onCaptchaSuccess"
+                 data-badge="bottomright">
+              CAPTCHA widget (managed externally)
+            </div>
+          </div>
+
+          <button>Submit</button>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement('div');
+    const store = createStore({ name: '' });
+    const frag = document.importNode(template.content, true);
+    const cleanup = render(frag, {}, store);
+    host.appendChild(frag);
+
+    const widget = host.querySelector('.captcha-widget');
+    assert('widget data-sitekey preserved', widget?.getAttribute('data-sitekey'), 'test-key-123');
+    assert('widget data-callback preserved', widget?.getAttribute('data-callback'), 'onCaptchaSuccess');
+    assert('widget data-badge preserved', widget?.getAttribute('data-badge'), 'bottomright');
+
+    const input = host.querySelector('input');
+    assert('input data-model IS processed (outside ignored block)', input?.getAttribute('data-model'), 'name');
+
+    note('third-party data-* attributes remain completely untouched by lime-csr');
+    show('5. fake third-party widget', host.cloneNode(true));
+    template.remove();
+    cleanup();
+  }
+
+  // ── 6. Event delegation: data-on-* inside ignored block is skipped ──────
+  group('event delegation: data-on-* inside data-lime-ignore is ignored');
+  {
+    const template = document.createElement('template');
+    template.id = 'tpl-event-ignore';
+    template.innerHTML = `
+      <div>
+        <button id="before" data-on-click="handler">before</button>
+        <div data-lime-ignore>
+          <button id="inside" data-on-click="handler">inside</button>
+        </div>
+        <button id="after" data-on-click="handler">after</button>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const clickLog = [];
+    const store = createStore({});
+    const host = document.createElement('div');
+    const handlers = {
+      handler(e, el) { clickLog.push(el.id); }
+    };
+
+    const frag = document.importNode(template.content, true);
+    const cleanup = mount('event-ignore', {}, host, store, { handlers });
+
+    // Simulate clicks
+    host.querySelector('#before').click();
+    host.querySelector('#inside').click();
+    host.querySelector('#after').click();
+
+    assert('before-ignore button: handler WAS called', clickLog.includes('before'), true);
+    assert('inside-ignore button: handler was NOT called', clickLog.includes('inside'), false);
+    assert('after-ignore button: handler WAS called', clickLog.includes('after'), true);
+
+    note('events from the ignored block never reach the handler lookup');
+    show('6. event isolation in ignored block', host.cloneNode(true));
+    template.remove();
+    cleanup();
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

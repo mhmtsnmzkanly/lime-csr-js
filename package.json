@@ -1,6 +1,6 @@
 {
   "name": "lime-csr-js",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "An HTML-first client-side rendering engine built with standard browser APIs.",
   "type": "module",
   "main": "src/index.js",

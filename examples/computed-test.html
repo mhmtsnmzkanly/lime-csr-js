@@ -18,11 +18,6 @@
 
 <script type="module">
   import { createStore } from '../src/store.js';
-  // store.js emits dev-mode warnings via an injected function to avoid a
-  // circular import; errors.js performs that injection as a module-load
-  // side effect, so it must be imported (even unused) for store-level
-  // warnings like COMPUTED_MANUAL_SET/IN_PLACE_MUTATION to actually fire.
-  import '../src/errors.js';
 
   const log = document.getElementById('log');
   let passed = 0, failed = 0;

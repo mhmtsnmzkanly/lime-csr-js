@@ -29,14 +29,14 @@
  * RESERVED PLACEHOLDER NAMES (2b):
  *   The following names CANNOT be used as {x} placeholders in attribute templates
  *   because lime-csr uses data-{name} for its own engine attributes:
- *   text, model, show, live, ref, diff — and any name starting with "on-".
+ *   text, model, show, live, ref, diff, lime-ignore — and any name starting with "on-".
  *   Detected in setupAttrBindings; errors.reservedAttrName is issued.
  */
 
 
 import { errors } from './errors.js';
 import { isSafeUrlProtocol } from './utils.js';
-import { inLiveBlock } from './shared.js';
+import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 // URL attributes: protocol check required before assignment.
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'cite', 'poster', 'ping']);
@@ -49,7 +49,7 @@ const ATTR_PLACEHOLDER = /\{([^}]+)\}/g;
 
 // Reserved placeholder names: engine uses data-{name} for its own attributes.
 // Also blocks any name starting with "on-" (would conflict with data-on-{event}).
-const RESERVED_NAMES = new Set(['text', 'model', 'show', 'live', 'ref', 'diff']);
+const RESERVED_NAMES = new Set(['text', 'model', 'show', 'live', 'ref', 'diff', 'lime-ignore']);
 function isReservedName(name) {
   return RESERVED_NAMES.has(name) || name.startsWith('on-');
 }
@@ -73,6 +73,9 @@ function setupTextBindings(root, store) {
     // If we bound it here, the old subscription couldn't be cancelled when the
     // branch/block changes → leak.
     if (inLiveBlock(el)) continue;
+
+    // data-text inside an ignored block is left untouched — third-party widget markup.
+    if (inIgnoredBlock(el)) continue;
 
     const path = el.getAttribute('data-text');
 
@@ -117,10 +120,11 @@ function setupAttrBindings(root, store) {
   // Elements inside <if data-live> and <for data-live> are bound separately by
   // renderFn; if we processed them here, the old subscriptions couldn't be
   // cancelled when the branch/block changes → leak.
+  // Elements inside an ignored block are also skipped — third-party widget markup.
 
   const elements = [
-    ...(root.nodeType === Node.ELEMENT_NODE && !inLiveBlock(root) ? [root] : []),
-    ...Array.from(root.querySelectorAll('*')).filter((el) => !inLiveBlock(el)),
+    ...(root.nodeType === Node.ELEMENT_NODE && !inLiveBlock(root) && !inIgnoredBlock(root) ? [root] : []),
+    ...Array.from(root.querySelectorAll('*')).filter((el) => !inLiveBlock(el) && !inIgnoredBlock(el)),
   ];
 
   for (const el of elements) {

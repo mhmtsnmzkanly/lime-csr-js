@@ -60,7 +60,7 @@
  */
 
 import { errors } from './errors.js';
-import { inLiveBlock } from './shared.js';
+import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 const MODEL_ATTR = 'data-model';
 
@@ -223,11 +223,12 @@ export function setupModelBindings(root, store) {
   // Elements inside <if data-live>/<for data-live> are bound separately by
   // renderFn; if we processed them here, the old subscription/listener could
   // not be cancelled when the branch/block changes → leak.
+  // Elements inside an ignored block are also skipped — third-party widget markup.
   const elements = [
-    ...(root.nodeType === Node.ELEMENT_NODE && root.hasAttribute?.(MODEL_ATTR) && !inLiveBlock(root)
+    ...(root.nodeType === Node.ELEMENT_NODE && root.hasAttribute?.(MODEL_ATTR) && !inLiveBlock(root) && !inIgnoredBlock(root)
       ? [root]
       : []),
-    ...Array.from(root.querySelectorAll(`[${MODEL_ATTR}]`)).filter((el) => !inLiveBlock(el)),
+    ...Array.from(root.querySelectorAll(`[${MODEL_ATTR}]`)).filter((el) => !inLiveBlock(el) && !inIgnoredBlock(el)),
   ];
 
   const radioGroups = new Map(); // path → Element[]

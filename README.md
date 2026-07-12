@@ -66,6 +66,9 @@ import { createStore, mount } from './src/index.js';
   them.
 - `data-on-click`, `data-on-input`, `data-on-change`, `data-on-submit`, and
   `data-on-keydown` use event delegation and named handler functions.
+- `data-lime-ignore` is an escape hatch: any element with this attribute and
+  its entire subtree are invisible to the engine, useful for embedding
+  third-party widgets (Turnstile, reCAPTCHA, etc.) that manage their own DOM.
 
 See [DOCS.md](DOCS.md) for all syntax, lifecycle semantics, error codes, and
 limitations.

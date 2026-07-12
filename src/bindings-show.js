@@ -46,7 +46,7 @@
  */
 
 import { errors } from './errors.js';
-import { inLiveBlock } from './shared.js';
+import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 const SHOW_ATTR = 'data-show';
 
@@ -64,10 +64,10 @@ export function setupShowBindings(root, store) {
   const cleanups = [];
 
   const elements = [
-    ...(root.nodeType === Node.ELEMENT_NODE && root.hasAttribute?.(SHOW_ATTR) && !inLiveBlock(root)
+    ...(root.nodeType === Node.ELEMENT_NODE && root.hasAttribute?.(SHOW_ATTR) && !inLiveBlock(root) && !inIgnoredBlock(root)
       ? [root]
       : []),
-    ...Array.from(root.querySelectorAll(`[${SHOW_ATTR}]`)).filter((el) => !inLiveBlock(el)),
+    ...Array.from(root.querySelectorAll(`[${SHOW_ATTR}]`)).filter((el) => !inLiveBlock(el) && !inIgnoredBlock(el)),
   ];
 
   for (const el of elements) {
