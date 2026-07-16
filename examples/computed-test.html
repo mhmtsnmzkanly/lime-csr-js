@@ -111,7 +111,7 @@
   }
 
   // ── 4. Dispose: no further updates after dispose() ─────────────────────────
-  group('4. dispose(): computed stops updating after disposal');
+  group('4. dispose(): computed stops updating and its value is removed');
   {
     const store = createStore({ x: 1 });
     let calls = 0;
@@ -125,11 +125,15 @@
 
     dispose();
 
+    assert('computed value deleted from state (no ghost value)', store.get('y'), undefined);
+    assert('the key itself is gone, not just set to undefined',
+      Object.hasOwn(store.get(''), 'y'), false);
+
     store.set('x', 2);
-    assert('value unchanged after dispose (dep subscription cancelled)', store.get('y'), 10);
+    assert('value still absent after a dep change', store.get('y'), undefined);
     assert('fn was NOT called again after dispose', calls, 1);
 
-    note('dispose() cancelled every dep subscription ✓');
+    note('dispose() cancelled every dep subscription AND deleted the computed value ✓');
   }
 
   // ── 5. Loop guard: a computed setting its own dep does not recurse forever ─

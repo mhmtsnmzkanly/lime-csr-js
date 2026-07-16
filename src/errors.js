@@ -1,10 +1,12 @@
 /**
  * @module errors
- * Dev-mode warning layer.
+ * Structured diagnostic dispatch and dev-mode presentation layer.
  *
  * Rules:
- *   - When enabled: console.warn('[lime-csr] CODE: message', context?). Never throw — page must keep running.
- *   - When disabled: complete silence. End users must not see console noise.
+ *   - Subscribers receive every diagnostic in both production and development.
+ *   - When enabled: console.warn('[lime-csr] CODE: message', context?) and show an overlay.
+ *   - When disabled: suppress Lime's own console and overlay presentation.
+ *   - Never throw — page must keep running.
  *   - This module imports NO other module — no circular dependency risk.
  *
  * Default: ON. Enabled by default for developer convenience; disable in production with setDevMode(false).
@@ -12,6 +14,9 @@
 
 /** @type {boolean} */
 let devMode = true;
+
+/** @type {Set<(diagnostic: {code: string, message: string, context: *}) => void>} */
+const diagnosticListeners = new Set();
 
 /**
  * Enables or disables dev mode.
@@ -24,6 +29,27 @@ export function setDevMode(enabled) {
 /** @returns {boolean} */
 export function isDevMode() {
   return devMode;
+}
+
+/**
+ * Subscribes to structured Lime diagnostics. Subscription is independent of
+ * dev mode; consumers decide how (or whether) to present each code.
+ *
+ * @param {(diagnostic: {code: string, message: string, context: *}) => void} listener
+ * @returns {() => void} idempotent unsubscribe function
+ */
+export function subscribeDiagnostics(listener) {
+  if (typeof listener !== 'function') {
+    throw new TypeError('subscribeDiagnostics(listener) requires a function listener.');
+  }
+
+  diagnosticListeners.add(listener);
+  let subscribed = true;
+  return function unsubscribe() {
+    if (!subscribed) return;
+    subscribed = false;
+    diagnosticListeners.delete(listener);
+  };
 }
 
 /**
@@ -78,13 +104,29 @@ function showOverlay(code, message) {
 }
 
 /**
- * Primary warning function. Does nothing if dev mode is off.
+ * Primary warning function. Always dispatches a structured diagnostic, then
+ * presents it through Lime's console/overlay only when dev mode is enabled.
  *
  * @param {string} code     - Error code (e.g. "PARTIAL_NOT_FOUND")
  * @param {string} message  - Actionable description — "what's wrong, how to fix it"
  * @param {*}     [context] - Additional context (element, path, name, etc.) — appended to console output
  */
 export function warn(code, message, context) {
+  const diagnostic = Object.freeze({ code, message, context });
+  for (const listener of [...diagnosticListeners]) {
+    try {
+      listener(diagnostic);
+    } catch (error) {
+      if (devMode) {
+        try {
+          console.error('[lime-csr] Diagnostic listener failed:', error);
+        } catch {
+          // Diagnostics remain non-throwing even if console.error is replaced.
+        }
+      }
+    }
+  }
+
   if (!devMode) return;
   if (context !== undefined) {
     console.warn(`[lime-csr] ${code}: ${message}`, context);
@@ -311,6 +353,16 @@ export const errors = {
     );
   },
 
+  /** data-on-keydown-{key}/data-on-keyup-{key} used an unsupported key modifier. */
+  unknownKeyModifier(eventName, validKeys, context) {
+    warn(
+      'UNKNOWN_KEY_MODIFIER',
+      `Unknown key modifier: "data-on-${eventName}". Supported keys: ` +
+        `${validKeys.join(', ')}. E.g. data-on-keydown-enter, data-on-keyup-escape.`,
+      context,
+    );
+  },
+
   /** data-on-{event} points to a handler name not in the handlers dictionary. */
   handlerNotFound(name, available, context) {
     const list = available.length ? available.join(', ') : '(no registered handlers)';
@@ -387,6 +439,29 @@ export const errors = {
       `<for data-live>: unknown data-diff value "${value}". Valid values: ` +
         `simple, lcs, replace (or omit the attribute). Falling back to "simple". ` +
         `(template: ${templateName ?? '?'})`,
+    );
+  },
+
+  /**
+   * mount() was called with the legacy positional signature
+   * (templateName, context, target, store, options). One-time notice —
+   * the "already warned" flag lives in index.js.
+   */
+  mountLegacySignature() {
+    warn(
+      'MOUNT_LEGACY_SIGNATURE',
+      `mount(templateName, context, target, store, options) positional signature is deprecated. ` +
+        `Prefer mount(templateName, { context, target, store, handlers, computed, ... }). ` +
+        `The legacy form keeps working; this notice is shown once.`,
+    );
+  },
+
+  /** mount()'s "computed" option was given without a store. */
+  computedWithoutStore(paths) {
+    warn(
+      'COMPUTED_WITHOUT_STORE',
+      `mount(): the "computed" option (${paths.join(', ')}) requires a store; ` +
+        `registration skipped. Pass a store in the same mount() options object.`,
     );
   },
 

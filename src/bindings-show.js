@@ -4,7 +4,7 @@
  *
  * WHAT IT DOES
  *   <div data-show="isModalOpen">...</div>
- *   The element is visible if the store path is truthy; `display:none` if falsy.
+ *   The element is visible if the store path is truthy; `hidden` if falsy.
  *   NO EVAL — path is a fixed string, the value is interpreted only via
  *   `Boolean()` (same logic as the is-truthy operator).
  *
@@ -12,20 +12,16 @@
  *   `<if data-live>` COMPLETELY REMOVES the branch from the DOM and rebuilds
  *   it when the condition changes — input value/scroll/animation state/DOM
  *   identity are LOST. `data-show`, on the other hand, NEVER REMOVES the
- *   element from the DOM; it only hides/shows it via CSS `display` — the
+ *   element from the DOM; it only manages the native `hidden` state — the
  *   element keeps living (see the "Two-way binding" and "Condition" sections
  *   in README). This is the right tool for modals/accordions/tabs — anything
  *   needing CSS transitions or preserved form state.
  *
- * PRESERVING THE ORIGINAL display VALUE (design decision #1):
- *   A fixed `"block"` is NOT assigned when hiding — this would break elements
- *   with a `display:flex`/`grid`/`inline-block` CSS rule (dropping a flex
- *   container down to `block`). Instead: the element's inline `style.display`
- *   value AT SETUP TIME (`originalDisplay`) is captured ONCE; the value
- *   written to the DOM in the "show" state is ALWAYS this original value —
- *   so CSS's own (stylesheet-derived) display rule is restored as-is. In the
- *   "hide" state, `display:none` is assigned as an inline style (overriding
- *   everything in CSS — required for hiding to be guaranteed).
+ * INLINE DISPLAY IS APPLICATION-OWNED (design decision #1):
+ *   Lime never reads or writes `style.display`. Visibility is represented by
+ *   the native `hidden` attribute, while one scoped framework rule ensures a
+ *   display utility class cannot override that state. The browser and the
+ *   application's styles remain responsible for the visible layout.
  *
  * NO FOUC (design decision #2):
  *   setupShowBindings runs in index.js's render() flow BEFORE the fragment is
@@ -49,8 +45,23 @@ import { errors } from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 const SHOW_ATTR = 'data-show';
+const SHOW_STYLE_ID = 'lime-csr-data-show-style';
+const SHOW_STYLE_RULE = '[data-show][hidden] { display: none !important; }';
 
-
+/**
+ * Installs the scoped data-show compatibility rule once in the owning
+ * document. Looking up the stable id in the document (rather than tracking a
+ * module-global flag) keeps iframe/secondary documents independent.
+ *
+ * @param {Document} doc
+ */
+function ensureShowStyle(doc) {
+  if (doc.getElementById(SHOW_STYLE_ID)) return;
+  const style = doc.createElement('style');
+  style.id = SHOW_STYLE_ID;
+  style.textContent = SHOW_STYLE_RULE;
+  (doc.head ?? doc.documentElement).appendChild(style);
+}
 
 /**
  * Reactively binds every [data-show] element under root to the store.
@@ -58,9 +69,11 @@ const SHOW_ATTR = 'data-show';
  *
  * @param {Element|DocumentFragment} root
  * @param {import('./store.js').Store} store
+ * @param {Document} [ownerDocument] - Actual destination document. Needed
+ *   when root is cloned template content whose inert owner document has no head.
  * @returns {function(): void} cleanup
  */
-export function setupShowBindings(root, store) {
+export function setupShowBindings(root, store, ownerDocument) {
   const cleanups = [];
 
   const elements = [
@@ -70,6 +83,12 @@ export function setupShowBindings(root, store) {
     ...Array.from(root.querySelectorAll(`[${SHOW_ATTR}]`)).filter((el) => !inLiveBlock(el) && !inIgnoredBlock(el)),
   ];
 
+  if (elements.length > 0) {
+    const rootDocument = root.ownerDocument ?? root;
+    const doc = ownerDocument ?? (rootDocument.head ? rootDocument : document);
+    ensureShowStyle(doc);
+  }
+
   for (const el of elements) {
     const path = el.getAttribute(SHOW_ATTR);
     if (!path) {
@@ -77,12 +96,8 @@ export function setupShowBindings(root, store) {
       continue;
     }
 
-    // Capture ONCE: the "original" inline display, unaffected by any toggle.
-    // The "show" state always returns to THIS — CSS's own display rule isn't broken.
-    const originalDisplay = el.style.display;
-
     const apply = (val) => {
-      el.style.display = val ? originalDisplay : 'none';
+      el.hidden = !val;
     };
 
     apply(store.get(path)); // initial state — before the fragment is added to the DOM (no FOUC)

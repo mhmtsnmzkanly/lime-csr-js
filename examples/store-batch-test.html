@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr store.batch — verification</title>
+  <style>
+    body { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1   { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+<h1>src/store.js — store.batch() verification tests</h1>
+<pre id="output"></pre>
+
+<script type="module">
+  import { createStore } from "../src/store.js";
+
+  const out = document.getElementById("output");
+  let passed = 0;
+  let failed = 0;
+
+  function group(label) {
+    out.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function assert(label, actual, expected) {
+    const ok = JSON.stringify(actual) === JSON.stringify(expected);
+    const icon = ok ? "✓" : "✗";
+    const cls  = ok ? "pass" : "fail";
+    const detail = ok ? "" : `  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    out.innerHTML += `<span class="${cls}">${icon} ${label}${detail}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  // Wrap console.warn: count dev-mode warnings per code so every group can
+  // assert that NO unexpected warning was emitted.
+  const warnCounts = {};
+  const realWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    const match = /^\[lime-csr\] ([A-Z_]+):/.exec(String(args[0]));
+    if (match) warnCounts[match[1]] = (warnCounts[match[1]] ?? 0) + 1;
+    realWarn(...args);
+  };
+  function totalWarns() {
+    return Object.values(warnCounts).reduce((sum, n) => sum + n, 0);
+  }
+
+  // ── 1. batch — 3 sets, one notify per path ────────────────────────────────
+  group("batch — 3 sets → one notify per path");
+  const store = createStore({ a: 1, b: 2, c: 3 });
+  const notifyLog = [];
+  store.subscribe("a", (val, prev, path) => notifyLog.push(["a", val, prev, path]));
+  store.subscribe("b", (val, prev, path) => notifyLog.push(["b", val, prev, path]));
+  store.subscribe("c", (val, prev, path) => notifyLog.push(["c", val, prev, path]));
+
+  store.batch(() => {
+    store.set("a", 10);
+    store.set("b", 20);
+    store.set("c", 30);
+    store.set("a", 11); // same path again — must still be ONE notify
+    assert("state is written immediately inside batch", store.get("a"), 11);
+    assert("no notify fires before fn returns", notifyLog.length, 0);
+  });
+
+  assert("one notify per changed path (3 total)", notifyLog.length, 3);
+  assert('"a" notified once with the latest value',
+    notifyLog.filter(([p]) => p === "a").map(([, val]) => val), [11]);
+  assert('"a" keeps the FIRST previousValue (single before→after)',
+    notifyLog.find(([p]) => p === "a")[2], 1);
+  assert('"b" notified with (20, 2)', notifyLog.find(([p]) => p === "b").slice(1, 3), [20, 2]);
+  assert('"c" notified with (30, 3)', notifyLog.find(([p]) => p === "c").slice(1, 3), [30, 3]);
+
+  // ── 2. batch — computed with 2 deps recomputes once ───────────────────────
+  group("batch — computed with 2 deps recomputes once");
+  const store2 = createStore({ firstName: "Ada", lastName: "Lovelace" });
+  let computeCount = 0;
+  store2.computed("fullName", ["firstName", "lastName"], () => {
+    computeCount++;
+    return store2.get("firstName") + " " + store2.get("lastName");
+  });
+  assert("initial computation ran once", computeCount, 1);
+
+  let fullNameNotifies = 0;
+  store2.subscribe("fullName", () => fullNameNotifies++);
+
+  store2.batch(() => {
+    store2.set("firstName", "Grace");
+    store2.set("lastName", "Hopper");
+  });
+
+  assert("both deps changed → ONE recompute (not two)", computeCount, 2);
+  assert("computed value is correct after the batch", store2.get("fullName"), "Grace Hopper");
+  assert('"fullName" subscriber notified once (next wave)', fullNameNotifies, 1);
+
+  // ── 3. nested batch — flushes only at outermost exit ──────────────────────
+  group("nested batch — flushes only at outermost exit");
+  const store3 = createStore({ x: 0, y: 0 });
+  const nestedLog = [];
+  store3.subscribe("x", (val) => nestedLog.push(["x", val]));
+  store3.subscribe("y", (val) => nestedLog.push(["y", val]));
+
+  store3.batch(() => {
+    store3.set("x", 1);
+    store3.batch(() => {
+      store3.set("y", 1);
+    });
+    assert("inner batch exit did NOT flush", nestedLog.length, 0);
+    store3.set("x", 2);
+  });
+
+  assert("outermost exit flushed everything", nestedLog.length, 2);
+  assert('"x" coalesced to one notify with the last value',
+    nestedLog.filter(([p]) => p === "x").map(([, val]) => val), [2]);
+
+  // ── 4. throwing fn — still flushes ────────────────────────────────────────
+  group("throwing fn — still flushes");
+  const store4 = createStore({ n: 0 });
+  let throwNotifies = 0;
+  store4.subscribe("n", () => throwNotifies++);
+
+  let caught = null;
+  try {
+    store4.batch(() => {
+      store4.set("n", 1);
+      throw new Error("boom");
+    });
+  } catch (err) {
+    caught = err.message;
+  }
+
+  assert("the error propagates out of batch()", caught, "boom");
+  assert("the queued notify still flushed", throwNotifies, 1);
+
+  store4.set("n", 2);
+  assert("store works normally after the throw (depth reset)", throwNotifies, 2);
+
+  // ── 5. no unexpected warnings so far ──────────────────────────────────────
+  group("dev-mode warnings — none expected so far");
+  assert("no dev-mode warning emitted by tests 1–4", totalWarns(), 0);
+
+  // ── 6. BATCH_FLUSH_LIMIT — ping-pong subscriber pair ──────────────────────
+  group("BATCH_FLUSH_LIMIT — ping-pong subscriber pair");
+  const store5 = createStore({ ping: 0, pong: 0 });
+  store5.subscribe("ping", (val) => store5.set("pong", val + 1));
+  store5.subscribe("pong", (val) => store5.set("ping", val + 1));
+
+  store5.batch(() => {
+    store5.set("ping", 1);
+  });
+
+  assert("BATCH_FLUSH_LIMIT warned exactly once", warnCounts.BATCH_FLUSH_LIMIT, 1);
+  assert("no OTHER warning code fired", totalWarns(), 1);
+
+  const pingAfter = store5.get("ping");
+  store5.subscribe("ping", () => {});
+  assert("queue was cleared — store still usable (get works)",
+    typeof pingAfter, "number");
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  out.innerHTML += `\n<span class="${failed === 0 ? "pass" : "fail"}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

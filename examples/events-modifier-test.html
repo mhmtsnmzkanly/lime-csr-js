@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr bindings-events key modifiers — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/bindings-events.js — keyup / dblclick / key-modifier verification tests</h1>
+
+<!-- ═══════════════════════ Template definitions ════════════════════════════ -->
+
+<template id="tpl-mod-keyup">
+  <div>
+    <input data-on-keyup="handleKeyup">
+  </div>
+</template>
+
+<template id="tpl-mod-dblclick">
+  <div>
+    <button data-on-dblclick="handleDblclick">Double-click</button>
+  </div>
+</template>
+
+<template id="tpl-mod-enter">
+  <div>
+    <input data-on-keydown-enter="save">
+  </div>
+</template>
+
+<template id="tpl-mod-escape">
+  <div>
+    <input data-on-keydown-escape="cancel">
+  </div>
+</template>
+
+<!-- Modified + unmodified on the SAME element — each evaluated independently -->
+<template id="tpl-mod-coexist">
+  <div>
+    <input data-on-keydown="draft" data-on-keydown-enter="save">
+  </div>
+</template>
+
+<!-- New event types inside a data-lime-ignore subtree — must stay discarded -->
+<template id="tpl-mod-ignored">
+  <div>
+    <div data-lime-ignore>
+      <input data-on-keyup="handleKeyup" data-on-keydown-enter="save">
+      <button data-on-dblclick="handleDblclick">widget</button>
+    </div>
+  </div>
+</template>
+
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore, mount } from '../src/index.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  function key(el, type, keyName) {
+    el.dispatchEvent(new KeyboardEvent(type, { key: keyName, bubbles: true }));
+  }
+
+  // Wrap console.warn for the WHOLE file: count [lime-csr] warnings per code
+  // so the end of the run can assert that no UNEXPECTED warning was emitted.
+  const warnCounts = {};
+  const realWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    const match = /^\[lime-csr\] ([A-Z_]+):/.exec(String(args[0]));
+    if (match) warnCounts[match[1]] = (warnCounts[match[1]] ?? 0) + 1;
+    realWarn(...args);
+  };
+
+  // ── 1. keyup: new event type fires via delegation ─────────────────────────
+  group('keyup: data-on-keyup fires');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    const keys = [];
+
+    const cleanup = mount('mod-keyup', {}, target, store, {
+      handlers: { handleKeyup(e) { keys.push(e.key); } },
+    });
+
+    const input = target.querySelector('input');
+    key(input, 'keyup', 'a');
+    key(input, 'keyup', 'Enter');
+
+    assert('handler fired for every keyup', keys, ['a', 'Enter']);
+
+    cleanup();
+    show('1. keyup', target.cloneNode(true));
+  }
+
+  // ── 2. dblclick: new event type fires via delegation ──────────────────────
+  group('dblclick: data-on-dblclick fires');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let calledWith = null;
+
+    const cleanup = mount('mod-dblclick', {}, target, store, {
+      handlers: {
+        handleDblclick(e, el) { calledWith = { type: e.type, tag: el.tagName }; },
+      },
+    });
+
+    target.querySelector('button')
+      .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+
+    assert('handler called',         !!calledWith, true);
+    assert('event.type: dblclick',   calledWith?.type, 'dblclick');
+    assert('element: BUTTON',        calledWith?.tag, 'BUTTON');
+
+    cleanup();
+  }
+
+  // ── 3. keydown-enter: fires ONLY on Enter ─────────────────────────────────
+  group('keydown-enter: handler fires ONLY when event.key is Enter');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let saves = 0;
+
+    const cleanup = mount('mod-enter', {}, target, store, {
+      handlers: { save() { saves++; } },
+    });
+
+    const input = target.querySelector('input');
+    key(input, 'keydown', 'a');
+    key(input, 'keydown', 'Escape');
+    assert('other keys do NOT fire', saves, 0);
+
+    key(input, 'keydown', 'Enter');
+    assert('Enter fires exactly once', saves, 1);
+
+    cleanup();
+    note('the DOM listener is the base "keydown" type — the modifier only ' +
+      'filters event.key (no bogus "keydown-enter" event was registered)');
+  }
+
+  // ── 4. keydown-escape: other keys are silently ignored ────────────────────
+  group('keydown-escape: other keys are silently ignored');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let cancels = 0;
+
+    const cleanup = mount('mod-escape', {}, target, store, {
+      handlers: { cancel() { cancels++; } },
+    });
+
+    const input = target.querySelector('input');
+    key(input, 'keydown', 'Enter');
+    key(input, 'keydown', 'q');
+    key(input, 'keydown', 'ArrowUp');
+    assert('Enter/q/ArrowUp do NOT fire', cancels, 0);
+
+    key(input, 'keydown', 'Escape');
+    assert('Escape fires exactly once', cancels, 1);
+
+    cleanup();
+  }
+
+  // ── 5. coexistence: unmodified keydown + modified sibling attribute ───────
+  group('coexistence: unmodified data-on-keydown still fires for EVERY key next to data-on-keydown-enter');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let drafts = 0, saves = 0;
+
+    const cleanup = mount('mod-coexist', {}, target, store, {
+      handlers: {
+        draft() { drafts++; },
+        save()  { saves++; },
+      },
+    });
+
+    const input = target.querySelector('input');
+    key(input, 'keydown', 'a');
+    key(input, 'keydown', 'b');
+    assert('two plain keys → draft twice, save never', { drafts, saves }, { drafts: 2, saves: 0 });
+
+    key(input, 'keydown', 'Enter');
+    assert('Enter → BOTH fire (independent evaluation)', { drafts, saves }, { drafts: 3, saves: 1 });
+
+    cleanup();
+    note('one shared "keydown" DOM listener serves both attributes; ' +
+      'each variant does its own closest() lookup and key filter');
+  }
+
+  // ── 6. data-lime-ignore: new event types are still discarded ──────────────
+  group('data-lime-ignore: keyup/dblclick/keydown-enter from an ignored subtree are discarded');
+  {
+    const store = createStore({});
+    const target = document.createElement('div');
+    let calls = 0;
+
+    const cleanup = mount('mod-ignored', {}, target, store, {
+      handlers: {
+        handleKeyup()    { calls++; },
+        handleDblclick() { calls++; },
+        save()           { calls++; },
+      },
+    });
+
+    const input = target.querySelector('input');
+    key(input, 'keyup', 'a');
+    key(input, 'keydown', 'Enter');
+    target.querySelector('button')
+      .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+
+    assert('no handler fired from the ignored subtree', calls, 0);
+
+    cleanup();
+  }
+
+  // ── 7. unknown modifier: UNKNOWN_KEY_MODIFIER fires exactly once ──────────
+  group('unknown modifier: data-on-keydown-foo → UNKNOWN_KEY_MODIFIER warning, attribute inert');
+  {
+    // The bogus template is added to the document ONLY for this test —
+    // collectUsedEventTypes scans ALL templates on every mount, so leaving
+    // it in from the start would emit the warning once per mount above.
+    const badTpl = document.createElement('template');
+    badTpl.id = 'tpl-mod-bad';
+    badTpl.innerHTML = '<div><input data-on-keydown-foo="whatever"></div>';
+    document.body.appendChild(badTpl);
+
+    const store = createStore({});
+    const target = document.createElement('div');
+    let threw = false;
+    let bogusCalls = 0;
+
+    let cleanup = () => {};
+    try {
+      cleanup = mount('mod-bad', {}, target, store, { handlers: { whatever() { bogusCalls++; } } });
+      key(target.querySelector('input'), 'keydown', 'f');
+      key(target.querySelector('input'), 'keydown', 'Enter');
+    } catch { threw = true; }
+
+    assert('no crash', threw, false);
+    assert('UNKNOWN_KEY_MODIFIER warned exactly once', warnCounts.UNKNOWN_KEY_MODIFIER, 1);
+    assert('the attribute is inert (handler never called)', bogusCalls, 0);
+
+    cleanup();
+    badTpl.remove();
+  }
+
+  // ── 8. zero unexpected warnings across the whole run ──────────────────────
+  group('warning hygiene: zero unexpected warnings across the whole run');
+  {
+    // MOUNT_LEGACY_SIGNATURE is expected exactly once: this file's mounts use
+    // the legacy positional signature, which emits a one-time deprecation
+    // notice on the FIRST mount (see index.js / mount-options-test.html).
+    const unexpected = Object.entries(warnCounts)
+      .filter(([code]) => code !== 'UNKNOWN_KEY_MODIFIER' && code !== 'MOUNT_LEGACY_SIGNATURE');
+    assert('no unexpected [lime-csr] warning was emitted', unexpected, []);
+    assert('legacy-signature notice fired exactly once', warnCounts.MOUNT_LEGACY_SIGNATURE, 1);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  console.warn = realWarn;
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

@@ -61,7 +61,7 @@ as long as your browser allows local module imports), and it runs.
     import { createStore, mount } from './src/index.js';
 
     const store = createStore({});
-    mount('hello', { name: 'World' }, document.getElementById('app'), store);
+    mount('hello', { target: document.getElementById('app'), context: { name: 'World' }, store });
   </script>
 </body>
 </html>
@@ -99,7 +99,7 @@ DOM; with `data-live`, they subscribe to the store and re-run on change.
 ### Engine flow
 
 ```
-mount(name, context, target, store, options)
+mount(name, { target, context, store, ... })
         │
         ▼
 ┌────────────────────────────┐
@@ -182,7 +182,7 @@ extra escaping.
 </template>
 ```
 ```js
-mount('card', { user: { name: 'Ada', role: 'Engineer' } }, target, store);
+mount('card', { target, store, context: { user: { name: 'Ada', role: 'Engineer' } } });
 ```
 
 **⚠ Common mistakes**
@@ -193,7 +193,7 @@ WRONG:  <p>${count + 1}</p>
 
 RIGHT:  <p>${incrementedCount}</p>
         -- Compute it in JS first and put the result in context:
-           mount('page', { incrementedCount: count + 1 }, target, store)
+           mount('page', { target, store, context: { incrementedCount: count + 1 } })
 ```
 ```
 WRONG:  <span>${user.name}</span>
@@ -234,19 +234,19 @@ together. `null`/`undefined` render as an empty string.
 ```
 ```js
 const store = createStore({ likeCount: 12 });
-mount('page', {}, target, store);
+mount('page', { target, store });
 store.set('likeCount', 13); // the span updates automatically
 ```
 
 **⚠ Common mistakes**
 ```
 WRONG:  <span data-text="post.title"></span>
-        mount('page', { post: { title: 'Hello' } }, target, store);
+        mount('page', { target, store, context: { post: { title: 'Hello' } } });
         -- Renders empty. data-text ALWAYS reads from the STORE, never
            context — "post" only exists in context here, not in the store.
 
 RIGHT:  const store = createStore({ post: { title: 'Hello' } });
-        mount('page', {}, target, store);
+        mount('page', { target, store });
         <span data-text="post.title"></span>
         -- Put reactive data in the store. If it's genuinely static and
            never needs to change, use ${post.title} (§3.1) instead.
@@ -443,7 +443,8 @@ RIGHT:  store.set('todos', [...store.get('todos'), newTodo]);
 
 ### 3.5 `data-show` — visibility toggle
 
-Shows/hides an element via CSS `display`, without ever removing it from the DOM.
+Shows/hides an element with the native `hidden` attribute, without ever
+removing it from the DOM.
 
 **Syntax**
 ```html
@@ -455,15 +456,27 @@ Shows/hides an element via CSS `display`, without ever removing it from the DOM.
   warning.
 
 **Behavior**
-The element is visible if `store.get(path)` is truthy, `display:none` if
-falsy — always reactive (there's no static/one-time variant; if you want
-that, just write plain CSS). The element's inline `display` value **at
-setup time** is captured once (`originalDisplay`); the "show" state always
-restores exactly that value — so it never hardcodes `display:block` and
-breaks a `flex`/`grid`/`inline-block` layout. Runs before the fragment is
-appended to the DOM, so if the initial value is falsy, the element is
-already hidden before it's ever visible — no flash of unstyled/unhidden
-content (FOUC).
+When `store.get(path)` is falsy Lime adds `hidden`; when it is truthy Lime
+removes `hidden`. `data-show` becomes authoritative after binding, including
+when the template initially contains `hidden`. It is always reactive (there's
+no static/one-time variant; for that, use ordinary HTML/CSS).
+
+Lime never reads, clears, overwrites, remembers, or restores inline
+`style.display`. Application styles and the browser remain responsible for the
+visible layout, so `display:grid`, `display:flex`, and stylesheet-derived
+layouts survive every visibility transition unchanged. Lime installs at most
+one scoped rule per document when a managed `data-show` binding is present:
+
+```css
+[data-show][hidden] { display: none !important; }
+```
+
+The scope prevents a utility such as `.d-flex { display:flex !important; }`
+from keeping a hidden Lime-managed element visible without changing global
+`[hidden]` behavior or arbitrary application styles. The rule is installed
+before mounted content is appended, and the initial `hidden` state is also
+applied while the fragment is detached, preventing an initial visibility
+flash (FOUC).
 
 Unlike `<if data-live>` (§3.7), the element is **never removed** — its DOM
 identity, any input values inside it, scroll position, and CSS transition
@@ -472,7 +485,7 @@ and tabs.
 
 **Example**
 ```html
-<div class="modal" data-show="isModalOpen" style="display:flex">
+<div class="d-flex" data-show="visible">
   <input type="text" placeholder="stays intact across toggles">
 </div>
 ```
@@ -489,7 +502,7 @@ RIGHT:  store.computed('hasCount', ['count'], () => store.get('count') > 0);
 ```
 ```
 WRONG:  <div data-show="user.name"></div>
-        mount('page', { user: { name: 'Ada' } }, target, store);
+        mount('page', { target, store, context: { user: { name: 'Ada' } } });
         -- Renders hidden. data-show reads from the STORE, never context.
 
 RIGHT:  const store = createStore({ user: { name: 'Ada' } });
@@ -706,7 +719,7 @@ and `<for>` is removed.
 WRONG:  <for each="items" as="item">
           <li><span data-text="item.name"></span></li>
         </for>
-        mount('page', {}, target, store);
+        mount('page', { target, store });
         -- data-text attempts to read from the store, but static <for> only
            binds "item" in the static context. Inside the store, there is
            no path named "item.name" -> renders empty.
@@ -922,14 +935,61 @@ handler dictionary — never an expression.
 **Syntax**
 ```html
 <button data-on-click="handlerName">...</button>
+<input data-on-keydown-enter="save">  <!-- key-modified form -->
 ```
 
 **Parameters**
-- `data-on-{event}`: `{event}` must be one of `click`, `input`, `change`,
-  `submit`, `keydown`. Anything else → `UNKNOWN_EVENT` warning, ignored.
+- `data-on-{event}`: `{event}` must be one of the supported events below.
+  Anything else → `UNKNOWN_EVENT` warning, ignored.
 - The attribute VALUE is a **key** looked up in the `handlers` dictionary
-  passed to `mount()`'s 5th argument (`{ handlers: { handlerName(event, el) {...} } }`).
+  passed in `mount()`'s options (`{ handlers: { handlerName(event, el) {...} } }`).
   Not found at click-time → `HANDLER_NOT_FOUND` warning, no crash.
+
+**Supported events**
+
+| Attribute | DOM event | Notes |
+|---|---|---|
+| `data-on-click` | `click` | |
+| `data-on-dblclick` | `dblclick` | |
+| `data-on-input` | `input` | |
+| `data-on-change` | `change` | |
+| `data-on-submit` | `submit` | ALWAYS calls `preventDefault()` |
+| `data-on-keydown` | `keydown` | fires for EVERY key; accepts a `-{key}` modifier |
+| `data-on-keyup` | `keyup` | fires for EVERY key; accepts a `-{key}` modifier |
+
+`focus`/`blur`/`mouseenter`/`mouseleave` are deliberately unsupported — they
+don't bubble, so the single-delegated-listener design can't catch them.
+
+**Key modifiers** — `keydown`/`keyup` only
+
+`data-on-keydown-{key}` / `data-on-keyup-{key}` call the handler ONLY when
+`event.key` matches the modifier; any other key silently does nothing. This
+is the eval-free counterpart of Alpine's `x-on:keydown.enter` /
+`@keydown.enter` — the modifier filters the key, the attribute value stays a
+handler NAME. The modifier is matched case-insensitively and maps to
+`event.key` as follows:
+
+| Modifier | `event.key` | Modifier | `event.key` |
+|---|---|---|---|
+| `enter` | `Enter` | `up` | `ArrowUp` |
+| `escape` | `Escape` | `down` | `ArrowDown` |
+| `space` | `' '` (a space) | `left` | `ArrowLeft` |
+| `tab` | `Tab` | `right` | `ArrowRight` |
+| `delete` | `Delete` | `backspace` | `Backspace` |
+
+Any other modifier (`data-on-keydown-foo`) → `UNKNOWN_KEY_MODIFIER` warning,
+and the attribute is inert. Unmodified `data-on-keydown`/`data-on-keyup`
+keeps firing for every key, and modified + unmodified attributes may coexist
+on the same element — each is evaluated independently:
+
+```html
+<input data-on-keydown="draft" data-on-keydown-enter="save" data-on-keydown-escape="cancel">
+<!-- every key → draft; Enter additionally → save; Escape additionally → cancel -->
+```
+
+Under the hood the modifier is parsed from the ATTRIBUTE name only — the
+delegated DOM listener is always the base `keydown`/`keyup` type, shared by
+all modified and unmodified variants.
 
 **Behavior**
 **Delegation, not per-element listeners**: ONE listener is set up per event
@@ -952,7 +1012,8 @@ never set up (zero cost).
 <button data-on-click="deleteItem" data-id="42">Delete</button>
 ```
 ```js
-mount('page', ctx, target, store, {
+mount('page', {
+  target, store, context: ctx,
   handlers: {
     deleteItem(event, el) {
       const id = el.dataset.id; // "42"
@@ -970,9 +1031,20 @@ WRONG:  <button data-on-click="count++">Increment</button>
            never be found (HANDLER_NOT_FOUND).
 
 RIGHT:  <button data-on-click="increment">Increment</button>
-        mount('page', ctx, target, store, {
+        mount('page', {
+          target, store, context: ctx,
           handlers: { increment(e, el) { store.update('count', (v) => v + 1); } },
         });
+```
+```
+WRONG:  <input data-on-enter="save">
+        -- A modifier without a base event. "enter" is not an event type
+           (UNKNOWN_EVENT); the key modifier always rides on keydown or
+           keyup.
+
+RIGHT:  <input data-on-keydown-enter="save">
+        -- base event (keydown) + key modifier (enter): the "save" handler
+           fires only when event.key === 'Enter'.
 ```
 
 ---
@@ -1031,7 +1103,7 @@ embedding third-party widgets that manage their own DOM and data-* attributes.
 ```
 ```js
 const store = createStore({ email: '', name: '' });
-mount('contact-form', {}, target, store, { handlers: { submitForm() { /* ... */ } } });
+mount('contact-form', { target, store, handlers: { submitForm() { /* ... */ } } });
 ```
 
 **⚠ Common mistakes**
@@ -1074,7 +1146,8 @@ RIGHT:  <span title="{msg}" data-msg="msg"></span>
 const store = createStore({ count: 0, user: { name: 'Ada' } });
 ```
 `initialState` (object, optional, default `{}`) is held **by reference**,
-not copied. Returns a `Store` object with `get`/`set`/`update`/`subscribe`/`computed`.
+not copied. Returns a `Store` object with
+`get`/`set`/`update`/`subscribe`/`computed`/`batch`.
 
 ### 4.2 `store.get(path)` → value
 
@@ -1143,7 +1216,11 @@ unsubscribe(); // cancels; once the last subscriber on a path is gone, that
 `callback(currentValue, previousValue, changedPath)`. Fires on both upward
 and downward notification (see §4.3) — `changedPath` tells you exactly
 which `store.set()` call triggered this particular invocation, which may
-differ from the `path` you subscribed to.
+differ from the `path` you subscribed to. `previousValue` is only passed
+when `changedPath` equals the path you subscribed to (an exact-path
+notification); on ancestor/descendant notifications it is `undefined` —
+the changed path's old value would be misleading as "your" previous value,
+and the store doesn't snapshot every subscriber's path before a write.
 
 ### 4.6 `store.computed(path, deps, fn)` → dispose function
 
@@ -1163,6 +1240,14 @@ the SAME path while it's already running, the reentrant call is swallowed
 — no stack overflow. Calling `store.set()` directly on a computed path
 still works (isn't blocked) but issues a `COMPUTED_MANUAL_SET` warning —
 the manually-set value is silently overwritten the next time any dep changes.
+
+**`dispose()`** cancels every dep subscription AND deletes the computed
+value from state — `store.get(path)` returns `undefined` afterwards, no
+ghost value remains. The deletion emits no notification (disposal is
+teardown, not a state change). Tip: computeds that should live exactly as
+long as a mounted component are better declared via `mount()`'s `computed`
+option ([§5.1](#51-mounttemplatename-options--cleanup-function)), which
+calls `dispose()` for you on `cleanup()`/`unmount()`.
 
 **⚠ Common mistakes**
 ```
@@ -1184,35 +1269,149 @@ RIGHT:  store.computed('remaining', ['todos'],
         // correct automatically — one definition, no duplication.
 ```
 
+### 4.7 `store.batch(fn)` → void
+
+```js
+store.batch(() => {
+  store.set('firstName', 'Ada');
+  store.set('lastName', 'Lovelace');
+  store.set('firstName', 'Grace'); // same path again — still ONE notify
+});
+// ← the coalesced flush happens HERE, when fn returns
+```
+Runs `fn` synchronously; every `store.set()` inside it queues its
+notification instead of firing immediately, and when `fn` returns the queue
+is flushed as **one wave, deduplicated by path** — each changed path
+notifies its subscribers exactly once, no matter how many times it was set.
+Within a wave each subscriber callback also runs at most once, even if it
+listens to several of the changed paths — a `computed` whose deps ALL
+changed in the batch recomputes a single time.
+Repeated sets to the same path keep the FIRST `previousValue`, so from a
+subscriber's point of view the whole batch is a single before→after
+transition. The state itself is written immediately as usual — `store.get()`
+inside the batch always sees the latest value; only *notification* is
+deferred. **Nested** `batch()` calls are safe: only the outermost exit
+flushes. `fn` **throwing** still flushes (the error propagates afterwards).
+Notifications triggered *during* the flush (e.g. a `computed` recomputing
+because its dep was in the batch) are collected into a next wave; after 100
+waves a `BATCH_FLUSH_LIMIT` warning fires and the queue is dropped —
+usually two subscribers setting each other's paths.
+
+The payoff is with expensive subscribers — a keyed `<for data-live>`
+reconcile, an `<if data-live>` teardown/rebuild, a chain of computeds:
+
+```js
+store.computed('summary', ['todos', 'filter'],
+  () => summarize(store.get('todos'), store.get('filter')));
+
+store.batch(() => {
+  store.set('todos', nextTodos);
+  store.set('filter', 'active');
+});
+// "summary" recomputes ONCE (and any <for data-live each="todos">
+// reconciles once) — without batch() it would run once per set.
+```
+
+**⚠ Common mistakes**
+```
+WRONG:  store.batch(async () => {
+          store.set('status', 'loading');
+          const data = await fetch('/api').then(r => r.json());
+          store.set('items', data);      // NOT batched!
+        });
+        -- batch() is SYNCHRONOUS. It flushes when fn returns, and an async
+           fn "returns" (its promise) at the first await — everything after
+           the await runs later, outside the batch, notifying per-set as
+           usual. batch() doesn't await anything (it returns void).
+
+RIGHT:  store.set('status', 'loading');
+        const data = await fetch('/api').then(r => r.json());
+        store.batch(() => {              // batch only the sync burst of sets
+          store.set('items', data);
+          store.set('status', 'ready');
+        });
+```
+
 ---
 
 ## 5. Mount API
 
 `import { mount, unmount, render } from './src/index.js';`
 
-### 5.1 `mount(templateName, context, target, store, options?)` → cleanup function
+### 5.1 `mount(templateName, options)` → cleanup function
 
 ```js
-const cleanup = mount('page', { pageTitle: 'Hi' }, document.getElementById('app'), store, {
+const cleanup = mount('page', {
+  target: document.getElementById('app'),  // required — also selects this signature
+  context: { pageTitle: 'Hi' },            // optional, default {}
+  store,                                    // optional
   handlers: { deleteItem(e, el) { /* ... */ } },
+  computed: {                               // optional — mount-scoped computeds
+    remaining: { deps: ['todos'], fn: () => store.get('todos').filter(t => !t.done).length },
+  },
   beforeRender(context, store) { /* ... */ },
   afterRender(rootEl, store) { /* ... */ },
 });
 ```
 
-| Argument | Type | Notes |
+| Option | Type | Notes |
 |---|---|---|
-| `templateName` | string | Looked up as `<template id="tpl-{templateName}">`. Not found → `MOUNT_TEMPLATE_NOT_FOUND` warning, mount is a no-op (returns a no-op cleanup). |
-| `context` | object | Static data for `${path}`. |
-| `target` | Element | Where the rendered content is appended. |
-| `store` | `Store` \| `null` | `createStore(...)`. If `null`, all reactive features (`data-text`, `data-model`, `<if data-live>`, ...) are simply skipped — only static content renders. |
-| `options.handlers` | object, optional | See [§3.11](#311-data-on---event-handling) and [§6](#6-lifecycle-hooks) — also used for block-level `data-after`/`data-before`. |
-| `options.beforeRender` | `(context, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
-| `options.afterRender` | `(rootEl, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
+| `templateName` (1st arg) | string | Looked up as `<template id="tpl-{templateName}">`. Not found → `MOUNT_TEMPLATE_NOT_FOUND` warning, mount is a no-op (returns a no-op cleanup). |
+| `target` | Element, **required** | Where the rendered content is appended. The presence of this key on the 2nd argument is what selects the options-object signature. |
+| `context` | object, optional (`{}`) | Static data for `${path}`. |
+| `store` | `Store`, optional | `createStore(...)`. Omitted → all reactive features (`data-text`, `data-model`, `<if data-live>`, ...) are simply skipped — only static content renders. |
+| `handlers` | object, optional | See [§3.11](#311-data-on---event-handling) and [§6](#6-lifecycle-hooks) — also used for block-level `data-after`/`data-before`. |
+| `computed` | object, optional | Mount-scoped computeds — see below. Requires `store`; given without one → `COMPUTED_WITHOUT_STORE` warning, skipped. |
+| `beforeRender` | `(context, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
+| `afterRender` | `(rootEl, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
 
 Calling `mount()` again on a `target` that's already mounted automatically
 runs the previous mount's cleanup and clears `target` first — this is how
 you switch pages/components on the same root element.
+
+**Mount-scoped computeds** — the `computed` option maps
+`path → { deps, fn }`; each entry is registered via
+[`store.computed()`](#46-storecomputedpath-deps-fn--dispose-function) when the
+mount happens, and — the point of the option — its dispose is tied to the
+mount's lifecycle: `cleanup()`/`unmount()` automatically stops the recomputes
+AND removes the computed values from state (see §4.6 dispose semantics). No
+manual dispose bookkeeping, no leaked subscriptions, no ghost values:
+
+```js
+const cleanup = mount('todo-page', {
+  target, store,
+  computed: {
+    remaining: { deps: ['todos'], fn: () => store.get('todos').filter(t => !t.done).length },
+  },
+});
+// <span data-text="remaining"> updates on every todos change...
+cleanup(); // ...and "remaining" stops recomputing AND is deleted from state
+```
+
+**⚠ Common mistakes**
+```
+WRONG:  mount('page', { target, context: ctx, store }, undefined, undefined, {
+          handlers: { save() { /* ... */ } },
+        });
+        -- Mixing the styles. With the options-object signature EVERYTHING
+           lives in the 2nd argument; the positional 5th argument is part of
+           the legacy signature and is ignored here — these handlers are
+           never registered.
+
+RIGHT:  mount('page', { target, context: ctx, store, handlers: { save() { /* ... */ } } });
+```
+
+#### Legacy signature (deprecated)
+
+```js
+mount(templateName, context, target, store, options?) // context/target/store positional
+```
+The original positional form. Still fully supported — every existing call
+keeps working identically — but it emits a one-time (per page load)
+`MOUNT_LEGACY_SIGNATURE` dev-mode notice pointing at the options-object
+signature. The two styles are distinguished by the 2nd argument: a plain
+object carrying a `target` key is the options object; anything else is a
+legacy `context`. New code should use the options-object signature.
 
 ### 5.2 `unmount(target)`
 
@@ -1262,7 +1461,8 @@ Two independent hook systems exist, at two different scopes:
 ### 6.1 Mount-level: `beforeRender` / `afterRender`
 
 ```js
-mount('page', ctx, target, store, {
+mount('page', {
+  target, store, context: ctx,
   beforeRender(context, store) {
     context.injected = 'value';       // mutating context here is visible
                                         // to the pipeline that runs next
@@ -1291,7 +1491,8 @@ either is a complete no-op (no warning, no cost).
 </for>
 ```
 ```js
-mount('page', ctx, target, store, {
+mount('page', {
+  target, store, context: ctx,
   handlers: {
     initChart(rootEl, store) { /* rootEl is the el="div" container */ },
     destroyChart(rootEl, store) { /* rootEl still in the DOM here */ },
@@ -1333,17 +1534,41 @@ the DOM node is actually removed. See [§8](#8-known-limitations).
 
 ## 7. Error codes
 
-All dev-mode warnings go through `errors.js`'s single `warn()` function —
-format: `console.warn('[lime-csr] CODE: message', context?)`. **Default:
-ON.** `setDevMode(false)` silences everything completely (no warnings are
-ever printed, the page never crashes either way — dev-mode only controls
-whether you're TOLD about a problem, not whether the engine degrades
-safely from it).
+Diagnostics are structured and non-throwing. Every diagnostic goes through
+`errors.js`'s single `warn(code, message, context)` function and can be
+observed with the public `subscribeDiagnostics(listener)` API. Each listener
+receives a stable `{ code, message, context }` object; `context` is the
+original optional value and DOM nodes are not serialized.
+
+Subscribers run in production and development. Development mode controls only
+Lime's own presentation: with dev mode enabled, Lime also calls
+`console.warn('[lime-csr] CODE: message', context?)` and shows the visual
+overlay. `setDevMode(false)` suppresses that console output and overlay but
+does not suppress subscribed applications. Consumers decide which codes map
+to their own loading or error UI; diagnostics are not exceptions and are not
+all necessarily fatal. Listener failures never stop Lime or other listeners.
+Unsubscribe listeners when they are no longer needed.
 
 ```js
-import { setDevMode, isDevMode } from './src/index.js';
-setDevMode(false); // production: silent
-isDevMode();        // → false
+import {
+  mount,
+  setDevMode,
+  subscribeDiagnostics,
+} from 'lime-csr-js';
+
+setDevMode(false);
+
+const unsubscribe = subscribeDiagnostics(({ code, message }) => {
+  if (code === 'MOUNT_TEMPLATE_NOT_FOUND') {
+    showApplicationStartupError(code, message);
+  }
+});
+
+const cleanup = mount('app', {}, target, store);
+
+// Later:
+unsubscribe();
+cleanup();
 ```
 
 | Code | When it fires | Suggested fix |
@@ -1368,7 +1593,8 @@ isDevMode();        // → false
 | `MODEL_MISSING_PATH` | `data-model=""` (empty) | Give it a store path |
 | `TABLE_FOSTER_PARENTING` | A special tag inside `<table>` looks like it got relocated by the HTML parser | Move the tag outside `<table>`, or wrap the row-producing content in a `<partial>` called from outside the table |
 | `SHOW_MISSING_PATH` | `data-show=""` (empty) | Give it a store path |
-| `UNKNOWN_EVENT` | `data-on-{event}` uses an unsupported event type | Use one of `click`/`input`/`change`/`submit`/`keydown` |
+| `UNKNOWN_EVENT` | `data-on-{event}` uses an unsupported event type | Use one of `click`/`dblclick`/`input`/`change`/`submit`/`keydown`/`keyup` |
+| `UNKNOWN_KEY_MODIFIER` | `data-on-keydown-{key}`/`data-on-keyup-{key}` uses an unsupported key modifier | Use one of `enter`/`escape`/`space`/`tab`/`up`/`down`/`left`/`right`/`delete`/`backspace` (§3.11) |
 | `HANDLER_NOT_FOUND` | `data-on-*`'s handler name isn't in `handlers` | Define it in the `handlers` object passed to `mount()` |
 | `RESERVED_ATTR_NAME` | A `{x}`/`data-x` placeholder used a reserved name | Rename it — reserved: `text`, `model`, `show`, `live`, `ref`, `diff`, anything starting with `on-` |
 | `INDEXED_MODEL_PATH` | `data-model` contains a numeric path segment (e.g. `items.0.name`) | Use `<for data-live key>` + bind to a per-item-addressable store location instead of an array index |
@@ -1377,6 +1603,10 @@ isDevMode();        // → false
 | `UNKNOWN_DIFF_STRATEGY` | `data-diff` has a value other than `simple`/`lcs`/`replace` | Use one of those three, or omit the attribute for the default |
 | `BLOCK_AFTER_NOT_FOUND` | `data-after`'s handler name isn't in `handlers` | Define it in the `handlers` object passed to `mount()` |
 | `BLOCK_BEFORE_NOT_FOUND` | `data-before`'s handler name isn't in `handlers` | Define it in the `handlers` object passed to `mount()` |
+| `BATCH_FLUSH_LIMIT` | `store.batch()`'s flush hit the 100-wave limit; pending notifications were dropped | Two subscribers are probably setting each other's paths — break the cycle (often with a `store.computed()` instead of mutual `set`s) |
+| `MOUNT_LEGACY_SIGNATURE` | `mount()` was called with the legacy positional signature (one-time notice per page load) | Migrate to `mount(name, { target, context, store, handlers, computed })` (§5.1) — the legacy form keeps working |
+| `COMPUTED_WITHOUT_STORE` | `mount()`'s `computed` option was given without a `store` | Pass a `store` in the same options object; without one there is nothing to register the computeds on |
+| `PATH_CLOBBER` | `store.set()`/`setByPath` replaced a non-object intermediate segment (e.g. `user` was a string when setting `user.name`) with `{}` | Check the path for a typo, or store that segment as an object from the start |
 
 ---
 
@@ -1451,17 +1681,19 @@ itself) — only `index.js` decides call order.
 | `bindings-events.js` | Event delegation (`data-on-*`) | `setupEventBindings` |
 | `bindings-blocks.js` | Reactive `<if data-live>` (tear-down/rebuild, `el=`, hooks) | `setupLiveIfs` |
 | `bindings-loops.js` | Reactive `<for data-live key>` (key-based diff, `data-diff`, `el=`, hooks) | `setupLiveFors` |
-| `errors.js` | dev_mode warning layer — the bottom-most layer | `setDevMode`, `isDevMode`, `warn`, `errors` (namespace) |
+| `errors.js` | Structured diagnostic dispatch and dev-mode presentation — the bottom-most layer | `setDevMode`, `isDevMode`, `subscribeDiagnostics`, `warn`, `errors` (namespace) |
 | `shared.js` | Pure utility helpers: inLiveBlock, inUnexpandedFor, LIS indices computation | `inLiveBlock`, `inUnexpandedFor`, `longestIncreasingSubsequenceIndices` |
 | `index.js` | Orchestration: `render`/`mount`/`unmount` + re-exports of everything above | `render`, `mount`, `unmount`, ... |
 
 ### 9.2 Pipeline order and why
 
 ```
-mount(templateName, context, target, store, options?)
+mount(templateName, { target, context, store, ... })   // or the legacy positional form
   1. options.beforeRender(context, store)
   2. getTemplate(templateName) → fragment (cloneNode(true) from cache)
-  3. render(fragment, context, store, options.handlers):
+  3. options.computed: store.computed(path, deps, fn) per entry
+     (registered BEFORE render so bindings see initial values; disposed by cleanup)
+  4. render(fragment, context, store, options.handlers):
        a. loop until stable: expandPartials → expandLoops → processAllIfs
        b. resolveStatic            (remaining top-level ${path})
        c. setupModelBindings       (data-model)
@@ -1469,9 +1701,9 @@ mount(templateName, context, target, store, options?)
        e. setupShowBindings        (data-show)
        f. setupLiveFors            (<for data-live>)
        g. setupLiveIfs             (<if data-live>)
-  4. target.appendChild(fragment)
-  5. options.afterRender(target, store)
-  6. if options.handlers: setupEventBindings(target, store, handlers)
+  5. target.appendChild(fragment)
+  6. options.afterRender(target, store)
+  7. if options.handlers: setupEventBindings(target, store, handlers)
 ```
 
 - **3a is a LOOP**, not one pass: a `<partial>`'s own template can contain

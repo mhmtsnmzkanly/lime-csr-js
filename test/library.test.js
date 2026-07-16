@@ -94,7 +94,8 @@ test('reactive text, attributes, model, show, live if, and live for update', () 
   assert.equal(target.querySelector('#text').textContent, 'Ada');
   assert.equal(target.querySelector('#link').getAttribute('href'), '/u/Ada');
   assert.equal(target.querySelector('#model').value, 'Ada');
-  assert.equal(target.querySelector('#shown').style.display, 'none');
+  assert.equal(target.querySelector('#shown').hidden, true);
+  assert.equal(target.querySelector('#shown').style.display, '');
   assert.equal(target.querySelector('strong').textContent, 'no');
 
   store.set('name', 'Grace');
@@ -102,6 +103,7 @@ test('reactive text, attributes, model, show, live if, and live for update', () 
   store.set('items', [{ id: 2, label: 'two' }, { id: 1, label: 'one' }]);
   assert.equal(target.querySelector('#text').textContent, 'Grace');
   assert.equal(target.querySelector('#link').getAttribute('href'), '/u/Grace');
+  assert.equal(target.querySelector('#shown').hidden, false);
   assert.equal(target.querySelector('#shown').style.display, '');
   assert.equal(target.querySelector('strong').textContent, 'yes');
   assert.deepEqual([...target.querySelectorAll('.live-item')].map((el) => el.textContent), ['two', 'one']);

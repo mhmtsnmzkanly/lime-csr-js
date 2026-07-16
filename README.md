@@ -44,7 +44,9 @@ import { createStore, mount } from './src/index.js';
   import { createStore, mount } from 'lime-csr-js';
 
   const store = createStore({ count: 0 });
-  mount('counter', {}, document.getElementById('app'), store, {
+  mount('counter', {
+    target: document.getElementById('app'),
+    store,
     handlers: {
       increment() {
         store.update('count', (count) => count + 1);
@@ -56,19 +58,52 @@ import { createStore, mount } from './src/index.js';
 
 ## Core Concepts
 
-- `createStore(initialState)` exposes `get`, `set`, `update`, `subscribe`, and
-  `computed` for path-based reactive state.
+- `createStore(initialState)` exposes `get`, `set`, `update`, `subscribe`,
+  `computed`, and `batch` for path-based reactive state.
 - `${path}` is static interpolation from the context passed to `mount`.
 - `data-text`, `data-model`, `data-show`, and `{x}`/`data-x` read reactively
   from the store.
 - `<if>`, `<for>`, and `<partial>` are structural template elements. Add
   `data-live` to `<if>` or keyed `<for>` blocks when the store should update
   them.
-- `data-on-click`, `data-on-input`, `data-on-change`, `data-on-submit`, and
-  `data-on-keydown` use event delegation and named handler functions.
+- `data-on-click`, `data-on-dblclick`, `data-on-input`, `data-on-change`,
+  `data-on-submit`, `data-on-keydown`, and `data-on-keyup` use event
+  delegation and named handler functions. `data-on-keydown-enter`-style key
+  modifiers restrict keydown/keyup handlers to a single key.
 - `data-lime-ignore` is an escape hatch: any element with this attribute and
   its entire subtree are invisible to the engine, useful for embedding
   third-party widgets (Turnstile, reCAPTCHA, etc.) that manage their own DOM.
+
+`store.batch(fn)` coalesces notifications: every `store.set()` inside the
+synchronous `fn` is queued, and when `fn` returns each changed path notifies
+its subscribers exactly once — so expensive subscribers (live-list
+reconciles, computed chains) run once per batch instead of once per set.
+
+```js
+store.batch(() => {
+  store.set('todos', nextTodos);
+  store.set('filter', 'active');
+}); // subscribers (and computeds depending on both) fire once, here
+```
+
+### Visibility with `data-show`
+
+`data-show="path"` keeps its element in the DOM and manages the native
+`hidden` attribute: a falsy store value adds `hidden`, and a truthy value
+removes it. Lime never changes inline `style.display`; application CSS remains
+responsible for the visible layout. A single scoped runtime rule,
+`[data-show][hidden] { display: none !important; }`, ensures display utility
+classes cannot override the hidden state:
+
+```html
+<div class="d-flex" data-show="visible">
+  <input value="DOM identity and form state are preserved">
+</div>
+```
+
+Unlike `<if data-live>`, `data-show` never removes or rebuilds the node, so
+DOM identity, input values, listeners, subscriptions, and scroll state survive
+visibility changes.
 
 See [DOCS.md](DOCS.md) for all syntax, lifecycle semantics, error codes, and
 limitations.
@@ -93,14 +128,48 @@ ESM; jsDelivr will serve that same file after npm publication.
 ## API Overview
 
 ```js
-const cleanup = mount(templateName, context, target, store, options);
+const cleanup = mount(templateName, { target, context, store, handlers, computed });
 unmount(target);
 cleanup();
 ```
 
-Calling `mount` again for the same target cleans up the previous mount first.
-Both `cleanup()` and `unmount(target)` cancel store subscriptions, model
-listeners, and delegated event listeners.
+The legacy positional signature
+`mount(templateName, context, target, store, options)` still works but is
+deprecated (one-time dev-mode notice). Calling `mount` again for the same
+target cleans up the previous mount first. Both `cleanup()` and
+`unmount(target)` cancel store subscriptions, model listeners, delegated
+event listeners, and dispose any `computed` entries registered by the mount.
+
+### Structured diagnostics
+
+`subscribeDiagnostics(listener)` observes structured, non-throwing Lime
+diagnostics in both production and development. `setDevMode(false)` disables
+only Lime's own `console.warn` and visual overlay; subscribers still receive
+`{ code, message, context }`. Applications may map selected codes to their own
+loading or error UI without treating every diagnostic as fatal. Unsubscribe
+when the listener is no longer needed.
+
+```js
+import {
+  mount,
+  setDevMode,
+  subscribeDiagnostics,
+} from 'lime-csr-js';
+
+setDevMode(false);
+
+const unsubscribe = subscribeDiagnostics(({ code, message }) => {
+  if (code === 'MOUNT_TEMPLATE_NOT_FOUND') {
+    showApplicationStartupError(code, message);
+  }
+});
+
+const cleanup = mount('app', {}, target, store);
+
+// Later:
+unsubscribe();
+cleanup();
+```
 
 ## Examples
 

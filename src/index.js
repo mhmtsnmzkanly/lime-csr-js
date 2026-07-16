@@ -13,7 +13,7 @@
  *   5. resolveStatic  -- resolve remaining ${path} placeholders (top-level static).
  *   6. setupModelBindings -- data-model two-way form binding. RUNS FIRST (2h).
  *   7. setupBindings  -- data-text + {x}/data-x reactive bindings.
- *   8. setupShowBindings  -- data-show reactive visibility (display toggle).
+ *   8. setupShowBindings  -- data-show reactive native hidden-state binding.
  *   (6-8 order matters for 2h: data-model runs before data-on-* handlers)
  *   9. afterRender(rootEl, store)    -- lifecycle hook (optional, from mount options)
  *
@@ -98,7 +98,7 @@ export { setupBindings } from './bindings.js';
 export { setupModelBindings } from './bindings-model.js';
 export { setupShowBindings } from './bindings-show.js';
 export { setupEventBindings } from './bindings-events.js';
-export { setDevMode, isDevMode, warn } from './errors.js';
+export { setDevMode, isDevMode, subscribeDiagnostics, warn } from './errors.js';
 export { setupLiveIfs } from './bindings-blocks.js';
 export { setupLiveFors } from './bindings-loops.js';
 
@@ -108,6 +108,27 @@ const MAX_PIPELINE_ITERATIONS = 100;
 // ── Last cleanup record per target ───────────────────────────────────────────
 // WeakMap: automatically cleaned up when the target element is GC'd.
 const mountedTargets = new WeakMap();
+
+// ── Legacy mount() signature notice — fired at most once per page load ──────
+let legacySignatureWarned = false;
+
+/**
+ * Distinguishes mount()'s options-object call style from the legacy
+ * positional one, by the SECOND argument.
+ *
+ * Rule: a plain object carrying a `target` property is the options object —
+ * `target` is the one option every new-style call must provide, and a legacy
+ * `context` object has no reason to carry that key. Presence of the key is
+ * the discriminator (not its validity): an invalid `target` in the options
+ * object then fails on the exact same code path as an invalid positional
+ * `target` — the two styles share all downstream behavior.
+ *
+ * @param {*} value - mount()'s second argument
+ * @returns {boolean}
+ */
+function isMountOptions(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && 'target' in value;
+}
 
 
 
@@ -178,9 +199,12 @@ function runPipeline(frag, ctx, depth = 0) {
  *   for block-level data-after/data-before hooks (bindings-blocks.js/
  *   bindings-loops.js, evaluated here). Optional; omitting it just means
  *   data-after/data-before are skipped with a dev-mode warning if referenced.
+ * @param {Document} [ownerDocument] - Destination document for shared runtime
+ *   resources. mount() supplies target.ownerDocument; recursive live renders
+ *   retain the same document.
  * @returns {function(): void} cleanup — cancels the subscriptions from setupBindings
  */
-export function render(fragment, context, store, handlers) {
+export function render(fragment, context, store, handlers, ownerDocument) {
   // 1-3. Structural expansion: loop until no partial/for/non-live-if remains.
   //      <if>s with data-live are PRESERVED at this stage — left to setupLiveIfs.
   runPipeline(fragment, context);
@@ -203,7 +227,15 @@ export function render(fragment, context, store, handlers) {
   // 5d. Reactive visibility (data-show). RUNS BEFORE DOM APPEND so the
   //     initial state has no FOUC (see bindings-show.js).
   //     Same live-block skipping rule; order vs. 5b/5c does not matter.
-  const showCleanup = store ? setupShowBindings(fragment, store) : () => {};
+  const rootDocument = fragment.ownerDocument;
+  const visibilityDocument = ownerDocument ?? (rootDocument?.head ? rootDocument : document);
+  const showCleanup = store ? setupShowBindings(fragment, store, visibilityDocument) : () => {};
+
+  // Recursive live-block fragments must install shared resources in the same
+  // destination document as the initial mount, even when cloned template
+  // content reports an inert owner document.
+  const recursiveRender = (liveFragment, liveContext, liveStore, liveHandlers) =>
+    render(liveFragment, liveContext, liveStore, liveHandlers, visibilityDocument);
 
   // 6. Reactive <for data-live>: key-based diff + identity preservation.
   //    ORDER CRITICAL: setupLiveFors runs first. <if data-live> inside a
@@ -213,14 +245,14 @@ export function render(fragment, context, store, handlers) {
   //    module's own recursive renderFn(...) calls also forward it, since
   //    render() itself accepts (and needs) a 4th `handlers` argument.
   const liveForCleanup = store
-    ? setupLiveFors(fragment, context, store, render, handlers)
+    ? setupLiveFors(fragment, context, store, recursiveRender, handlers)
     : () => {};
 
   // 7. Reactive <if data-live>: tear-down/rebuild + branch cleanup.
   //    render() itself is passed as renderFn; re-called on branch change.
   //    `handlers` is threaded through the same way as setupLiveFors above.
   const liveCleanup = store
-    ? setupLiveIfs(fragment, context, store, render, handlers)
+    ? setupLiveIfs(fragment, context, store, recursiveRender, handlers)
     : () => {};
 
   return function cleanup() {
@@ -237,22 +269,58 @@ export function render(fragment, context, store, handlers) {
  * If called again on the same target: old cleanup runs, content cleared,
  * new content mounted (page/component transition).
  *
+ * PREFERRED SIGNATURE — a single options object as the 2nd argument:
+ *   mount('page', {
+ *     target,    // required Element — also the call-style discriminator
+ *     context,   // optional, default {} — static ${path} data
+ *     store,     // optional — omit and all reactive features are skipped
+ *     handlers,  // optional — event delegation + data-after/data-before
+ *     computed,  // optional — mount-scoped computeds, see below
+ *     beforeRender, afterRender, // optional lifecycle hooks
+ *   });
+ *
+ * LEGACY SIGNATURE (deprecated, still fully supported):
+ *   mount(templateName, context, target, store, options)
+ *   Detected by the 2nd argument NOT carrying a `target` key (see
+ *   isMountOptions). Emits a one-time MOUNT_LEGACY_SIGNATURE dev-mode notice.
+ *
+ * MOUNT-SCOPED COMPUTEDS (options.computed):
+ *   `{ path: { deps: string[], fn: () => * }, ... }` — each entry is
+ *   registered via store.computed() and its dispose is pushed into THIS
+ *   mount's cleanup chain: cleanup()/unmount() automatically stops the
+ *   recomputes AND removes the computed values from state (see
+ *   store.computed's dispose semantics). Requires `store`; `computed`
+ *   without a store → COMPUTED_WITHOUT_STORE warning, registration skipped.
+ *
  * @param {string}                         templateName
- * @param {Object}                         context
- * @param {Element}                        target
- * @param {import('./store.js').Store|null} store
+ * @param {Object}                         context - Legacy: static context.
+ *   New style: the options object (carries `target`).
+ * @param {Element}                        [target] - Legacy style only.
+ * @param {import('./store.js').Store|null} [store] - Legacy style only.
  * @param {{
  *   handlers?: Object<string, function(Event, Element): void>,
+ *   computed?: Object<string, { deps: string[], fn: function(): * }>,
  *   beforeRender?: function(Object, import('./store.js').Store): void,
  *   afterRender?:  function(Element, import('./store.js').Store): void
  * }} [options={}]
  *   handlers: event delegation (bindings-events.js). Omit for zero cost.
+ *   computed: mount-scoped computeds (disposed by cleanup/unmount).
  *   beforeRender(context, store): called BEFORE the render pipeline.
  *   afterRender(rootEl, store):   called AFTER content is appended to target.
- *   Both lifecycle hooks are optional and backward-compatible.
+ *   All optional and backward-compatible.
  * @returns {function(): void} cleanup
  */
 export function mount(templateName, context, target, store, options = {}) {
+  if (isMountOptions(context)) {
+    // New style: the 2nd argument IS the options object. It doubles as
+    // `options` below (handlers/computed/lifecycle hooks are read off it).
+    options = context;
+    ({ context = {}, target, store = null } = options);
+  } else if (!legacySignatureWarned) {
+    legacySignatureWarned = true;
+    errors.mountLegacySignature();
+  }
+
   // If already mounted on this target: cancel old subscriptions and clear content
   const previous = mountedTargets.get(target);
   if (previous) {
@@ -274,7 +342,21 @@ export function mount(templateName, context, target, store, options = {}) {
     return () => {};
   }
 
-  const renderCleanup = render(fragment, context, store, options.handlers);
+  // Mount-scoped computeds: registered AFTER the template check (a failed
+  // mount must not leak registrations) and BEFORE render(), so bindings see
+  // the initial computed values. Disposed in cleanup() below.
+  const computedDisposes = [];
+  if (options.computed) {
+    if (!store) {
+      errors.computedWithoutStore(Object.keys(options.computed));
+    } else {
+      for (const [path, def] of Object.entries(options.computed)) {
+        computedDisposes.push(store.computed(path, def.deps, def.fn));
+      }
+    }
+  }
+
+  const renderCleanup = render(fragment, context, store, options.handlers, target.ownerDocument);
   target.appendChild(fragment);
 
   // 2e: afterRender lifecycle hook (called after content is in the DOM)
@@ -291,6 +373,8 @@ export function mount(templateName, context, target, store, options = {}) {
   const cleanup = function cleanup() {
     renderCleanup();
     eventsCleanup();
+    for (const dispose of computedDisposes) dispose();
+    computedDisposes.length = 0; // guard against double cleanup calls
   };
 
   mountedTargets.set(target, { cleanup });

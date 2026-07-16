@@ -16,17 +16,35 @@
  *   KEY (string) looked up in the `handlers` dictionary. No code is ever
  *   generated from a string and executed; this is fully consistent with the
  *   project-wide "no new Function/eval" principle (see the same principle in
- *   template.js/conditionals.js).
+ *   template.js/conditionals.js). Likewise `data-on-keydown-enter="save"` is
+ *   the eval-free counterpart of Alpine's `x-on:keydown.enter`/`@keydown.enter`
+ *   — the modifier filters on `event.key`, the value stays a dictionary key.
  *
  * SUPPORTED EVENTS (SUPPORTED_EVENTS):
- *   click, input, change, submit, keydown — derived from the attribute name
- *   (`data-on-{event}`). If a type outside this list of 5 is used (e.g.
- *   `data-on-foo`), a dev-mode warning is issued and that attribute is ignored.
+ *   click, dblclick, input, change, submit, keydown, keyup — derived from the
+ *   attribute name (`data-on-{event}`). If a type outside this list of 7 is
+ *   used (e.g. `data-on-foo`), a dev-mode warning is issued and that attribute
+ *   is ignored. focus/blur/mouseenter/mouseleave are DELIBERATELY absent —
+ *   they don't bubble, so root-level delegation can't catch them (they'd need
+ *   capture-phase or per-element listeners; out of scope).
+ *
+ * KEY MODIFIERS (KEY_MODIFIERS) — keydown/keyup ONLY:
+ *   `data-on-keydown-{key}` / `data-on-keyup-{key}` call the handler ONLY
+ *   when `event.key` matches the modifier; any other key silently returns.
+ *   Supported: enter, escape, space, tab, up, down, left, right, delete,
+ *   backspace (case-insensitive; mapped to the corresponding event.key
+ *   values — see the KEY_MODIFIERS map). Unmodified `data-on-keydown` keeps
+ *   firing for EVERY key (backward compatible), and modified + unmodified
+ *   attributes may coexist on one element — each is evaluated independently.
+ *   DELEGATION DETAIL: the modifier is part of the ATTRIBUTE name only; the
+ *   underlying DOM listener is always the base 'keydown'/'keyup' type (no
+ *   bogus 'keydown-enter' event type is ever registered). An unsupported
+ *   modifier (data-on-keydown-foo) → UNKNOWN_KEY_MODIFIER warning, inert.
  *
  * MECHANISM — DELEGATION (not one listener per element):
  *   setupEventBindings sets up ONE listener PER USED EVENT TYPE
  *   (`root.addEventListener(type, ...)`), not per element — and only for the
- *   types actually used, not blindly for all 5 (see collectUsedEventTypes).
+ *   types actually used, not blindly for all 7 (see collectUsedEventTypes).
  *   When an event arrives, the real target is found via
  *   `event.target.closest('[data-on-{type}]')`, the handler name is read
  *   from the attribute, and looked up in the dictionary.
@@ -82,9 +100,63 @@ import { errors } from './errors.js';
 import { inIgnoredBlock } from './shared.js';
 
 /** @type {Set<string>} Event types supported as data-on-{event}. */
-const SUPPORTED_EVENTS = new Set(['click', 'input', 'change', 'submit', 'keydown']);
+const SUPPORTED_EVENTS = new Set(['click', 'dblclick', 'input', 'change', 'submit', 'keydown', 'keyup']);
+
+/** @type {Set<string>} Event types that accept a -{key} modifier suffix. */
+const KEYED_EVENTS = new Set(['keydown', 'keyup']);
+
+/**
+ * @type {Map<string, string>} Modifier suffix (attribute side, lowercase) →
+ * the `event.key` value it must match.
+ */
+const KEY_MODIFIERS = new Map([
+  ['enter', 'Enter'],
+  ['escape', 'Escape'],
+  ['space', ' '],
+  ['tab', 'Tab'],
+  ['up', 'ArrowUp'],
+  ['down', 'ArrowDown'],
+  ['left', 'ArrowLeft'],
+  ['right', 'ArrowRight'],
+  ['delete', 'Delete'],
+  ['backspace', 'Backspace'],
+]);
 
 const EVENT_ATTR_PATTERN = /^data-on-(.+)$/;
+
+/**
+ * Parses the `{event}` part of a `data-on-{event}` attribute name.
+ *
+ * Outcomes:
+ *   - "keydown"        → { type: 'keydown', requiredKey: null }
+ *   - "keydown-enter"  → { type: 'keydown', requiredKey: 'Enter' }
+ *   - "keydown-foo"    → { type: 'keydown', badModifier: 'foo' } (keyed base,
+ *     unknown modifier — caller warns UNKNOWN_KEY_MODIFIER, attribute is inert)
+ *   - "foo" / "click-x" → null (unknown event type — caller warns UNKNOWN_EVENT)
+ *
+ * The modifier is matched case-insensitively (the HTML parser lowercases
+ * attribute names anyway; toLowerCase covers XML/exotic sources too).
+ *
+ * @param {string} eventName - The part after "data-on-"
+ * @returns {{ type: string, requiredKey?: (string|null), badModifier?: string }|null}
+ */
+function parseEventName(eventName) {
+  if (SUPPORTED_EVENTS.has(eventName)) return { type: eventName, requiredKey: null };
+
+  const dashIndex = eventName.indexOf('-');
+  if (dashIndex > 0) {
+    const base = eventName.slice(0, dashIndex);
+    if (KEYED_EVENTS.has(base)) {
+      const modifier = eventName.slice(dashIndex + 1).toLowerCase();
+      if (KEY_MODIFIERS.has(modifier)) {
+        return { type: base, requiredKey: KEY_MODIFIERS.get(modifier) };
+      }
+      return { type: base, badModifier: modifier };
+    }
+  }
+
+  return null;
+}
 
 /**
  * Scans ALL <template> contents on the page and collects the data-on-{event}
@@ -101,12 +173,19 @@ const EVENT_ATTR_PATTERN = /^data-on-(.+)$/;
  *   mutated (see template.js: the cache always returns cloneNode(true)) — so
  *   as written, regardless of which branch/loop/partial they belong to, they
  *   safely surface ALL data-on-* usages. If an unknown (outside
- *   SUPPORTED_EVENTS) type is found, it's warned about here (once, at scan time).
+ *   SUPPORTED_EVENTS) type is found, it's warned about here (once, at scan
+ *   time) — same for an unknown key modifier (data-on-keydown-foo).
  *
- * @returns {Set<string>}
+ * Key modifiers share their base type's entry: data-on-keydown-enter is
+ * registered under 'keydown' as one more ATTRIBUTE variant — never as a
+ * separate DOM event type.
+ *
+ * @returns {Map<string, Map<string, string|null>>}
+ *   base event type → (attribute name in use → required event.key, or null
+ *   for the unmodified fire-on-every-key form)
  */
 function collectUsedEventTypes() {
-  const types = new Set();
+  const types = new Map();
 
   for (const tpl of document.querySelectorAll('template')) {
     for (const el of tpl.content.querySelectorAll('*')) {
@@ -115,11 +194,18 @@ function collectUsedEventTypes() {
         if (!match) continue;
 
         const eventName = match[1];
-        if (SUPPORTED_EVENTS.has(eventName)) {
-          types.add(eventName);
-        } else {
+        const parsed = parseEventName(eventName);
+        if (!parsed) {
           errors.unknownEvent(eventName, Array.from(SUPPORTED_EVENTS), el);
+          continue;
         }
+        if (parsed.badModifier !== undefined) {
+          errors.unknownKeyModifier(eventName, Array.from(KEY_MODIFIERS.keys()), el);
+          continue;
+        }
+
+        if (!types.has(parsed.type)) types.set(parsed.type, new Map());
+        types.get(parsed.type).set(`data-on-${eventName}`, parsed.requiredKey);
       }
     }
   }
@@ -143,30 +229,37 @@ export function setupEventBindings(root, store, handlers) {
   const usedTypes = collectUsedEventTypes();
   const listeners = [];
 
-  for (const type of usedTypes) {
-    const attrName = `data-on-${type}`;
-
+  for (const [type, attrs] of usedTypes) {
+    // ONE DOM listener per base type; every attribute variant in use
+    // (data-on-keydown, data-on-keydown-enter, ...) shares it and is
+    // evaluated independently — its own closest() lookup, its own key filter.
     const onEvent = (event) => {
-      const el = event.target.closest?.(`[${attrName}]`);
-      if (!el || !root.contains(el)) return;
+      for (const [attrName, requiredKey] of attrs) {
+        const el = event.target.closest?.(`[${attrName}]`);
+        if (!el || !root.contains(el)) continue;
 
-      // Skip events from ignored blocks — third-party widget markup
-      if (inIgnoredBlock(el)) return;
+        // Skip events from ignored blocks — third-party widget markup
+        if (inIgnoredBlock(el)) continue;
 
-      // data-on-submit ALWAYS calls preventDefault (see the "MODIFIER"
-      // section in the module JSDoc) — even if the handler isn't found, to
-      // prevent the native submit from reloading the page.
-      if (type === 'submit') event.preventDefault();
+        // Key modifier: the handler fires ONLY when event.key matches;
+        // any other key silently returns (null = unmodified, every key fires)
+        if (requiredKey !== null && event.key !== requiredKey) continue;
 
-      const handlerName = el.getAttribute(attrName);
-      const handler = Object.hasOwn(handlers, handlerName) ? handlers[handlerName] : undefined;
+        // data-on-submit ALWAYS calls preventDefault (see the "MODIFIER"
+        // section in the module JSDoc) — even if the handler isn't found, to
+        // prevent the native submit from reloading the page.
+        if (type === 'submit') event.preventDefault();
 
-      if (!handler) {
-        errors.handlerNotFound(handlerName, Object.keys(handlers), el);
-        return;
+        const handlerName = el.getAttribute(attrName);
+        const handler = Object.hasOwn(handlers, handlerName) ? handlers[handlerName] : undefined;
+
+        if (!handler) {
+          errors.handlerNotFound(handlerName, Object.keys(handlers), el);
+          continue;
+        }
+
+        handler(event, el);
       }
-
-      handler(event, el);
     };
 
     root.addEventListener(type, onEvent);

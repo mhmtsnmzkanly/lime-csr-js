@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr mount options-object — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/index.js — mount() options-object signature + mount-scoped computed tests</h1>
+
+<!-- ═══════════════════════ Template definitions ════════════════════════════ -->
+
+<template id="tpl-opt-basic">
+  <div>
+    <p data-text="msg"></p>
+    <button data-on-click="bump">bump</button>
+  </div>
+</template>
+
+<template id="tpl-opt-computed">
+  <div>
+    <p data-text="fullName"></p>
+  </div>
+</template>
+
+<template id="tpl-opt-static">
+  <div>
+    <p>${title}</p>
+  </div>
+</template>
+
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<script type="module">
+  import { createStore, mount, unmount } from '../src/index.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  // Wrap console.warn for the WHOLE file: count [lime-csr] warnings per code
+  // so the end of the run can assert that no UNEXPECTED warning was emitted.
+  const warnCounts = {};
+  const realWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    const match = /^\[lime-csr\] ([A-Z_]+):/.exec(String(args[0]));
+    if (match) warnCounts[match[1]] = (warnCounts[match[1]] ?? 0) + 1;
+    realWarn(...args);
+  };
+
+  // ── 1. new style: mounts, binds, delegates — and does NOT warn ────────────
+  group('new style: mount(name, { target, store, handlers }) mounts and binds correctly');
+  {
+    const store = createStore({ msg: 'hello' });
+    const target = document.createElement('div');
+    let clicks = 0;
+
+    const cleanup = mount('opt-basic', {
+      target,
+      store,
+      handlers: { bump() { clicks++; } },
+    });
+
+    const p = target.querySelector('p');
+    assert('initial data-text bound', p.textContent, 'hello');
+
+    store.set('msg', 'world');
+    assert('reactive update works', p.textContent, 'world');
+
+    target.querySelector('button').click();
+    assert('handlers option wired up (delegation works)', clicks, 1);
+
+    assert('new style did NOT trigger the legacy notice',
+      warnCounts.MOUNT_LEGACY_SIGNATURE ?? 0, 0);
+
+    cleanup();
+    show('1. new-style mount', target.cloneNode(true));
+  }
+
+  // ── 2. old style: still works, warns exactly once across multiple calls ───
+  group('old style: works unchanged, MOUNT_LEGACY_SIGNATURE fires exactly once');
+  {
+    const store = createStore({ msg: 'legacy' });
+    const t1 = document.createElement('div');
+    const t2 = document.createElement('div');
+
+    const cleanup1 = mount('opt-basic', {}, t1, store);       // old style, 1st call
+    assert('old-style mount rendered', t1.querySelector('p').textContent, 'legacy');
+    assert('deprecation notice fired on the first legacy call',
+      warnCounts.MOUNT_LEGACY_SIGNATURE, 1);
+
+    const cleanup2 = mount('opt-basic', {}, t2, store);       // old style, 2nd call
+    assert('second legacy call did NOT warn again (one-time flag)',
+      warnCounts.MOUNT_LEGACY_SIGNATURE, 1);
+    assert('second legacy mount also rendered', t2.querySelector('p').textContent, 'legacy');
+
+    cleanup1();
+    cleanup2();
+    note('the notice is per page load, not per call — a module-level flag in index.js');
+  }
+
+  // ── 3. computed option: registered via mount, updates reactively ──────────
+  group('computed option: mount-registered computed updates reactively');
+  {
+    const store = createStore({ first: 'Ada', last: 'Lovelace' });
+    const target = document.createElement('div');
+    let calls = 0;
+
+    const cleanup = mount('opt-computed', {
+      target,
+      store,
+      computed: {
+        fullName: {
+          deps: ['first', 'last'],
+          fn: () => { calls++; return store.get('first') + ' ' + store.get('last'); },
+        },
+      },
+    });
+
+    const p = target.querySelector('p');
+    assert('initial computed value bound', p.textContent, 'Ada Lovelace');
+    assert('fn ran once for the initial computation', calls, 1);
+
+    store.set('first', 'Grace');
+    assert('dep change recomputes and updates the DOM', p.textContent, 'Grace Lovelace');
+
+    // ── 4. cleanup() disposes the computed ──────────────────────────────────
+    group('cleanup(): disposes the mount-registered computed');
+
+    const callsBeforeCleanup = calls;
+    cleanup();
+
+    assert('computed value deleted from state (no ghost value)',
+      store.get('fullName'), undefined);
+    assert('the key itself is gone from the state object',
+      Object.hasOwn(store.get(''), 'fullName'), false);
+
+    store.set('last', 'Hopper');
+    assert('dep change after cleanup does NOT recompute', calls, callsBeforeCleanup);
+
+    show('3. mount-scoped computed', target.cloneNode(true));
+    note('no manual dispose() bookkeeping — the computed lives and dies with the mount');
+  }
+
+  // ── 5. computed without store: warned and skipped ─────────────────────────
+  group('computed without store: COMPUTED_WITHOUT_STORE warning, registration skipped');
+  {
+    const target = document.createElement('div');
+    let calls = 0;
+    let threw = false;
+
+    try {
+      const cleanup = mount('opt-static', {
+        target,
+        context: { title: 'Static Title' },
+        computed: {
+          anything: { deps: ['x'], fn: () => { calls++; return 1; } },
+        },
+      });
+      cleanup();
+    } catch { threw = true; }
+
+    assert('no crash', threw, false);
+    assert('COMPUTED_WITHOUT_STORE warned exactly once',
+      warnCounts.COMPUTED_WITHOUT_STORE, 1);
+    assert('computed fn never ran (skipped)', calls, 0);
+    assert('static content still rendered', target.textContent.trim(), 'Static Title');
+  }
+
+  // ── 6. unmount() also disposes mount-scoped computeds ─────────────────────
+  group('unmount(): disposes mount-scoped computeds too');
+  {
+    const store = createStore({ a: 2 });
+    const target = document.createElement('div');
+
+    mount('opt-computed', {
+      target,
+      store,
+      computed: {
+        fullName: { deps: ['a'], fn: () => 'a=' + store.get('a') },
+      },
+    });
+
+    assert('computed present while mounted', store.get('fullName'), 'a=2');
+
+    unmount(target);
+    assert('computed removed by unmount()', store.get('fullName'), undefined);
+  }
+
+  // ── 7. zero unexpected warnings across the whole run ──────────────────────
+  group('warning hygiene: zero unexpected warnings across the whole run');
+  {
+    const expected = new Set(['MOUNT_LEGACY_SIGNATURE', 'COMPUTED_WITHOUT_STORE']);
+    const unexpected = Object.entries(warnCounts).filter(([code]) => !expected.has(code));
+    assert('no unexpected [lime-csr] warning was emitted', unexpected, []);
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  console.warn = realWarn;
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>
