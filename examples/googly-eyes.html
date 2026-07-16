@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    name="description"
+    content="An interactive Googly Eyes example built with lime-csr.js."
+  >
+  <link
+    rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%23fffaf4'/><circle cx='18' cy='17' r='8' fill='%2334262d'/></svg>"
+  >
+  <title>Googly Eyes — lime-csr.js example</title>
+
+  <style>
+    :root {
+      color: #fff8ef;
+      background: #241512;
+      font-family:
+        Inter, ui-rounded, "SF Pro Rounded", system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 18rem;
+      min-height: 100%;
+      background: #241512;
+    }
+
+    body {
+      min-width: 18rem;
+      min-height: 100vh;
+      margin: 0;
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at 50% 44%, rgb(157 83 50 / 25%), transparent 36rem),
+        linear-gradient(145deg, #392019 0%, #1d1210 72%);
+    }
+
+    button,
+    a {
+      font: inherit;
+    }
+
+    #app {
+      min-height: 100vh;
+    }
+
+    .googly-demo {
+      --eye-size: clamp(7.375rem, 22vw, 16.25rem);
+      --eye-gap: clamp(0.625rem, 3vw, 2.25rem);
+      position: relative;
+      min-height: 100svh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(1.8rem, 5vh, 3.5rem);
+      padding: clamp(2rem, 6vw, 5rem) 1rem 1.4rem;
+      isolation: isolate;
+      overflow: hidden;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .googly-demo::before,
+    .googly-demo::after {
+      position: absolute;
+      z-index: -1;
+      width: min(42vw, 32rem);
+      aspect-ratio: 1;
+      border: 1px solid rgb(245 177 126 / 9%);
+      border-radius: 50%;
+      content: "";
+      pointer-events: none;
+    }
+
+    .googly-demo::before {
+      top: -18vw;
+      left: -12vw;
+    }
+
+    .googly-demo::after {
+      right: -16vw;
+      bottom: -21vw;
+    }
+
+    .googly-demo__copy {
+      max-width: 44rem;
+      text-align: center;
+    }
+
+    .googly-demo__eyebrow,
+    .googly-demo__title,
+    .googly-demo__description {
+      margin: 0;
+    }
+
+    .googly-demo__eyebrow {
+      color: #f1ad7b;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.19em;
+      text-transform: uppercase;
+    }
+
+    .googly-demo__title {
+      margin-top: 0.35rem;
+      color: #fffaf4;
+      font-size: clamp(2.5rem, 7vw, 5.8rem);
+      font-weight: 800;
+      letter-spacing: -0.065em;
+      line-height: 0.94;
+    }
+
+    .googly-demo__description {
+      max-width: 36rem;
+      margin: 1rem auto 0;
+      color: #dbc1b5;
+      font-size: clamp(0.98rem, 2vw, 1.18rem);
+      line-height: 1.6;
+    }
+
+    .googly-demo__stage {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--eye-gap);
+      width: 100%;
+    }
+
+    .googly-eye {
+      position: relative;
+      width: var(--eye-size);
+      height: var(--eye-size);
+      flex: 0 0 var(--eye-size);
+      display: block;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      outline: none;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .googly-eye__visual {
+      position: absolute;
+      inset: 0;
+      display: block;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, #f8f5f1 0 46%, #d6d1cf 47%, transparent 49%);
+      transform: scaleY(1);
+      transform-origin: 50% 50%;
+    }
+
+    .googly-eye__white,
+    .googly-eye__pupil,
+    .googly-eye__highlight {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .googly-eye__white {
+      z-index: 1;
+    }
+
+    .googly-eye__pupil-position {
+      position: absolute;
+      z-index: 2;
+      top: 50%;
+      left: 50%;
+      display: block;
+      width: 100%;
+      height: 100%;
+      transform: translate3d(0, 0, 0) translate(-50%, -50%);
+      transform-origin: 50% 50%;
+      will-change: transform;
+      pointer-events: none;
+    }
+
+    .googly-eye__pupil-scale {
+      position: absolute;
+      inset: 0;
+      display: block;
+      transform: scale(1);
+      transform-origin: 50% 50%;
+      will-change: transform;
+      pointer-events: none;
+    }
+
+    .googly-eye__pupil-scale::before {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, #34242d 0 27.4%, transparent 28%);
+      content: "";
+    }
+
+    .googly-eye__pupil {
+      z-index: 1;
+    }
+
+    .googly-eye__highlight {
+      z-index: 2;
+    }
+
+    .googly-eye.is-blinking .googly-eye__visual {
+      animation: googly-blink 260ms linear both;
+    }
+
+    @keyframes googly-blink {
+      0% {
+        transform: scaleY(1);
+      }
+
+      35% {
+        transform: scaleY(0.06);
+      }
+
+      50% {
+        transform: scaleY(0.06);
+      }
+
+      100% {
+        transform: scaleY(1);
+      }
+    }
+
+    .googly-eye:focus-visible::after {
+      position: absolute;
+      z-index: 4;
+      inset: -0.38rem;
+      border: 0.2rem solid #f6b27f;
+      border-radius: 50%;
+      box-shadow: 0 0 0 0.2rem rgb(36 21 18 / 80%);
+      content: "";
+    }
+
+    .googly-demo__details {
+      display: grid;
+      justify-items: center;
+      gap: 0.7rem;
+      text-align: center;
+    }
+
+    .googly-demo__instruction,
+    .googly-demo__credit {
+      margin: 0;
+    }
+
+    .googly-demo__instruction {
+      color: #b59283;
+      font-size: clamp(0.78rem, 1.6vw, 0.9rem);
+      letter-spacing: 0.035em;
+    }
+
+    .googly-demo__credit {
+      color: #82675d;
+      font-size: 0.72rem;
+      letter-spacing: 0.025em;
+    }
+
+    .googly-demo__credit a {
+      border-radius: 0.2rem;
+      color: #b89584;
+      text-decoration-color: rgb(184 149 132 / 50%);
+      text-underline-offset: 0.2em;
+    }
+
+    .googly-demo__credit a:hover {
+      color: #e0bba7;
+      text-decoration-color: currentColor;
+    }
+
+    .googly-demo__credit a:focus-visible {
+      outline: 0.14rem solid #f6b27f;
+      outline-offset: 0.2rem;
+    }
+
+    @media (max-width: 24rem) {
+      .googly-demo {
+        --eye-size: clamp(6.75rem, 35vw, 8rem);
+        --eye-gap: 0.4rem;
+        gap: 1.7rem;
+      }
+
+      .googly-demo__title {
+        font-size: clamp(2.35rem, 14vw, 3.4rem);
+      }
+
+      .googly-demo__description {
+        font-size: 0.94rem;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .googly-demo::before,
+      .googly-demo::after,
+      .googly-demo__credit a {
+        transition: none;
+      }
+
+      .googly-eye.is-blinking .googly-eye__visual {
+        animation-duration: 60ms;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main id="app"></main>
+
+  <template id="tpl-googly-eyes">
+    <section
+      class="googly-demo"
+      data-googly-root
+      aria-labelledby="googly-title"
+      aria-describedby="googly-description googly-instruction"
+    >
+      <header class="googly-demo__copy">
+        <p class="googly-demo__eyebrow">${eyebrow}</p>
+        <h1 class="googly-demo__title" id="googly-title">${title}</h1>
+        <p class="googly-demo__description" id="googly-description">
+          ${description}
+        </p>
+      </header>
+
+      <div class="googly-demo__stage" aria-label="Interactive eyes">
+        <button
+          class="googly-eye"
+          type="button"
+          data-eye="left"
+          data-on-click="blink"
+          aria-label="Blink left eye"
+        >
+          <span class="googly-eye__visual">
+            <img
+              class="googly-eye__white"
+              src="${eyeWhiteUrl}"
+              width="1024"
+              height="1024"
+              alt=""
+              draggable="false"
+            >
+            <span class="googly-eye__pupil-position">
+              <span class="googly-eye__pupil-scale">
+                <img
+                  class="googly-eye__pupil"
+                  src="${pupilUrl}"
+                  width="1024"
+                  height="1024"
+                  alt=""
+                  draggable="false"
+                >
+                <img
+                  class="googly-eye__highlight"
+                  src="${pupilHighlightUrl}"
+                  width="1024"
+                  height="1024"
+                  alt=""
+                  draggable="false"
+                >
+              </span>
+            </span>
+          </span>
+        </button>
+
+        <button
+          class="googly-eye"
+          type="button"
+          data-eye="right"
+          data-on-click="blink"
+          aria-label="Blink right eye"
+        >
+          <span class="googly-eye__visual">
+            <img
+              class="googly-eye__white"
+              src="${eyeWhiteUrl}"
+              width="1024"
+              height="1024"
+              alt=""
+              draggable="false"
+            >
+            <span class="googly-eye__pupil-position">
+              <span class="googly-eye__pupil-scale">
+                <img
+                  class="googly-eye__pupil"
+                  src="${pupilUrl}"
+                  width="1024"
+                  height="1024"
+                  alt=""
+                  draggable="false"
+                >
+                <img
+                  class="googly-eye__highlight"
+                  src="${pupilHighlightUrl}"
+                  width="1024"
+                  height="1024"
+                  alt=""
+                  draggable="false"
+                >
+              </span>
+            </span>
+          </span>
+        </button>
+      </div>
+
+      <footer class="googly-demo__details">
+        <p class="googly-demo__instruction" id="googly-instruction">
+          ${instruction}
+        </p>
+        <p class="googly-demo__credit" aria-label="${creditLabel}">
+          <span>${creditPrefix}</span>
+          <a
+            href="${creditUrl}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >${creditName}</a>
+          <span>${creditLicense}</span>
+        </p>
+      </footer>
+    </section>
+  </template>
+
+  <script type="module">
+    import { mount } from "../src/index.js";
+
+    const CONFIG = Object.freeze({
+      followSpeed: 0.14,
+      scaleSpeed: 0.10,
+      travelRatio: 0.23,
+      safePaddingRatio: 0.09,
+      basePupilRadiusRatio: 286 / 512,
+      distanceDiagonalRatio: 0.55,
+      minPupilScale: 0.62,
+      maxPupilScale: 1.18,
+      defaultPupilScale: 1,
+      blinkFallbackDuration: 300,
+      reducedBlinkFallbackDuration: 80,
+    });
+
+    function clamp(value, minimum, maximum) {
+      return Math.min(Math.max(value, minimum), maximum);
+    }
+
+    function initGooglyEyes(rootElement) {
+      const ownerWindow = rootElement.ownerDocument.defaultView ?? window;
+      const leaveTarget = rootElement.ownerDocument.documentElement;
+      const motionQuery = ownerWindow.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      );
+      const eyeElements = [
+        ...rootElement.querySelectorAll(".googly-eye[data-eye]"),
+      ];
+      const pointer = { x: 0, y: 0, active: false };
+      const blinkTimers = new Map();
+      let viewportDiagonal =
+        Math.hypot(ownerWindow.innerWidth, ownerWindow.innerHeight) || 1;
+      let animationFrame = 0;
+      let resizeObserver = null;
+      let measurementPending = true;
+      let destroyed = false;
+
+      const eyes = eyeElements.map((element) => {
+        const positionElement = element.querySelector(
+          ".googly-eye__pupil-position",
+        );
+        const scaleElement = element.querySelector(
+          ".googly-eye__pupil-scale",
+        );
+
+        return {
+          element,
+          positionElement,
+          scaleElement,
+          centerX: 0,
+          centerY: 0,
+          eyeRadius: 0,
+          basePupilRadius: 0,
+          safePadding: 0,
+          currentX: 0,
+          currentY: 0,
+          targetX: 0,
+          targetY: 0,
+          currentScale: CONFIG.defaultPupilScale,
+          targetScale: CONFIG.defaultPupilScale,
+          renderedX: null,
+          renderedY: null,
+          renderedScale: null,
+          onAnimationEnd: null,
+        };
+      });
+
+      function measureEyes() {
+        viewportDiagonal =
+          Math.hypot(ownerWindow.innerWidth, ownerWindow.innerHeight) || 1;
+
+        for (const eye of eyes) {
+          const rect = eye.element.getBoundingClientRect();
+          eye.centerX = rect.left + rect.width / 2;
+          eye.centerY = rect.top + rect.height / 2;
+          eye.eyeRadius = Math.min(rect.width, rect.height) / 2;
+          eye.basePupilRadius =
+            eye.eyeRadius * CONFIG.basePupilRadiusRatio;
+          eye.safePadding = eye.eyeRadius * CONFIG.safePaddingRatio;
+        }
+
+        measurementPending = false;
+      }
+
+      function maximumTravel(eye, scale) {
+        const ratioTravel = eye.eyeRadius * CONFIG.travelRatio;
+        const geometryTravel =
+          eye.eyeRadius -
+          eye.basePupilRadius * scale -
+          eye.safePadding;
+
+        return Math.max(0, Math.min(ratioTravel, geometryTravel));
+      }
+
+      function updateTargets(eye) {
+        if (!pointer.active) {
+          eye.targetX = 0;
+          eye.targetY = 0;
+          eye.targetScale = CONFIG.defaultPupilScale;
+          return;
+        }
+
+        const dx = pointer.x - eye.centerX;
+        const dy = pointer.y - eye.centerY;
+        const distance = Math.hypot(dx, dy);
+        const directionX = distance > 0 ? dx / distance : 0;
+        const directionY = distance > 0 ? dy / distance : 0;
+        const normalizedDistance = clamp(
+          distance /
+            (viewportDiagonal * CONFIG.distanceDiagonalRatio),
+          0,
+          1,
+        );
+
+        eye.targetScale =
+          CONFIG.minPupilScale +
+          normalizedDistance *
+            (CONFIG.maxPupilScale - CONFIG.minPupilScale);
+
+        const maxTravel = maximumTravel(eye, eye.targetScale);
+        eye.targetX = directionX * maxTravel;
+        eye.targetY = directionY * maxTravel;
+      }
+
+      function updateCurrentValues(eye) {
+        const followSpeed = motionQuery.matches ? 1 : CONFIG.followSpeed;
+        const scaleSpeed = motionQuery.matches ? 1 : CONFIG.scaleSpeed;
+
+        eye.currentX += (eye.targetX - eye.currentX) * followSpeed;
+        eye.currentY += (eye.targetY - eye.currentY) * followSpeed;
+        eye.currentScale +=
+          (eye.targetScale - eye.currentScale) * scaleSpeed;
+
+        const allowedTravel = maximumTravel(eye, eye.currentScale);
+        const currentDistance = Math.hypot(eye.currentX, eye.currentY);
+
+        if (currentDistance > allowedTravel && currentDistance > 0) {
+          const correction = allowedTravel / currentDistance;
+          eye.currentX *= correction;
+          eye.currentY *= correction;
+        }
+      }
+
+      function renderEye(eye) {
+        const positionChanged =
+          eye.renderedX === null ||
+          eye.renderedY === null ||
+          Math.abs(eye.currentX - eye.renderedX) > 0.001 ||
+          Math.abs(eye.currentY - eye.renderedY) > 0.001;
+
+        if (positionChanged) {
+          eye.positionElement.style.transform =
+            "translate3d(" +
+            eye.currentX.toFixed(3) +
+            "px, " +
+            eye.currentY.toFixed(3) +
+            "px, 0) translate(-50%, -50%)";
+          eye.renderedX = eye.currentX;
+          eye.renderedY = eye.currentY;
+        }
+
+        const scaleChanged =
+          eye.renderedScale === null ||
+          Math.abs(eye.currentScale - eye.renderedScale) > 0.0001;
+
+        if (scaleChanged) {
+          eye.scaleElement.style.transform =
+            "scale(" + eye.currentScale.toFixed(4) + ")";
+          eye.renderedScale = eye.currentScale;
+        }
+      }
+
+      function animate() {
+        if (destroyed) return;
+        if (measurementPending) measureEyes();
+
+        for (const eye of eyes) {
+          updateTargets(eye);
+          updateCurrentValues(eye);
+          renderEye(eye);
+        }
+
+        animationFrame = ownerWindow.requestAnimationFrame(animate);
+      }
+
+      function finishBlink(eye) {
+        const timer = blinkTimers.get(eye);
+        if (timer !== undefined) ownerWindow.clearTimeout(timer);
+        blinkTimers.delete(eye);
+        eye.element.classList.remove("is-blinking");
+      }
+
+      function blinkState(eye) {
+        if (destroyed || blinkTimers.has(eye)) return;
+
+        eye.element.classList.add("is-blinking");
+        const fallbackDuration = motionQuery.matches
+          ? CONFIG.reducedBlinkFallbackDuration
+          : CONFIG.blinkFallbackDuration;
+        const timer = ownerWindow.setTimeout(
+          () => finishBlink(eye),
+          fallbackDuration,
+        );
+        blinkTimers.set(eye, timer);
+      }
+
+      function onPointerMove(event) {
+        pointer.x = event.clientX;
+        pointer.y = event.clientY;
+        pointer.active = true;
+      }
+
+      function onPointerLeave() {
+        pointer.active = false;
+      }
+
+      function requestMeasurement() {
+        measurementPending = true;
+      }
+
+      for (const eye of eyes) {
+        eye.onAnimationEnd = (event) => {
+          if (
+            event.animationName === "googly-blink" &&
+            event.target.classList.contains("googly-eye__visual")
+          ) {
+            finishBlink(eye);
+          }
+        };
+        eye.element.addEventListener("animationend", eye.onAnimationEnd);
+      }
+
+      ownerWindow.addEventListener("pointermove", onPointerMove, {
+        passive: true,
+      });
+      ownerWindow.addEventListener("blur", onPointerLeave);
+      ownerWindow.addEventListener("resize", requestMeasurement, {
+        passive: true,
+      });
+      leaveTarget.addEventListener("pointerleave", onPointerLeave, {
+        passive: true,
+      });
+
+      if ("ResizeObserver" in ownerWindow) {
+        resizeObserver = new ownerWindow.ResizeObserver(requestMeasurement);
+        resizeObserver.observe(rootElement);
+        for (const eye of eyes) resizeObserver.observe(eye.element);
+      }
+
+      measureEyes();
+      animationFrame = ownerWindow.requestAnimationFrame(animate);
+
+      function cleanup() {
+        if (destroyed) return;
+        destroyed = true;
+
+        ownerWindow.cancelAnimationFrame(animationFrame);
+        ownerWindow.removeEventListener("pointermove", onPointerMove);
+        ownerWindow.removeEventListener("blur", onPointerLeave);
+        ownerWindow.removeEventListener("resize", requestMeasurement);
+        leaveTarget.removeEventListener("pointerleave", onPointerLeave);
+        resizeObserver?.disconnect();
+
+        for (const eye of eyes) {
+          eye.element.removeEventListener(
+            "animationend",
+            eye.onAnimationEnd,
+          );
+          finishBlink(eye);
+          eye.positionElement.style.removeProperty("transform");
+          eye.scaleElement.style.removeProperty("transform");
+        }
+
+        for (const timer of blinkTimers.values()) {
+          ownerWindow.clearTimeout(timer);
+        }
+        blinkTimers.clear();
+      }
+
+      cleanup.blink = (eyeElement) => {
+        const eye = eyes.find(
+          (candidate) => candidate.element === eyeElement,
+        );
+        if (eye) blinkState(eye);
+      };
+      return cleanup;
+    }
+
+    const target = document.querySelector("#app");
+    let stopEyes = () => {};
+    let blinkEye = () => {};
+
+    const mountCleanup = mount("googly-eyes", {
+      target,
+      context: {
+        eyebrow: "lime-csr.js example",
+        title: "Googly Eyes",
+        description:
+          "Move your pointer around the page. Click either eye to make it blink.",
+        instruction: "Move your pointer and click the eyes",
+        creditLabel: "Eye artwork by Kenney — CC0",
+        creditPrefix: "Eye artwork by",
+        creditName: "Kenney",
+        creditLicense: "— CC0",
+        creditUrl: "https://kenney.nl/",
+        eyeWhiteUrl:
+          "https://i.ibb.co/23ZBsJZJ/eye-white.png",
+        pupilUrl:
+          "https://i.ibb.co/1GRgvpTN/pupil.png",
+        pupilHighlightUrl:
+          "https://i.ibb.co/2YjZYj7n/pupil-highlight.png",
+      },
+      handlers: {
+        blink(_event, element) {
+          const eye = element.matches("[data-eye]")
+            ? element
+            : element.closest("[data-eye]");
+
+          if (eye) blinkEye(eye);
+        },
+      },
+      afterRender(rootElement) {
+        const componentRoot = rootElement.querySelector(
+          "[data-googly-root]",
+        );
+        if (!componentRoot) return;
+
+        stopEyes = initGooglyEyes(componentRoot);
+        blinkEye = stopEyes.blink;
+      },
+    });
+
+    let destroyed = false;
+
+    function destroy() {
+      if (destroyed) return;
+      destroyed = true;
+
+      window.removeEventListener("pagehide", destroy);
+      stopEyes();
+      mountCleanup();
+    }
+
+    window.addEventListener("pagehide", destroy, { once: true });
+  </script>
+</body>
+</html>
