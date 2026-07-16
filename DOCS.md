@@ -31,9 +31,10 @@ a bug; please report it with a minimal reproduction.
 4. [Store API](#4-store-api)
 5. [Mount API](#5-mount-api)
 6. [Lifecycle hooks](#6-lifecycle-hooks)
-7. [Error codes](#7-error-codes)
-8. [Known limitations](#8-known-limitations)
-9. [Architecture (reference)](#9-architecture-reference)
+7. [Plugin API v1](#7-plugin-api-v1)
+8. [Error codes](#8-error-codes)
+9. [Known limitations](#9-known-limitations)
+10. [Architecture (reference)](#10-architecture-reference)
 
 ---
 
@@ -116,8 +117,9 @@ mount(name, { target, context, store, ... })
                ▼
 ┌────────────────────────────┐
 │ 3. REACTIVE BINDINGS        │  data-model → data-text/{x} → data-show
-│    (reads + subscribes to   │  <for data-live>  → <if data-live>
-│     the store)              │  (nested live-blocks recurse through
+│    (reads + subscribes to   │  plugin directives → <for data-live>
+│     the store)              │  → <if data-live>
+│                              │  (nested live-blocks recurse through
 │                              │   this same pipeline per branch/item)
 └──────────────┬───────────────┘
                │
@@ -138,7 +140,7 @@ mount(name, { target, context, store, ... })
 ```
 
 The exact rationale for each step's position in this order is in
-[§9 Architecture](#9-architecture-reference).
+[§10 Architecture](#10-architecture-reference).
 
 ---
 
@@ -597,7 +599,7 @@ RIGHT:  Keep <if>...</if> (and any <else> inside it) fully nested within a
         single parent element, like any other HTML tag pair.
 ```
 
-Also see [§9](#9-architecture-reference) for the `<table>` **foster-parenting**
+Also see [§10](#10-architecture-reference) for the `<table>` **foster-parenting**
 trap: an `<if>`/`<for>`/`<else>` written directly inside `<table>` (not
 inside a `<tr>`/`<td>`) gets silently relocated by the HTML parser itself,
 before lime-csr ever sees it. Detected in dev-mode (`TABLE_FOSTER_PARENTING`),
@@ -1364,6 +1366,7 @@ const cleanup = mount('page', {
   computed: {                               // optional — mount-scoped computeds
     remaining: { deps: ['todos'], fn: () => store.get('todos').filter(t => !t.done).length },
   },
+  plugins: [focusPlugin],                    // optional — Plugin API v1
   beforeRender(context, store) { /* ... */ },
   afterRender(rootEl, store) { /* ... */ },
 });
@@ -1377,6 +1380,7 @@ const cleanup = mount('page', {
 | `store` | `Store`, optional | `createStore(...)`. Omitted → all reactive features (`data-text`, `data-model`, `<if data-live>`, ...) are simply skipped — only static content renders. |
 | `handlers` | object, optional | See [§3.11](#311-data-on---event-handling) and [§6](#6-lifecycle-hooks) — also used for block-level `data-after`/`data-before`. |
 | `computed` | object, optional | Mount-scoped computeds — see below. Requires `store`; given without one → `COMPUTED_WITHOUT_STORE` warning, skipped. |
+| `plugins` | array, optional | Frozen values returned by `definePlugin()`; each gets isolated state and cleanup for this mount only. See [§7](#7-plugin-api-v1). |
 | `beforeRender` | `(context, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
 | `afterRender` | `(rootEl, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
 
@@ -1436,7 +1440,8 @@ unmount(document.getElementById('app'));
 Equivalent to calling the `cleanup()` function `mount()` returned, but
 useful when you don't have that reference handy — looked up internally by
 `target`. Cancels every reactive subscription tied to that mount and clears
-`target`'s content.
+`target`'s content. Plugin directive and hook cleanups run before the content
+is cleared.
 
 ### 5.3 `render(fragment, context, store, handlers?)` → cleanup function
 
@@ -1454,10 +1459,11 @@ from.
 partial → for → if   (looped until none remain)
   → resolveStatic (top-level ${path})
   → data-model → data-text/{x} → data-show
+  → plugin directives
   → <for data-live>  → <if data-live>
 ```
 Full rationale for this exact order (and the invariants it depends on) is
-in [§9](#9-architecture-reference).
+in [§10](#10-architecture-reference).
 
 ---
 
@@ -1543,11 +1549,151 @@ warning, no crash — rendering itself is unaffected.
 
 **Known limitation**: `data-before` is always awaited **synchronously** —
 there's no way to `await` an exit animation or other async cleanup before
-the DOM node is actually removed. See [§8](#8-known-limitations).
+the DOM node is actually removed. See [§9](#9-known-limitations).
 
 ---
 
-## 7. Error codes
+## 7. Plugin API v1
+
+```js
+import { definePlugin, mount, PLUGIN_API_VERSION } from 'lime-csr-js';
+```
+
+Plugin API v1 adds normal-element attribute directives at one fixed render
+stage. Plugins are explicitly passed in `mount(..., { plugins })`; Lime has no
+global plugin registry, dependency graph, priorities, remote loader, or
+pipeline monkey-patching. A definition can be reused, but every successful
+mount creates a fresh `Object.create(null)` state object and private cleanup
+bookkeeping. Cleaning or replacing one mount never affects another.
+
+### 7.1 Defining and mounting a plugin
+
+```js
+const focusPlugin = definePlugin({
+  name: 'focus',                       // ^[a-z][a-z0-9-]*$
+  apiVersion: PLUGIN_API_VERSION,      // currently 1
+  version: '1.0.0',                    // optional plugin version
+
+  beforeMount(api) { /* optional */ },
+  afterMount(api) { /* optional */ },
+
+  directives: {
+    'data-lime-focus': {
+      setup({ element, value, afterConnect }) {
+        if (value === 'false') return;
+        afterConnect(() => element.focus());
+      },
+    },
+    // Short form is equivalent:
+    'data-lime-marker'(api) { /* ... */ },
+  },
+});
+
+mount('page', { target, store, plugins: [focusPlugin] });
+```
+
+`definePlugin()` validates the definition and freezes the returned plugin,
+its directive map, and every directive definition. Plugin names use the
+lowercase/hyphen pattern shown above. Directive attributes must match
+`data-lime-name` or hyphenated forms such as `data-lime-scene-observer`;
+`data-lime-ignore` is permanently reserved by the framework. Invalid direct
+calls throw a clear `TypeError`. Per-mount mutable data belongs in `api.state`,
+not on the frozen definition or in shared module-level variables.
+
+Plugins install in array order. Duplicate names are skipped; if two plugins
+claim the same directive, the first plugin wins. Hook/directive failures are
+diagnosed and isolated so later plugins and Lime rendering continue. Cleanup
+runs once in reverse registration/plugin order.
+
+### 7.2 Directive API
+
+`setup(api)` receives:
+
+| Field/helper | Meaning |
+|---|---|
+| `plugin`, `directive` | Frozen plugin definition and current attribute name. |
+| `element`, `value` | Actual attribute-bearing element and its raw string value. |
+| `state` | State shared only by this plugin's hooks/directives in this mount. |
+| `store`, `context` | Mount store and the current render context (including a live-list item context). |
+| `document`, `window` | The target's owner document and its window. |
+| `get(path)` / `set(path, value)` | Read/write the mount store. Without a store, `set` returns `false` and reports `PLUGIN_STORE_REQUIRED`. |
+| `watch(path, callback, options?)` | Subscribe to a non-empty store path. `{ immediate: true }` calls back immediately; the returned unwatch is also attached to directive cleanup automatically. |
+| `afterConnect(callback)` | Run in a microtask only if the directive is still active and its element is connected. Use for focus, measurements, observers, canvas, or widget setup. |
+| `onCleanup(callback)` | Register teardown; callbacks run once in reverse registration order. |
+| `diagnostic(code, message, context)` | Emit a structured, non-throwing diagnostic through Lime's normal subscriber/dev-mode channel. |
+
+`setup` may return an additional cleanup function. Both that function and all
+`onCleanup`/`watch` cleanups run. A throwing watch callback becomes
+`PLUGIN_WATCH_FAILED`; a throwing `afterConnect` callback becomes
+`PLUGIN_AFTER_CONNECT_FAILED`; neither escapes into the store or stops other
+plugins.
+
+```js
+const mirrorPlugin = definePlugin({
+  name: 'mirror',
+  apiVersion: 1,
+  directives: {
+    'data-lime-mirror': {
+      setup({ element, value: path, get, set, watch, onCleanup }) {
+        element.textContent = String(get(path) ?? '');
+        watch(path, (value) => { element.textContent = String(value ?? ''); });
+
+        const reset = () => set(path, '');
+        element.addEventListener('dblclick', reset);
+        onCleanup(() => element.removeEventListener('dblclick', reset));
+      },
+    },
+  },
+});
+```
+
+Only registered attributes are queried. Directive setup occurs after
+`data-show` and before live `<for>`/`<if>` setup. Normal elements inside an
+unexpanded live block are deferred; the same mount runtime installs them
+later through the recursive render with the correct branch/item context.
+When a live branch closes, a list item is deleted, or `data-diff="replace"`
+recreates an item, directive cleanup runs while its DOM node is still present,
+before removal. `data-lime-ignore` regions remain completely untouched.
+
+`IF`, `ELSE`, `FOR`, `PARTIAL`, and `TEMPLATE` are structural elements and
+cannot directly host plugin directives; such targets are skipped with
+`PLUGIN_DIRECTIVE_STRUCTURAL_TARGET`. Put the directive on a normal element
+inside the block. Plugin-defined structural expansion is not supported in v1.
+
+### 7.3 Mount hook API
+
+`beforeMount(api)` runs after template validation and mount-scoped computed
+registration, before rendering. The existing `beforeRender` hook retains its
+legacy earlier position. `afterMount(api)` runs after the fragment is
+appended and before the existing `afterRender` hook and event delegation.
+Both receive:
+
+```js
+{
+  plugin, state, target, store, context, document, window,
+  onCleanup(callback),
+  diagnostic(code, message, context),
+}
+```
+
+A hook can return cleanup and/or call `onCleanup`. Hook exceptions report
+`PLUGIN_HOOK_FAILED` and do not prevent the next plugin from installing.
+Mount teardown order is reactive/directive cleanup, delegated-event cleanup,
+plugin hook cleanup, then computed disposal. `cleanup()`, `unmount(target)`,
+and replacement mounting are idempotent with respect to plugin teardown.
+
+### 7.4 Trust and integration boundary
+
+Plugins are ordinary JavaScript with the same DOM/store access as the host
+application; they are **not a sandbox**. Load only trusted plugin code. The API
+does not use `eval`, `new Function`, or dynamic script injection. Canvas,
+WebGL, or Three.js-style integrations can be built as plugins, but those
+libraries remain application/plugin dependencies—Lime does not depend on or
+load them.
+
+---
+
+## 8. Error codes
 
 Diagnostics are structured and non-throwing. Every diagnostic goes through
 `errors.js`'s single `warn(code, message, context)` function and can be
@@ -1621,18 +1767,30 @@ cleanup();
 | `BATCH_FLUSH_LIMIT` | `store.batch()`'s flush hit the 100-wave limit; pending notifications were dropped | Two subscribers are probably setting each other's paths — break the cycle (often with a `store.computed()` instead of mutual `set`s) |
 | `MOUNT_LEGACY_SIGNATURE` | `mount()` was called with the legacy positional signature (one-time notice per page load) | Migrate to `mount(name, { target, context, store, handlers, computed })` (§5.1) — the legacy form keeps working |
 | `COMPUTED_WITHOUT_STORE` | `mount()`'s `computed` option was given without a `store` | Pass a `store` in the same options object; without one there is nothing to register the computeds on |
+| `PLUGIN_LIST_INVALID` | `plugins` is not an array | Pass an array (or omit the option). |
+| `PLUGIN_INVALID` | An array entry was not returned by `definePlugin()` | Validate/freeze it with `definePlugin()` first. |
+| `PLUGIN_API_VERSION_UNSUPPORTED` | A plugin targets a different API version | Use a plugin whose `apiVersion` matches `PLUGIN_API_VERSION`. |
+| `PLUGIN_DUPLICATE_NAME` | Two plugins in one mount have the same name | Keep one definition or give them unique names. |
+| `PLUGIN_DIRECTIVE_CONFLICT` | Two plugins claim the same directive | The first wins; remove or rename the later directive. |
+| `PLUGIN_DIRECTIVE_STRUCTURAL_TARGET` | A plugin directive targets `if`/`else`/`for`/`partial`/`template` | Move it to a normal element inside the structural block. |
+| `PLUGIN_STORE_REQUIRED` | A directive calls a store helper without a mount store | Pass `store` to the mount or avoid that helper. |
+| `PLUGIN_HOOK_FAILED` | `beforeMount`/`afterMount` or its cleanup registration throws | Fix the hook; remaining plugins still install. |
+| `PLUGIN_SETUP_FAILED` | Directive setup throws or returns invalid cleanup | Fix setup/cleanup; rendering and later directives continue. |
+| `PLUGIN_WATCH_FAILED` | A plugin watch callback throws | Handle the callback failure; other subscribers continue. |
+| `PLUGIN_AFTER_CONNECT_FAILED` | An `afterConnect` callback throws | Fix DOM-connected initialization; runtime continues. |
+| `PLUGIN_CLEANUP_FAILED` | A plugin cleanup throws | Fix teardown; Lime still runs all remaining cleanups. |
 | `PATH_CLOBBER` | `store.set()`/`setByPath` replaced a non-object intermediate segment (e.g. `user` was a string when setting `user.name`) with `{}` | Check the path for a typo, or store that segment as an object from the start |
 
 ---
 
-## 8. Known limitations
+## 9. Known limitations
 
 - **`<table>` foster-parenting is detected, not fixed.** The HTML parser
   itself moves an `<if>`/`<for>`/`<else>` written directly inside `<table>`
   (outside a `<tr>`/`<td>`) to BEFORE the table, before lime-csr ever runs —
   this is standard browser HTML-parsing behavior, outside any framework's
   control. Detected in dev-mode on first template read
-  (`TABLE_FOSTER_PARENTING`, §7), not correctable at runtime. **Workaround**:
+  (`TABLE_FOSTER_PARENTING`, §8), not correctable at runtime. **Workaround**:
   move the condition/loop outside `<table>`, or produce the row markup via
   a `<partial>` called from outside the table.
 
@@ -1671,16 +1829,16 @@ cleanup();
 
 ---
 
-## 9. Architecture (reference)
+## 10. Architecture (reference)
 
 This section is for people reading or extending the source — everyday
 usage doesn't require it.
 
-### 9.1 Module map
+### 10.1 Module map
 
-Orchestration lives entirely in `src/index.js`. **Modules do not import
-each other** (`errors.js` is the sole exception, and it imports nothing
-itself) — only `index.js` decides call order.
+Orchestration and pipeline order live in `src/index.js`. Feature modules may
+import leaf helpers (`errors.js` and `shared.js`), but do not control or mutate
+the render pipeline.
 
 | Module | Responsibility | Exports |
 |---|---|---|
@@ -1696,32 +1854,36 @@ itself) — only `index.js` decides call order.
 | `bindings-events.js` | Event delegation (`data-on-*`) | `setupEventBindings` |
 | `bindings-blocks.js` | Reactive `<if data-live>` (tear-down/rebuild, `el=`, hooks) | `setupLiveIfs` |
 | `bindings-loops.js` | Reactive `<for data-live key>` (key-based diff, `data-diff`, `el=`, hooks) | `setupLiveFors` |
+| `plugins.js` | Plugin definition validation and private mount-scoped runtime | `definePlugin`, `PLUGIN_API_VERSION`; internal `createPluginRuntime` |
 | `errors.js` | Structured diagnostic dispatch and dev-mode presentation — the bottom-most layer | `setDevMode`, `isDevMode`, `subscribeDiagnostics`, `warn`, `errors` (namespace) |
-| `shared.js` | Pure utility helpers: inLiveBlock, inUnexpandedFor, LIS indices computation | `inLiveBlock`, `inUnexpandedFor`, `longestIncreasingSubsequenceIndices` |
+| `shared.js` | Pure boundary/math helpers: ignored/live/static-for ancestry and LIS indices | `inIgnoredBlock`, `inLiveBlock`, `inUnexpandedFor`, `longestIncreasingSubsequenceIndices` |
 | `index.js` | Orchestration: `render`/`mount`/`unmount` + re-exports of everything above | `render`, `mount`, `unmount`, ... |
 
-### 9.2 Pipeline order and why
+### 10.2 Pipeline order and why
 
 ```
 mount(templateName, { target, context, store, ... })   // or the legacy positional form
-  1. options.beforeRender(context, store)
+  1. options.beforeRender(context, store)  (existing lifecycle order)
   2. getTemplate(templateName) → fragment (cloneNode(true) from cache)
   3. options.computed: store.computed(path, deps, fn) per entry
      (registered BEFORE render so bindings see initial values; disposed by cleanup)
-  4. render(fragment, context, store, options.handlers):
+  4. create mount-scoped plugin runtime; plugin beforeMount hooks
+  5. render(fragment, context, store, options.handlers):
        a. loop until stable: expandPartials → expandLoops → processAllIfs
        b. resolveStatic            (remaining top-level ${path})
        c. setupModelBindings       (data-model)
        d. setupBindings            (data-text + {x}/data-x)
        e. setupShowBindings        (data-show)
-       f. setupLiveFors            (<for data-live>)
-       g. setupLiveIfs             (<if data-live>)
-  5. target.appendChild(fragment)
-  6. options.afterRender(target, store)
-  7. if options.handlers: setupEventBindings(target, store, handlers)
+       f. pluginRuntime.setupDirectives (registered data-lime-* only)
+       g. setupLiveFors            (<for data-live>)
+       h. setupLiveIfs             (<if data-live>)
+  6. target.appendChild(fragment)
+  7. plugin afterMount hooks
+  8. options.afterRender(target, store)
+  9. if options.handlers: setupEventBindings(target, store, handlers)
 ```
 
-- **3a is a LOOP**, not one pass: a `<partial>`'s own template can contain
+- **5a is a LOOP**, not one pass: a `<partial>`'s own template can contain
   a new `<for>`/`<if>`, a `<for>`'s content can contain a new `<partial>`,
   and so on. Bounded by `MAX_PIPELINE_ITERATIONS = 100`
   (`PIPELINE_DEPTH_LIMIT` if exceeded). `expandPartials` runs BEFORE
@@ -1731,22 +1893,22 @@ mount(templateName, { target, context, store, ... })   // or the legacy position
   `expandLoops` call, which resolves them immediately afterward with the
   correct item context (the pipeline's call ORDER never changes — only
   which `<partial>`s get touched narrows).
-- **3b runs AFTER structural expansion**: resolving `${item.x}` before a
+- **5b runs AFTER structural expansion**: resolving `${item.x}` before a
   `<for>` expands would see the wrong (top-level) context and produce an
   empty string. `expandLoops` already calls `resolveStatic` itself per
   item; 3b only handles what's left at the top level.
-- **3c/3d/3e run AFTER structural expansion**, so bindings never attach to
+- **5c/5d/5e/5f run AFTER structural expansion**, so bindings/directives never attach to
   a node that's about to be deleted (memory leak). Their own relative order
   doesn't matter for correctness EXCEPT that `data-model` (3c) is
-  guaranteed to run before `data-on-*` event delegation (step 6) is even
+  guaranteed to run before `data-on-*` event delegation (step 9) is even
   set up — so if the same element has both `data-model` and `data-on-input`,
   the store is already updated by the time the app-level handler runs.
-- **3f runs before 3g**: an `<if data-live>` nested inside a
+- **5g runs before 5h**: an `<if data-live>` nested inside a
   `<for data-live>` is handled by the RECURSIVE `render()` call each item
   gets (via `renderFn`); by the time 3g runs at the outer level, those
   inner `<if data-live>`s have already become their own anchors and are no
-  longer matched by 3g's top-level query.
-- **Step 6 (event delegation) is OUTSIDE `render()` entirely**: it's a
+  longer matched by 5h's top-level query.
+- **Step 9 (event delegation) is OUTSIDE `render()` entirely**: it's a
   single delegation listener on `target`, not a per-element subscription —
   there's no "binding too early" risk to guard against, so it doesn't need
   to participate in the render pipeline's ordering at all, and needs no
@@ -1756,15 +1918,15 @@ mount(templateName, { target, context, store, ... })   // or the legacy position
 `setupLiveFors`, so a branch switch or a new list item runs this ENTIRE
 pipeline again, recursively, for just that subtree.
 
-### 9.3 Centralized Utility Helpers (shared.js)
+### 10.3 Centralized Utility Helpers (shared.js)
 
 To keep the codebase DRY (Don't Repeat Yourself) and highly maintainable, shared utility functions such as `inLiveBlock(node)`, `inUnexpandedFor(node)`, and `longestIncreasingSubsequenceIndices(seq)` are centralized in `src/shared.js`. 
 
 - **Leaf Dependency**: `shared.js` does not import any other modules. This allows it to be imported by any other module in the codebase without introducing circular dependency risks.
-- **`inLiveBlock(node)` and `inUnexpandedFor(node)`**: Content inside a not-yet-expanded `<if data-live>`/`<for data-live>` (or static `<for>`) block must be skipped during the main pipeline passes, as their correct context is only known inside their own recursive `render()` call. If bound too early, subscriptions would leak or resolve against the wrong context.
+- **`inLiveBlock(node)` and `inUnexpandedFor(node)`**: Content inside a not-yet-expanded `<if data-live>`/`<for data-live>` (or static `<for>`) block must be skipped during the main pipeline passes, as its correct context is only known inside the ancestor's recursive `render()` call. A nested live root is deferred too; only a live root with no live ancestor is processed in the current pass. If bound too early, subscriptions would leak or resolve against the wrong context.
 - **`longestIncreasingSubsequenceIndices(seq)`**: The math utility used by the `"lcs"` loop diffing strategy is placed here to keep `bindings-loops.js` focused entirely on DOM reconciliation.
 
-### 9.4 Security model
+### 10.4 Security model
 
 - **`data-text`/`${...}`**: written via `textContent`/`nodeValue`/`attr.value`
   — none of these parse HTML, so there is nothing to escape and no XSS

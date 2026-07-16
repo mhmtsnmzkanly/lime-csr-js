@@ -125,6 +125,36 @@ visibility changes.
 See [DOCS.md](DOCS.md) for all syntax, lifecycle semantics, error codes, and
 limitations.
 
+## Plugin API v1
+
+Plugins add trusted, mount-scoped `data-lime-*` directives without changing
+Lime's fixed render pipeline. There is no global registry: pass frozen plugin
+definitions explicitly to each mount that uses them.
+
+```js
+import { definePlugin, mount, PLUGIN_API_VERSION } from 'lime-csr-js';
+
+const focusPlugin = definePlugin({
+  name: 'focus',
+  apiVersion: PLUGIN_API_VERSION,
+  directives: {
+    'data-lime-focus': {
+      setup({ element, value, afterConnect }) {
+        if (value === 'false') return;
+        afterConnect(() => element.focus());
+      },
+    },
+  },
+});
+
+mount('page', { target, store, plugins: [focusPlugin] });
+```
+
+Each plugin receives fresh state and cleanup bookkeeping per mount. Directives
+inside live `<if>`/`<for>` content are installed when that content appears and
+cleaned before it is removed. See [DOCS.md](DOCS.md#7-plugin-api-v1) for the
+full directive/hook API, diagnostics, trust model, and structural limits.
+
 ## Browser / CDN Usage
 
 Development can import repository source files with a relative module path.
@@ -145,7 +175,7 @@ ESM; jsDelivr will serve that same file after npm publication.
 ## API Overview
 
 ```js
-const cleanup = mount(templateName, { target, context, store, handlers, computed });
+const cleanup = mount(templateName, { target, context, store, handlers, computed, plugins });
 unmount(target);
 cleanup();
 ```
@@ -155,7 +185,8 @@ The legacy positional signature
 deprecated (one-time dev-mode notice). Calling `mount` again for the same
 target cleans up the previous mount first. Both `cleanup()` and
 `unmount(target)` cancel store subscriptions, model listeners, delegated
-event listeners, and dispose any `computed` entries registered by the mount.
+event listeners, plugin directive/hook resources, and dispose any `computed`
+entries registered by the mount.
 
 ### Structured diagnostics
 

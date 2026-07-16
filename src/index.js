@@ -2,20 +2,21 @@
  * @module index
  * lime-csr.js -- main entry point and orchestration layer.
  *
- * Modules do NOT import each other; ordering is done only here.
+ * Feature modules may import leaf helpers, but only this module controls the
+ * render pipeline and mount orchestration order.
  *
  * RENDER PIPELINE ORDER (critical):
- *   1. beforeRender(context, store)  -- lifecycle hook (optional, from mount options)
- *   2. expandPartials -- replace <partial>s with their contents (recursive).
- *   3. expandLoops    -- expand <for>s based on array elements.
- *   4. processAllIfs  -- select <if>/<else> branches.
+ *   1. expandPartials -- replace <partial>s with their contents (recursive).
+ *   2. expandLoops    -- expand <for>s based on array elements.
+ *   3. processAllIfs  -- select <if>/<else> branches.
  *   (1-3 may be nested, so loop until no special tags remain)
- *   5. resolveStatic  -- resolve remaining ${path} placeholders (top-level static).
- *   6. setupModelBindings -- data-model two-way form binding. RUNS FIRST (2h).
- *   7. setupBindings  -- data-text + {x}/data-x reactive bindings.
- *   8. setupShowBindings  -- data-show reactive native hidden-state binding.
- *   (6-8 order matters for 2h: data-model runs before data-on-* handlers)
- *   9. afterRender(rootEl, store)    -- lifecycle hook (optional, from mount options)
+ *   4. resolveStatic  -- resolve remaining ${path} placeholders (top-level static).
+ *   5. setupModelBindings -- data-model two-way form binding. RUNS FIRST (2h).
+ *   6. setupBindings  -- data-text + {x}/data-x reactive bindings.
+ *   7. setupShowBindings  -- data-show reactive native hidden-state binding.
+ *   8. pluginRuntime.setupDirectives -- mount-scoped data-lime-* directives.
+ *   9. setupLiveFors / setupLiveIfs -- recursive live blocks.
+ *   (5-8 order matters: data-model precedes delegated data-on-* handlers.)
  *
  * WHY resolveStatic LAST:
  *   If called first, ${item.x} inside a <for> would be resolved in the wrong
@@ -45,7 +46,7 @@
  *   expandLoops's SAME-PASS pipeline() call handles them with the correct context.
  *   Pipeline ORDER DID NOT CHANGE -- only which <partial>s expandPartials touches.
  *
- * EVENT DELEGATION (mount()'s OPTIONAL 5th argument -- NOT in render() PIPELINE):
+ * EVENT DELEGATION (mount() options.handlers -- NOT in render() PIPELINE):
  *   data-on-{event} (bindings-events.js) is NOT part of the render() pipeline;
  *   it sets up a single delegation listener on mount()'s `target` only.
  *   `options.handlers` not provided -> event delegation NOT set up (zero cost,
@@ -86,6 +87,7 @@ import { setupLiveIfs }   from './bindings-blocks.js';
 import { setupLiveFors }  from './bindings-loops.js';
 import { errors }         from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
+import { createPluginRuntime } from './plugins.js';
 
 // ── Re-exports for external consumers ────────────────────────────────────────
 export { createStore, getByPath, setByPath } from './store.js';
@@ -101,6 +103,7 @@ export { setupEventBindings } from './bindings-events.js';
 export { setDevMode, isDevMode, subscribeDiagnostics, warn } from './errors.js';
 export { setupLiveIfs } from './bindings-blocks.js';
 export { setupLiveFors } from './bindings-loops.js';
+export { definePlugin, PLUGIN_API_VERSION } from './plugins.js';
 
 // ── Infinite loop protection ─────────────────────────────────────────────────
 const MAX_PIPELINE_ITERATIONS = 100;
@@ -194,7 +197,7 @@ function runPipeline(frag, ctx, depth = 0) {
  * again for a subtree in the future: when the condition/list changes, the old
  * subtree is cleaned up, the new fragment is processed with render() and placed.
  *
- * @param {DocumentFragment} fragment - Cloned fragment from getTemplate()
+ * @param {DocumentFragment|Element} fragment - Cloned fragment or render root.
  * @param {Object}           context  - For static ${path} resolution (stateless)
  * @param {import('./store.js').Store|null} store - For reactive bindings
  * @param {Object<string, function(Event, Element): void>} [handlers] - For
@@ -205,9 +208,15 @@ function runPipeline(frag, ctx, depth = 0) {
  * @param {Document} [ownerDocument] - Destination document for shared runtime
  *   resources. mount() supplies target.ownerDocument; recursive live renders
  *   retain the same document.
+ * @param {Object|null} [pluginRuntime] - Internal mount-scoped plugin runtime.
  * @returns {function(): void} cleanup — cancels the subscriptions from setupBindings
  */
-export function render(fragment, context, store, handlers, ownerDocument) {
+export function render(fragment, context, store, handlers, ownerDocument, pluginRuntime) {
+  // Structural elements are expanded before the fixed directive setup stage.
+  // Diagnose reserved targets now so a static <if>/<for>/<partial> cannot
+  // silently discard an invalid plugin directive during expansion.
+  pluginRuntime?.diagnoseStructuralTargets(fragment);
+
   // 1-3. Structural expansion: loop until no partial/for/non-live-if remains.
   //      <if>s with data-live are PRESERVED at this stage — left to setupLiveIfs.
   runPipeline(fragment, context);
@@ -234,11 +243,25 @@ export function render(fragment, context, store, handlers, ownerDocument) {
   const visibilityDocument = ownerDocument ?? (rootDocument?.head ? rootDocument : document);
   const showCleanup = store ? setupShowBindings(fragment, store, visibilityDocument) : () => {};
 
+  // 5e. Mount-scoped plugin directives. This is a fixed stage: plugins cannot
+  //      reorder or replace Lime's pipeline. With no plugins, no runtime is
+  //      created and no plugin-specific DOM scan occurs.
+  const pluginCleanup = pluginRuntime
+    ? pluginRuntime.setupDirectives(fragment, context)
+    : () => {};
+
   // Recursive live-block fragments must install shared resources in the same
   // destination document as the initial mount, even when cloned template
   // content reports an inert owner document.
   const recursiveRender = (liveFragment, liveContext, liveStore, liveHandlers) =>
-    render(liveFragment, liveContext, liveStore, liveHandlers, visibilityDocument);
+    render(
+      liveFragment,
+      liveContext,
+      liveStore,
+      liveHandlers,
+      visibilityDocument,
+      pluginRuntime,
+    );
 
   // 6. Reactive <for data-live>: key-based diff + identity preservation.
   //    ORDER CRITICAL: setupLiveFors runs first. <if data-live> inside a
@@ -262,6 +285,7 @@ export function render(fragment, context, store, handlers, ownerDocument) {
     modelCleanup();
     bindingsCleanup();
     showCleanup();
+    pluginCleanup();
     liveForCleanup();
     liveCleanup();
   };
@@ -279,6 +303,7 @@ export function render(fragment, context, store, handlers, ownerDocument) {
  *     store,     // optional — omit and all reactive features are skipped
  *     handlers,  // optional — event delegation + data-after/data-before
  *     computed,  // optional — mount-scoped computeds, see below
+ *     plugins,   // optional — mount-scoped Plugin API v1 definitions
  *     beforeRender, afterRender, // optional lifecycle hooks
  *   });
  *
@@ -303,6 +328,7 @@ export function render(fragment, context, store, handlers, ownerDocument) {
  * @param {{
  *   handlers?: Object<string, function(Event, Element): void>,
  *   computed?: Object<string, { deps: string[], fn: function(): * }>,
+ *   plugins?: ReadonlyArray<Object>,
  *   beforeRender?: function(Object, import('./store.js').Store): void,
  *   afterRender?:  function(Element, import('./store.js').Store): void
  * }} [options={}]
@@ -332,7 +358,8 @@ export function mount(templateName, context, target, store, options = {}) {
     target.textContent = '';
   }
 
-  // 2e: beforeRender lifecycle hook
+  // Existing lifecycle order is preserved for plugin-free mounts: this hook
+  // historically runs before template lookup and before computed registration.
   if (typeof options.beforeRender === 'function') {
     options.beforeRender(context, store);
   }
@@ -359,8 +386,24 @@ export function mount(templateName, context, target, store, options = {}) {
     }
   }
 
-  const renderCleanup = render(fragment, context, store, options.handlers, target.ownerDocument);
+  // Plugin runtime exists only for this successful mount. Reusing a frozen
+  // definition in another mount creates fresh state and cleanup stacks there.
+  const pluginRuntime = options.plugins === undefined
+    ? null
+    : createPluginRuntime(options.plugins, { target, store, context });
+  pluginRuntime?.beforeMount();
+
+  const renderCleanup = render(
+    fragment,
+    context,
+    store,
+    options.handlers,
+    target.ownerDocument,
+    pluginRuntime,
+  );
   target.appendChild(fragment);
+
+  pluginRuntime?.afterMount();
 
   // 2e: afterRender lifecycle hook (called after content is in the DOM)
   if (typeof options.afterRender === 'function') {
@@ -373,9 +416,13 @@ export function mount(templateName, context, target, store, options = {}) {
     ? setupEventBindings(target, store, options.handlers)
     : () => {};
 
+  let active = true;
   const cleanup = function cleanup() {
+    if (!active) return;
+    active = false;
     renderCleanup();
     eventsCleanup();
+    pluginRuntime?.cleanup();
     for (const dispose of computedDisposes) dispose();
     computedDisposes.length = 0; // guard against double cleanup calls
   };

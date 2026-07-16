@@ -28,8 +28,9 @@ export function inIgnoredBlock(node) {
 /**
  * Checks if a given node is inside a not-yet-expanded reactive block
  * (<if data-live> or <for data-live>).
- * If the node itself is the root of the live block, it returns false
- * (so that its own attributes can still be processed/bound).
+ * A top-level live root returns false so it can be expanded in this pass; a
+ * live root nested inside another live block returns true and is deferred to
+ * that ancestor's recursive render with the correct context.
  *
  * Used by: index.js, template.js, partials.js, loops.js, conditionals.js,
  * bindings.js, bindings-model.js, bindings-show.js.
@@ -43,9 +44,9 @@ export function inLiveBlock(node) {
     const parent = node.parentElement;
     return !!(parent?.closest?.('if[data-live]') || parent?.closest?.('for[data-live]'));
   }
-  const isLiveRoot = node.matches?.('if[data-live]') || node.matches?.('for[data-live]');
-  if (isLiveRoot) return false;
-  return !!(node.closest?.('if[data-live]') || node.closest?.('for[data-live]'));
+  // Start at the parent so the node itself is not mistaken for an ancestor.
+  const parent = node.parentElement;
+  return !!(parent?.closest?.('if[data-live]') || parent?.closest?.('for[data-live]'));
 }
 
 /**
