@@ -86,6 +86,23 @@ store.batch(() => {
 }); // subscribers (and computeds depending on both) fire once, here
 ```
 
+## Comparison with Alpine.js
+
+| Alpine directive | What it does in Alpine | lime-csr equivalent |
+|---|---|---|
+| `x-data` | Defines component state and scope | `createStore(initialState)` + `mount(name, { target, context, store })`; Lime uses a shared store with path-based access |
+| `x-text` | Reactively updates text | `data-text` |
+| `x-bind` | Reactively binds an attribute | `{x}`/`data-x` |
+| `x-on` | Adds an event listener and evaluates an expression | `data-on-*` using handler-name matching, never expressions |
+| `x-show` | Hides the DOM without removing it | `data-show`, using the native `hidden` attribute |
+| `x-if` | Conditionally adds/removes template content | `<if>` / `<if data-live>` |
+| `x-for` | Renders and reactively diffs a keyed list | `<for each as>` / `<for data-live key>` |
+| `x-model` | Two-way form binding | `data-model` |
+| `x-ignore` | Prevents Alpine from initializing an element subtree | `data-lime-ignore`, leaving the element and its subtree untouched by Lime |
+| `x-transition` | Adds enter/leave transition helpers | None |
+| `$store` | Provides global shared reactive state | A shared `createStore()` instance |
+| `$dispatch` | Dispatches custom events | None |
+
 ### Visibility with `data-show`
 
 `data-show="path"` keeps its element in the DOM and manages the native

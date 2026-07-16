@@ -61,18 +61,23 @@
     template.id = 'tpl-widget';
     template.innerHTML = `
       <div>
-        <p>${'before-ignore'}</p>
+        <p>\${before-ignore}</p>
         <div data-lime-ignore>
-          <p>${'inside-ignore'}</p>
-          <span data-x="${'should-not-be-resolved'}">test</span>
+          <p>\${inside-ignore}</p>
+          <span data-x="\${should-not-be-resolved}">test</span>
         </div>
-        <p>${'after-ignore'}</p>
+        <p>\${afterIgnore}</p>
       </div>
     `;
     document.body.appendChild(template);
 
     const host = document.createElement('div');
-    const ctx = { 'before-ignore': 'RESOLVED', 'inside-ignore': 'MUST-STAY', 'should-not-be-resolved': 'bad' };
+    const ctx = {
+      'before-ignore': 'RESOLVED',
+      afterIgnore: 'RESOLVED',
+      'inside-ignore': 'MUST-STAY',
+      'should-not-be-resolved': 'bad',
+    };
     const store = createStore({});
 
     const frag = document.importNode(template.content, true);
@@ -112,9 +117,9 @@
     const cleanup = render(frag, {}, store);
     host.appendChild(frag);
 
-    const before = host.getElementById('before');
-    const inside = host.getElementById('inside');
-    const after = host.getElementById('after');
+    const before = host.querySelector('#before');
+    const inside = host.querySelector('#inside');
+    const after = host.querySelector('#after');
 
     assert('before-ignore: data-text IS bound', before.textContent, 'STORE-VALUE');
     assert('inside-ignore: data-text is NOT bound (stays as-is)', inside.textContent, 'inside (should stay untouched)');
@@ -174,9 +179,9 @@
     template.id = 'tpl-for-ignore';
     template.innerHTML = `
       <div>
-        <for each="items" as="item"><span>${'item.name'}</span></for>
+        <for each="items" as="item"><span>\${item.name}</span></for>
         <div data-lime-ignore>
-          <for each="items" as="item"><span>${'item.name'}</span></for>
+          <for each="items" as="item"><span>\${item.name}</span></for>
         </div>
       </div>
     `;
@@ -281,8 +286,48 @@
     assert('inside-ignore button: handler was NOT called', clickLog.includes('inside'), false);
     assert('after-ignore button: handler WAS called', clickLog.includes('after'), true);
 
-    note('events from the ignored block never reach the handler lookup');
+    note('handler elements inside data-lime-ignore are skipped');
     show('6. event isolation in ignored block', host.cloneNode(true));
+    template.remove();
+    cleanup();
+  }
+
+  // ── 7. Ignored structural tags do not keep the pipeline pending ─────────
+  group('ignored <if>/<for> do not trigger a pipeline-depth warning');
+  {
+    const template = document.createElement('template');
+    template.id = 'tpl-ignore-pipeline';
+    template.innerHTML = `
+      <div data-lime-ignore>
+        <if is-truthy="show"><span>ignored if</span></if>
+        <for each="items" as="item"><span>ignored item</span></for>
+      </div>
+    `;
+    document.body.appendChild(template);
+
+    const host = document.createElement('div');
+    const originalWarn = console.warn;
+    let warningCount = 0;
+    console.warn = () => { warningCount++; };
+
+    let cleanup;
+    try {
+      cleanup = mount('ignore-pipeline', {
+        target: host,
+        context: { show: true, items: ['A', 'B'] },
+        store: createStore({}),
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    const ignored = host.querySelector('[data-lime-ignore]');
+    assert('ignored <if> and <for> both remain unexpanded',
+      !!ignored?.querySelector('if') && !!ignored?.querySelector('for'), true);
+    assert('mount emits zero warnings for ignored structural tags', warningCount, 0);
+
+    note('ignored structural tags do not count as pending pipeline work');
+    show('7. ignored structural pipeline termination', host.cloneNode(true));
     template.remove();
     cleanup();
   }

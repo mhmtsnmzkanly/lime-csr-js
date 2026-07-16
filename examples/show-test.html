@@ -55,7 +55,7 @@
     area.appendChild(box);
   }
 
-  // ── 1. truthy → visible, falsy → display:none, truthy again → visible ──
+  // ── 1. truthy → visible, falsy → hidden, truthy again → visible ────────
   group('basic: truthy → visible; store.set(falsy) → hidden; truthy again → visible');
   {
     const store = createStore({ open: true });
@@ -65,19 +65,22 @@
     setupShowBindings(host, store);
     const panel = host.querySelector('.panel');
 
-    assert('initial state: visible (display empty)', panel.style.display, '');
+    assert('initial state: hidden is absent', panel.hidden, false);
+    assert('initial state: inline display untouched', panel.style.display, '');
 
     store.set('open', false);
-    assert('falsy → display:none', panel.style.display, 'none');
+    assert('falsy → hidden is present', panel.hidden, true);
+    assert('falsy → inline display still untouched', panel.style.display, '');
 
     store.set('open', true);
-    assert('truthy again → visible (display empty)', panel.style.display, '');
+    assert('truthy again → hidden is absent', panel.hidden, false);
+    assert('truthy again → inline display still untouched', panel.style.display, '');
 
     show('1. basic toggle', host.cloneNode(true));
   }
 
-  // ── 2. CSS display:flex must be preserved (no hardcoded "block") ────────
-  group('flex container: flex must RETURN after hide/show (not fall back to block)');
+  // ── 2. CSS display:flex must remain application-owned ──────────────────
+  group('flex container: inline display stays untouched across hide/show');
   {
     const store = createStore({ show: true });
     const host  = document.createElement('div');
@@ -87,18 +90,21 @@
     const box = host.querySelector('.flex-box');
 
     assert('initial state: flex preserved', box.style.display, 'flex');
+    assert('initial state: hidden is absent', box.hidden, false);
 
     store.set('show', false);
-    assert('when hidden: none', box.style.display, 'none');
+    assert('when hidden: hidden is present', box.hidden, true);
+    assert('when hidden: flex remains untouched', box.style.display, 'flex');
 
     store.set('show', true);
-    assert('when shown again: flex RETURNED (NOT block)', box.style.display, 'flex');
+    assert('when shown again: hidden is absent', box.hidden, false);
+    assert('when shown again: flex remains untouched', box.style.display, 'flex');
 
     show('2. flex preservation', host.cloneNode(true));
   }
 
   // ── 3. falsy on first render → element hidden FROM THE START (no FOUC) ──
-  group('no FOUC: element is display:none from the start if falsy at initial setup');
+  group('no FOUC: element has hidden from the start if falsy at initial setup');
   {
     const store = createStore({ open: false });
     const host  = document.createElement('div'); // not yet added to the document
@@ -107,12 +113,13 @@
     setupShowBindings(host, store); // runs BEFORE the fragment is added to the DOM
 
     const modal = host.querySelector('.modal');
-    assert('already hidden at setup time (before ever visible)', modal.style.display, 'none');
+    assert('already hidden at setup time (before ever visible)', modal.hidden, true);
+    assert('initial hide does not write inline display', modal.style.display, '');
 
     // Now add it to the document — there should be no "flash of visible content,
-    // then disappear," because display was already applied as "none" during setup.
+    // then disappear," because hidden was already applied during setup.
     document.body.appendChild(host);
-    assert('still hidden AFTER being added to the DOM (no late paint)', modal.style.display, 'none');
+    assert('still hidden AFTER being added to the DOM (no late paint)', modal.hidden, true);
     host.remove();
 
     note('setupShowBindings applied the initial state before the fragment was added to the DOM');
@@ -137,7 +144,7 @@
     assert('input value STILL THE SAME after showing again (identity preserved)',
       host.querySelector('input').value, 'user typed this');
 
-    note('the DOM element ITSELF never changed — only display was toggled');
+    note('the DOM element ITSELF never changed — only its hidden state was toggled');
     show('4. identity (input value preserved)', host.cloneNode(true));
   }
 
@@ -154,7 +161,8 @@
     cleanup();
 
     store.set('open', false);
-    assert('store.set after cleanup → display UNCHANGED', panel.style.display, '');
+    assert('store.set after cleanup → hidden state UNCHANGED', panel.hidden, false);
+    assert('store.set after cleanup → inline display UNCHANGED', panel.style.display, '');
 
     note('unsubscribe happened (no leak)');
   }

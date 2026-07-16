@@ -1077,9 +1077,11 @@ embedding third-party widgets that manage their own DOM and data-* attributes.
   expanded.
 - Nesting: if an ancestor already has `data-lime-ignore`, inner `data-lime-ignore`
   attributes are redundant (all descendants are already ignored).
-- Events: if a `data-on-*` event bubbles FROM an ignored subtree TO a listener
-  on a non-ignored ancestor, the event is silently discarded and no handler is
-  invoked — the ignored region is event-isolated.
+- Events: delegation checks the `data-on-*` handler element's ancestry, not
+  `event.target`'s ancestry. A handler whose own element is inside an ignored
+  region is suppressed. If a non-ignored handler element contains an ignored
+  subtree, clicks originating in that subtree still bubble to the outer
+  handler because the handler element itself is not ignored.
 - The attribute name `lime-ignore` cannot be used as a `{x}` placeholder in
   reactive attributes (e.g. `href="/u/{lime-ignore}"`) — reserved to prevent
   confusion with the actual `data-lime-ignore` attribute.
@@ -1132,6 +1134,19 @@ RIGHT:  <span title="{msg}" data-msg="msg"></span>
         -- Don't use "lime-ignore" as a placeholder name. Use a different
            name or omit the reactive binding if the attribute is outside the
            ignored block.
+```
+```
+WRONG:  <button data-on-click="save">
+          Save <span data-lime-ignore>third-party content</span>
+        </button>
+        -- Expecting a click on the ignored child to suppress "save". The
+           handler element is the outer, non-ignored button, so it still runs.
+
+RIGHT:  <div data-lime-ignore>
+          <button data-on-click="save">third-party button</button>
+        </div>
+        -- The handler element itself is inside the ignored region, so Lime
+           suppresses it.
 ```
 
 ---

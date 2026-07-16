@@ -85,7 +85,7 @@ import { setupEventBindings } from './bindings-events.js';
 import { setupLiveIfs }   from './bindings-blocks.js';
 import { setupLiveFors }  from './bindings-loops.js';
 import { errors }         from './errors.js';
-import { inLiveBlock }    from './shared.js';
+import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 // ── Re-exports for external consumers ────────────────────────────────────────
 export { createStore, getByPath, setByPath } from './store.js';
@@ -147,8 +147,11 @@ function isMountOptions(value) {
  * @returns {boolean}
  */
 function hasSpecialTags(root) {
+  // Ignored tags are never expanded, so they must not keep the pipeline pending.
   const pending = (selector) =>
-    Array.from(root.querySelectorAll(selector)).some((el) => !inLiveBlock(el));
+    Array.from(root.querySelectorAll(selector)).some(
+      (el) => !inLiveBlock(el) && !inIgnoredBlock(el),
+    );
 
   return (
     pending('partial') ||
