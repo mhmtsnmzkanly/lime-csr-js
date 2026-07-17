@@ -75,6 +75,72 @@ test('definePlugin freezes the plugin, directive map, and directive definitions'
   assert.equal(Object.isFrozen(plugin.directives['data-lime-frozen']), true);
 });
 
+test('source definePlugin is accepted by dist mount across module instances', async () => {
+  const dist = await import('../dist/index.min.js');
+  dist.setDevMode(false);
+  const { name, target } = fixture('<div data-lime-cross-source></div>');
+  const diagnostics = [];
+  let setups = 0;
+  let cleanups = 0;
+  const plugin = definePlugin({
+    name: 'cross-source-to-dist',
+    apiVersion: PLUGIN_API_VERSION,
+    directives: {
+      'data-lime-cross-source'() {
+        setups += 1;
+        return () => { cleanups += 1; };
+      },
+    },
+  });
+  const unsubscribe = dist.subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
+  let cleanup = () => {};
+  try {
+    assert.doesNotThrow(() => {
+      cleanup = dist.mount(name, { target, plugins: [plugin] });
+    });
+    assert.equal(setups, 1);
+    cleanup();
+    assert.equal(cleanups, 1);
+    assert.equal(diagnostics.some(({ code }) => code === 'PLUGIN_INVALID'), false);
+  } finally {
+    unsubscribe();
+    cleanup();
+    dist.setDevMode(true);
+  }
+});
+
+test('dist definePlugin is accepted by source mount across module instances', async () => {
+  const dist = await import('../dist/index.min.js');
+  const { name, target } = fixture('<div data-lime-cross-dist></div>');
+  const diagnostics = [];
+  let setups = 0;
+  let cleanups = 0;
+  const plugin = dist.definePlugin({
+    name: 'cross-dist-to-source',
+    apiVersion: dist.PLUGIN_API_VERSION,
+    directives: {
+      'data-lime-cross-dist'() {
+        setups += 1;
+        return () => { cleanups += 1; };
+      },
+    },
+  });
+  const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
+  let cleanup = () => {};
+  try {
+    assert.doesNotThrow(() => {
+      cleanup = mount(name, { target, plugins: [plugin] });
+    });
+    assert.equal(setups, 1);
+    cleanup();
+    assert.equal(cleanups, 1);
+    assert.equal(diagnostics.some(({ code }) => code === 'PLUGIN_INVALID'), false);
+  } finally {
+    unsubscribe();
+    cleanup();
+  }
+});
+
 test('definePlugin rejects invalid plugin names', () => {
   for (const name of ['', 'Upper', 'two words', '-leading', 'with_underscore']) {
     assert.throws(() => definePlugin({ name, apiVersion: 1 }), TypeError);
@@ -88,6 +154,44 @@ test('definePlugin rejects invalid directive names', () => {
       TypeError,
     );
   }
+});
+
+test('definePlugin requires setup(api) in directive object form', () => {
+  const invalidDefinitions = [
+    ['empty', {}],
+    ['undefined', { setup: undefined }],
+    ['null', { setup: null }],
+    ['string', { setup: 'not-a-function' }],
+    ['misspelled', { setUp() {} }],
+  ];
+
+  for (const [suffix, directiveDefinition] of invalidDefinitions) {
+    assert.throws(
+      () => definePlugin({
+        name: `invalid-setup-${suffix}`,
+        apiVersion: 1,
+        directives: { [`data-lime-${suffix}`]: directiveDefinition },
+      }),
+      (error) => error instanceof TypeError && /requires a setup\(api\) function/.test(error.message),
+    );
+  }
+});
+
+test('directive short function and object setup forms remain supported', () => {
+  const { name, target } = fixture(
+    '<div data-lime-short></div><div data-lime-object></div>',
+  );
+  const calls = [];
+  const plugin = definePlugin({
+    name: 'valid-setup-forms',
+    apiVersion: 1,
+    directives: {
+      'data-lime-short'() { calls.push('short'); },
+      'data-lime-object': { setup() { calls.push('object'); } },
+    },
+  });
+  mount(name, { target, plugins: [plugin] });
+  assert.deepEqual(calls, ['short', 'object']);
 });
 
 test('data-lime-ignore remains reserved', () => {
@@ -428,10 +532,26 @@ test('invalid plugin list and entries are diagnosed without throwing', () => {
   assert.ok(diagnostics.some(({ code }) => code === 'PLUGIN_INVALID'));
 });
 
-test('set and watch without a store diagnose and remain non-throwing', () => {
+test('a global marker without a valid plugin shape is still rejected', () => {
+  const { name, target } = fixture('<div></div>');
+  const forged = {
+    [Symbol.for(`lime-csr.plugin-definition.v${PLUGIN_API_VERSION}`)]: true,
+    name: 'forged',
+    apiVersion: 1,
+    directives: null,
+  };
+  const diagnostics = [];
+  const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
+  assert.doesNotThrow(() => mount(name, { target, plugins: [forged] }));
+  unsubscribe();
+  assert.ok(diagnostics.some(({ code }) => code === 'PLUGIN_INVALID'));
+});
+
+test('get, set, and watch without a store diagnose and return safe fallbacks', () => {
   const { name, target } = fixture('<div data-lime-test></div>');
   const results = [];
-  const plugin = directivePlugin(({ set, watch }) => {
+  const plugin = directivePlugin(({ get, set, watch }) => {
+    results.push(get('value'));
     results.push(set('value', 1));
     results.push(watch('value', () => {}));
   });
@@ -439,11 +559,13 @@ test('set and watch without a store diagnose and remain non-throwing', () => {
   const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
   mount(name, { target, plugins: [plugin] });
   unsubscribe();
-  assert.equal(results[0], false);
-  assert.equal(typeof results[1], 'function');
+  assert.equal(results[0], undefined);
+  assert.equal(results[1], false);
+  assert.equal(typeof results[2], 'function');
+  assert.doesNotThrow(() => results[2]());
   assert.deepEqual(
     diagnostics.filter(({ code }) => code === 'PLUGIN_STORE_REQUIRED').map(({ code }) => code),
-    ['PLUGIN_STORE_REQUIRED', 'PLUGIN_STORE_REQUIRED'],
+    ['PLUGIN_STORE_REQUIRED', 'PLUGIN_STORE_REQUIRED', 'PLUGIN_STORE_REQUIRED'],
   );
 });
 
@@ -546,6 +668,86 @@ test('plugin diagnostic helper uses structured diagnostics with plugin context',
   assert.match(diagnostic.context.plugin, /^test-/);
   assert.equal(diagnostic.context.directive, 'data-lime-test');
   assert.equal(diagnostic.context.element, target.firstElementChild);
+});
+
+test('directive diagnostic details cannot spoof framework plugin or directive identity', () => {
+  const { name, target } = fixture('<div data-lime-context></div>');
+  const details = {
+    plugin: 'spoofed-plugin',
+    directive: 'data-lime-spoofed',
+    custom: 42,
+  };
+  const diagnostics = [];
+  const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
+  const plugin = directivePlugin(
+    ({ diagnostic }) => diagnostic('PLUGIN_CONTEXT_TEST', 'Context test.', details),
+    { name: 'context-owner', directive: 'data-lime-context' },
+  );
+  mount(name, { target, plugins: [plugin] });
+  unsubscribe();
+
+  const diagnostic = diagnostics.find(({ code }) => code === 'PLUGIN_CONTEXT_TEST');
+  assert.equal(diagnostic.context.plugin, 'context-owner');
+  assert.equal(diagnostic.context.directive, 'data-lime-context');
+  assert.equal(diagnostic.context.custom, 42);
+  assert.deepEqual(details, {
+    plugin: 'spoofed-plugin',
+    directive: 'data-lime-spoofed',
+    custom: 42,
+  });
+});
+
+test('mount hook diagnostics protect plugin identity without inventing a directive', () => {
+  const { name, target } = fixture('<div></div>');
+  const details = { plugin: 'spoofed', directive: 'user-detail', custom: true };
+  const diagnostics = [];
+  const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
+  const plugin = definePlugin({
+    name: 'hook-context-owner',
+    apiVersion: 1,
+    beforeMount({ diagnostic }) {
+      diagnostic('PLUGIN_HOOK_CONTEXT_TEST', 'Hook context test.', details);
+    },
+  });
+  mount(name, { target, plugins: [plugin] });
+  unsubscribe();
+
+  const diagnostic = diagnostics.find(({ code }) => code === 'PLUGIN_HOOK_CONTEXT_TEST');
+  assert.equal(diagnostic.context.plugin, 'hook-context-owner');
+  assert.equal(diagnostic.context.directive, 'user-detail');
+  assert.equal(diagnostic.context.custom, true);
+  assert.deepEqual(details, { plugin: 'spoofed', directive: 'user-detail', custom: true });
+});
+
+test('primitive and null diagnostic details are preserved under detail', () => {
+  const { name, target } = fixture('<div data-lime-detail></div>');
+  const diagnostics = [];
+  const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
+  const plugin = directivePlugin(
+    ({ diagnostic }) => {
+      diagnostic('PLUGIN_STRING_DETAIL', 'Detail', 'hello');
+      diagnostic('PLUGIN_NUMBER_DETAIL', 'Detail', 42);
+      diagnostic('PLUGIN_NULL_DETAIL', 'Detail', null);
+    },
+    { name: 'detail-owner', directive: 'data-lime-detail' },
+  );
+  mount(name, { target, plugins: [plugin] });
+  unsubscribe();
+
+  const details = new Map(
+    diagnostics
+      .filter(({ code }) => code.startsWith('PLUGIN_') && code.endsWith('_DETAIL'))
+      .map((diagnostic) => [diagnostic.code, diagnostic.context]),
+  );
+  assert.deepEqual(details.get('PLUGIN_STRING_DETAIL'), {
+    detail: 'hello', plugin: 'detail-owner', directive: 'data-lime-detail',
+  });
+  assert.deepEqual(details.get('PLUGIN_NUMBER_DETAIL'), {
+    detail: 42, plugin: 'detail-owner', directive: 'data-lime-detail',
+  });
+  assert.deepEqual(details.get('PLUGIN_NULL_DETAIL'), {
+    detail: null, plugin: 'detail-owner', directive: 'data-lime-detail',
+  });
 });
 
 test('hook failure does not prevent later plugins from mounting', () => {

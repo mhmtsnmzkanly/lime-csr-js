@@ -15,7 +15,9 @@ const PLUGIN_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 const DIRECTIVE_NAME_PATTERN = /^data-lime-[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const RESERVED_DIRECTIVES = new Set(['data-lime-ignore']);
 const STRUCTURAL_TAGS = new Set(['IF', 'ELSE', 'FOR', 'PARTIAL', 'TEMPLATE']);
-const PLUGIN_DEFINITION = Symbol('lime-csr-plugin-definition');
+const PLUGIN_DEFINITION = Symbol.for(
+  `lime-csr.plugin-definition.v${PLUGIN_API_VERSION}`,
+);
 
 /**
  * Validates and freezes a reusable plugin definition.
@@ -72,8 +74,10 @@ export function definePlugin(definition) {
       !Array.isArray(directiveDefinition)
     ) {
       ({ setup } = directiveDefinition);
-      if (setup !== undefined && typeof setup !== 'function') {
-        throw new TypeError(`Plugin directive "${directiveName}" setup must be a function.`);
+      if (typeof setup !== 'function') {
+        throw new TypeError(
+          `Plugin directive "${directiveName}" requires a setup(api) function.`,
+        );
       }
     } else {
       throw new TypeError(
@@ -98,14 +102,50 @@ export function definePlugin(definition) {
 }
 
 function pluginContext(record, directive, details) {
-  const context = { plugin: record.plugin.name };
-  if (directive) context.directive = directive;
-  if (details === undefined) return context;
+  let context;
   if (details && typeof details === 'object' && !Array.isArray(details)) {
-    return Object.assign(context, details);
+    context = { ...details };
+  } else if (details === undefined) {
+    context = {};
+  } else {
+    context = { detail: details };
   }
-  context.detail = details;
+
+  // Framework-owned identity is applied last so plugin details cannot spoof it.
+  context.plugin = record.plugin.name;
+  if (directive) context.directive = directive;
   return context;
+}
+
+function isPluginDefinition(plugin) {
+  try {
+    return (
+      plugin !== null &&
+      typeof plugin === 'object' &&
+      !Array.isArray(plugin) &&
+      Object.hasOwn(plugin, PLUGIN_DEFINITION) &&
+      plugin[PLUGIN_DEFINITION] === true &&
+      typeof plugin.name === 'string' &&
+      PLUGIN_NAME_PATTERN.test(plugin.name) &&
+      Number.isInteger(plugin.apiVersion) &&
+      plugin.apiVersion >= 1 &&
+      (plugin.version === undefined || typeof plugin.version === 'string') &&
+      (plugin.beforeMount === undefined || typeof plugin.beforeMount === 'function') &&
+      (plugin.afterMount === undefined || typeof plugin.afterMount === 'function') &&
+      plugin.directives !== null &&
+      typeof plugin.directives === 'object' &&
+      !Array.isArray(plugin.directives) &&
+      Object.entries(plugin.directives).every(([directive, definition]) => (
+        DIRECTIVE_NAME_PATTERN.test(directive) &&
+        !RESERVED_DIRECTIVES.has(directive) &&
+        definition !== null &&
+        typeof definition === 'object' &&
+        typeof definition.setup === 'function'
+      ))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function report(record, directive, code, message, details) {
@@ -165,7 +205,7 @@ export function createPluginRuntime(plugins, environment) {
   const diagnosedStructuralTargets = new WeakMap();
 
   for (const plugin of plugins) {
-    if (plugin?.[PLUGIN_DEFINITION] !== true) {
+    if (!isPluginDefinition(plugin)) {
       warn(
         'PLUGIN_INVALID',
         'mount(): every plugin must be created with definePlugin(); invalid entry was skipped.',
@@ -313,7 +353,6 @@ export function createPluginRuntime(plugins, environment) {
             continue;
           }
           if (inLiveBlock(element)) continue;
-          if (typeof definition.setup !== 'function') continue;
 
           const cleanups = [];
           const activity = { active: true };
