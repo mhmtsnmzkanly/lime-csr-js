@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr v0.2.10 — Dev vs Prod Diagnostic Verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; line-height: 1.5; }
+    h1     { font-size: 1.1rem; color: #94a3b8; margin-bottom: 0.5rem; }
+    h2     { font-size: 0.95rem; color: #60a5fa; margin: 1.5rem 0 0.5rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; font-weight: bold; }
+    .note  { color: #fbbf24; }
+    .panel { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    .card  { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; }
+    .card h3 { font-size: 0.9rem; margin-top: 0; color: #38bdf8; }
+    .btn   { background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 12px; margin-right: 6px; margin-bottom: 6px; }
+    .btn:hover { background: #2563eb; }
+    .btn-prod { background: #10b981; }
+    .btn-prod:hover { background: #059669; }
+    .btn-warn { background: #f59e0b; color: #000; }
+    .btn-warn:hover { background: #d97706; }
+    pre    { background: #090d16; border: 1px solid #1e293b; padding: 0.75rem; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+    .badge-dev { background: #3b82f6; color: #fff; }
+    .badge-prod { background: #10b981; color: #fff; }
+  </style>
+</head>
+<body>
+<h1>lime-csr v0.2.10 — Dev vs Prod Diagnostic Comparison</h1>
+<p style="color: #94a3b8; font-size: 13px;">
+  Demonstrating compile-time separation between <strong>dist/index.dev.min.js</strong> and <strong>dist/index.min.js</strong>.
+</p>
+
+<div class="panel">
+  <div class="card">
+    <h3><span class="badge badge-dev">DEV</span> Development Build (dist/index.dev.min.js)</h3>
+    <p style="font-size: 12px; color: #94a3b8;">
+      Detailed actionable explanations, console formatted with <code>[lime-csr]</code>, and interactive toast stack with deduplication badges.
+    </p>
+    <div>
+      <button class="btn" id="btn-dev-err">Trigger BINDING_MISSING_PATH</button>
+      <button class="btn" id="btn-dev-dup">Trigger Repeated Errors (x5 Deduplication)</button>
+      <button class="btn" id="btn-dev-custom">reportError('CUSTOM_DEV_CODE')</button>
+    </div>
+    <pre id="dev-console-log">// Dev console output will appear here...</pre>
+  </div>
+
+  <div class="card">
+    <h3><span class="badge badge-prod">PROD</span> Production Build (dist/index.min.js)</h3>
+    <p style="font-size: 12px; color: #94a3b8;">
+      Ultra-compact bundle (34.3 KB). Zero verbose English strings, zero overlay DOM code. Console outputs concise <code>[lime-error] CODE</code>.
+    </p>
+    <div>
+      <button class="btn btn-prod" id="btn-prod-err">Trigger BINDING_MISSING_PATH</button>
+      <button class="btn btn-prod" id="btn-prod-custom">reportError('CUSTOM_PROD_CODE')</button>
+    </div>
+    <pre id="prod-console-log">// Prod console output will appear here...</pre>
+  </div>
+</div>
+
+<h2>Automated Verification Suite</h2>
+<pre id="log"></pre>
+
+<script type="module">
+  import * as distDev from '../dist/index.dev.min.js';
+  import * as distProd from '../dist/index.min.js';
+  import { reportError as srcReportError, error as srcError } from '../src/index.js';
+
+  const log = document.getElementById('log');
+  const devConsoleLog = document.getElementById('dev-console-log');
+  const prodConsoleLog = document.getElementById('prod-console-log');
+
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' : `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function captureConsole(fn) {
+    const messages = [];
+    const orig = console.warn;
+    console.warn = (...args) => {
+      messages.push(args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' '));
+      orig.apply(console, args);
+    };
+    try {
+      fn();
+    } finally {
+      console.warn = orig;
+    }
+    return messages;
+  }
+
+  // ── 1. API Exports Parity ──────────────────────────────────────────────────
+  group('1. Public API Exports Parity');
+  {
+    const expectedExports = [
+      'createStore', 'mount', 'unmount', 'render', 'definePlugin',
+      'PLUGIN_API_VERSION', 'setDevMode', 'isDevMode', 'subscribeDiagnostics',
+      'warn', 'reportError', 'error'
+    ];
+
+    for (const exp of expectedExports) {
+      assert(`dist/index.dev exports ${exp}`, typeof distDev[exp] !== 'undefined', true);
+      assert(`dist/index.prod exports ${exp}`, typeof distProd[exp] !== 'undefined', true);
+    }
+  }
+
+  // ── 2. Unified reportError & error Alias ────────────────────────────────────
+  group('2. Unified reportError & error Alias');
+  {
+    assert('reportError is function', typeof srcReportError, 'function');
+    assert('error is function alias', typeof srcError, 'function');
+    assert('error === reportError', srcError, srcReportError);
+  }
+
+  // ── 3. Dev Build Behavior ──────────────────────────────────────────────────
+  group('3. Development Build Presentation');
+  {
+    distDev.setDevMode(true);
+    const messages = captureConsole(() => {
+      distDev.reportError('BINDING_MISSING_PATH');
+    });
+
+    assert('Dev logs with [lime-csr] prefix', messages[0].startsWith('[lime-csr] BINDING_MISSING_PATH:'), true);
+    assert('Dev contains full explanation', messages[0].includes('data-text attribute is empty; a store path is required'), true);
+
+    const overlay = document.getElementById('lime-csr-error-overlay-container');
+    assert('Dev renders visual overlay container', overlay !== null, true);
+    assert('Overlay container has max-height boundary', overlay.style.maxHeight.includes('85vh'), true);
+    assert('Overlay container has overflow-y auto', overlay.style.overflowY.includes('auto'), true);
+  }
+
+  // ── 4. Prod Build Behavior ─────────────────────────────────────────────────
+  group('4. Production Build Presentation');
+  {
+    distProd.setDevMode(true);
+    const messages = captureConsole(() => {
+      distProd.reportError('BINDING_MISSING_PATH', { source: 'test' });
+    });
+
+    assert('Prod logs with concise [lime-error] prefix', messages[0].startsWith('[lime-error] BINDING_MISSING_PATH'), true);
+    assert('Prod DOES NOT include verbose explanation', messages[0].includes('data-text attribute is empty'), false);
+  }
+
+  // ── 5. Overlay Toast Deduplication ─────────────────────────────────────────
+  group('5. Toast Deduplication & Count Badge');
+  {
+    distDev.setDevMode(true);
+    distDev.reportError('DUPLICATE_DEMO_CODE');
+    distDev.reportError('DUPLICATE_DEMO_CODE');
+    distDev.reportError('DUPLICATE_DEMO_CODE');
+
+    const container = document.getElementById('lime-csr-error-overlay-container');
+    const cards = container.querySelectorAll('[data-lime-error-code="DUPLICATE_DEMO_CODE"]');
+    assert('Repeated errors produce only 1 card', cards.length, 1);
+
+    const badge = cards[0].querySelector('.lime-error-count');
+    assert('Deduplication badge exists', badge !== null, true);
+    assert('Deduplication badge shows x3', badge.textContent, 'x3');
+  }
+
+  // ── Interactive Playground Handlers ────────────────────────────────────────
+  document.getElementById('btn-dev-err').addEventListener('click', () => {
+    distDev.setDevMode(true);
+    const msgs = captureConsole(() => {
+      distDev.reportError('BINDING_MISSING_PATH');
+    });
+    devConsoleLog.textContent += '\n' + msgs.join('\n');
+  });
+
+  document.getElementById('btn-dev-dup').addEventListener('click', () => {
+    distDev.setDevMode(true);
+    const msgs = captureConsole(() => {
+      for (let i = 0; i < 5; i++) {
+        distDev.reportError('UNKNOWN_OPERATOR', { op: 'is-custom', validOps: ['is-eq', 'is-gt'] });
+      }
+    });
+    devConsoleLog.textContent += '\n' + msgs.slice(-1)[0] + ' (called 5 times, check overlay badge!)';
+  });
+
+  document.getElementById('btn-dev-custom').addEventListener('click', () => {
+    distDev.setDevMode(true);
+    const msgs = captureConsole(() => {
+      distDev.reportError('CUSTOM_DEV_ERROR', { hint: 'Custom diagnostic emitted' });
+    });
+    devConsoleLog.textContent += '\n' + msgs.join('\n');
+  });
+
+  document.getElementById('btn-prod-err').addEventListener('click', () => {
+    distProd.setDevMode(true);
+    const msgs = captureConsole(() => {
+      distProd.reportError('BINDING_MISSING_PATH');
+    });
+    prodConsoleLog.textContent += '\n' + msgs.join('\n');
+  });
+
+  document.getElementById('btn-prod-custom').addEventListener('click', () => {
+    distProd.setDevMode(true);
+    const msgs = captureConsole(() => {
+      distProd.reportError('CUSTOM_PROD_ERROR', { extra: 42 });
+    });
+    prodConsoleLog.textContent += '\n' + msgs.join('\n');
+  });
+</script>
+</body>
+</html>
