@@ -24,6 +24,7 @@ export default [
         AbortController: 'readonly',
         AbortSignal: 'readonly',
         console: 'readonly',
+        __DEV__: 'readonly',
       },
     },
     rules: {

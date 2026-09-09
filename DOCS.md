@@ -1771,24 +1771,33 @@ that compatibility guard does not replace the peer dependency recommendation.
 
 ## 8. Error codes
 
-Diagnostics are structured and non-throwing. Every diagnostic goes through
-`errors.js`'s single `warn(code, message, context)` function and can be
-observed with the public `subscribeDiagnostics(listener)` API. Each listener
-receives a stable `{ code, message, context }` object; `context` is the
-original optional value and DOM nodes are not serialized.
+Diagnostics are structured and non-throwing. Every diagnostic is dispatched through
+`reportError(code, context)` or `warn(code, message, context)` and can be observed with
+the public `subscribeDiagnostics(listener)` API. Each listener receives a stable
+`{ code, message, context }` object; `context` is the original optional value and DOM
+nodes are not serialized.
 
-Subscribers run in production and development. Development mode controls only
-Lime's own presentation: with dev mode enabled, Lime also calls
-`console.warn('[lime-csr] CODE: message', context?)` and shows the visual
-overlay. `setDevMode(false)` suppresses that console output and overlay but
-does not suppress subscribed applications. Consumers decide which codes map
-to their own loading or error UI; diagnostics are not exceptions and are not
-all necessarily fatal. Listener failures never stop Lime or other listeners.
-Unsubscribe listeners when they are no longer needed.
+### Dev vs. Prod Bundles and Presentation
+
+- **Development (`dist/index.dev.min.js` or raw `src/` no-build):**
+  Lime logs `console.warn('[lime-csr] CODE: message', context?)` with full actionable
+  explanations and renders a visual toast overlay in the bottom right corner. Repeated
+  identical errors are automatically deduplicated with a badge count (`x2`, `x3`) to
+  prevent viewport overflow, and the container has scroll protection (`max-height: 85vh`).
+- **Production (`dist/index.min.js`):**
+  Compiled with `__DEV__ = false`. All verbose English strings and overlay DOM code are
+  completely eliminated by dead-code elimination. The console logs concise
+  `console.warn('[lime-error] CODE', context?)`. Logic, diagnostics delivery, and control
+  flow remain 100% identical between dev and prod.
+- **Runtime Toggle:**
+  `setDevMode(false)` suppresses Lime's own console output and overlay in development, but
+  does not suppress subscribed applications. Consumers decide which codes map to their
+  own loading or error UI; diagnostics are not exceptions and never crash the page.
 
 ```js
 import {
   mount,
+  reportError,
   setDevMode,
   subscribeDiagnostics,
 } from 'lime-csr-js';
