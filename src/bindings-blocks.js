@@ -173,12 +173,16 @@ function getLivePaths(ifEl) {
  * @returns {{ thenNodes: Node[], elseNodes: Node[] }}
  */
 function extractBranches(ifEl) {
-  const directChildren = Array.from(ifEl.childNodes);
+  const content = ifEl.tagName === 'TEMPLATE' ? ifEl.content : ifEl;
+  const directChildren = Array.from(content.childNodes);
   const elseEl = directChildren.find(
-    (ch) => ch.nodeType === Node.ELEMENT_NODE && ch.tagName === 'ELSE',
+    (ch) =>
+      ch.nodeType === Node.ELEMENT_NODE &&
+      (ch.tagName === 'ELSE' || (ch.tagName === 'TEMPLATE' && ch.hasAttribute('data-else'))),
   ) ?? null;
   const thenNodes = directChildren.filter((ch) => ch !== elseEl);
-  const elseNodes = elseEl ? Array.from(elseEl.childNodes) : [];
+  const elseContent = elseEl ? (elseEl.tagName === 'TEMPLATE' ? elseEl.content : elseEl) : null;
+  const elseNodes = elseContent ? Array.from(elseContent.childNodes) : [];
   return { thenNodes, elseNodes };
 }
 
@@ -236,7 +240,7 @@ function insertBeforeAnchor(endAnchor, frag) {
 export function setupLiveIfs(root, context, store, renderFn, handlers) {
   const allCleanups = [];
 
-  const liveIfs = Array.from(root.querySelectorAll('if[data-live]')).filter(
+  const liveIfs = Array.from(root.querySelectorAll('if[data-live], template[data-if][data-live]')).filter(
     (el) =>
       !inLiveBlock(el) && !inIgnoredBlock(el),
   );

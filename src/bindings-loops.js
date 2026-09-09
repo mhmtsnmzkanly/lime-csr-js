@@ -64,13 +64,12 @@
  *   lcs also depends on this being accurate: it computes each survivor's
  *   OLD position from `orderedKeys` to find the longest increasing run.
  *
- * NOTE — considered and rejected: re-rendering a surviving key when its item
- * object reference changes (Object.is(oldItem, newItem) === false). Rejected
- * because most immutable-update patterns (sort/reverse/filter) build fresh
- * object literals every time even when content is unchanged, which made this
- * heuristic tear down and rebuild blocks on pure reordering — destroying DOM
- * identity, focus, and in-progress input values. Reference identity is not a
- * reliable proxy for "content changed."
+ * IN-PLACE UPDATES WITH SHALLOW EQUALITY:
+ *   Surviving keys are checked via shallowEqual(block.item, newItem). If
+ *   shallow equality holds (e.g. pure reorder/sort/filter with fresh object
+ *   wrappers), the DOM nodes are preserved untouched (preserving focus, input
+ *   state, and cursor). If shallow equality fails (actual property changed),
+ *   the block is updated in-place (cleanup + re-render + DOM replacement).
  *
  * DOUBLE-BIND PREVENTION:
  *   setupBindings (bindings.js) skips the inside of live-for via
@@ -82,9 +81,8 @@
  *
  * EL="TAG" CONTAINER (2g, same pattern as bindings-blocks.js):
  *   <for data-live el="ul"> wraps the item blocks in a persistent <ul> element
- *   instead of bare comment anchors. The container itself is never recreated
- *   across reconciles — only its children are added/removed/moved — so any
- *   identity/state on the container itself (not just its items) survives.
+ *   instead of bare comment anchors. The container persists across reconciles (only its children
+ *   change), so identity/state on the container itself is preserved.
  *   Non-reserved attributes (class, id, ...) on <for> are copied onto the
  *   container. Without el, the original comment-anchor behavior is unchanged.
  *
@@ -112,7 +110,7 @@
 
 import { getByPath } from './store.js';
 import { errors } from './errors.js';
-import { inLiveBlock, inIgnoredBlock, longestIncreasingSubsequenceIndices } from './shared.js';
+import { inLiveBlock, inIgnoredBlock, longestIncreasingSubsequenceIndices, shallowEqual } from './shared.js';
 
 let forCounter = 0;
 function nextForRef() { return `lf${++forCounter}`; }
@@ -195,7 +193,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
   // Only the outermost live-fors: not nested inside another live-for or live-if,
   // and not inside an ignored block.
   // Nested ones are handled inside renderFn's recursive call (once per item).
-  const liveFors = Array.from(root.querySelectorAll('for[data-live]')).filter(
+  const liveFors = Array.from(root.querySelectorAll('for[data-live], template[data-for][data-live]')).filter(
     (el) =>
       !inLiveBlock(el) && !inIgnoredBlock(el),
   );
@@ -275,10 +273,11 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
     }
 
     // Extract the template nodes while forEl is still in the DOM (before replaceWith).
-    const templateNodes = Array.from(forEl.childNodes).map((n) => n.cloneNode(true));
+    const content = forEl.tagName === 'TEMPLATE' ? forEl.content : forEl;
+    const templateNodes = Array.from(content.childNodes).map((n) => n.cloneNode(true));
 
     /**
-     * @typedef {{ nodes: Node[], cleanup: function(): void }} Block
+     * @typedef {{ nodes: Node[], cleanup: function(): void, item: *, idx: number }} Block
      * keyedBlocks: Map preserves insertion order; O(1) key lookup.
      * Order information is rebuilt in newKeyOrder on each reconcile.
      * @type {Map<*, Block>}
@@ -303,10 +302,56 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
       const frag    = cloneToFragment(templateNodes);
       const cleanup = renderFn(frag, itemCtx, store, handlers);
       const nodes   = Array.from(frag.childNodes);
-      keyedBlocks.set(keyVal, { nodes, cleanup });
+      keyedBlocks.set(keyVal, { nodes, cleanup, item, idx });
       for (const node of nodes) insert(node);
       // data-after: node(s) are now actually in the DOM (insert() above did a real DOM op).
       callBlockHook(afterHandlerName, firstElementNode(nodes), store, handlers, 'after');
+    }
+
+    /**
+     * Checks if a surviving block's item data or index changed, and updates it in-place.
+     * Preserves DOM nodes untouched if data didn't change (shallow equality holds).
+     *
+     * @param {*} keyVal
+     * @param {Block} block
+     * @param {*} newItem
+     * @param {number} newIdx
+     * @returns {boolean} true if block was updated, false if untouched
+     */
+    function checkAndUpdateBlock(keyVal, block, newItem, newIdx) {
+      const itemChanged = !shallowEqual(block.item, newItem);
+      const indexChanged = Boolean(indexAttr && block.idx !== newIdx);
+
+      if (!itemChanged && !indexChanged) {
+        block.idx = newIdx;
+        return false;
+      }
+
+      callBlockHook(beforeHandlerName, firstElementNode(block.nodes), store, handlers, 'before');
+      block.cleanup();
+
+      const itemCtx = { ...context, [as]: newItem };
+      if (indexAttr) itemCtx[indexAttr] = newIdx;
+      const frag    = cloneToFragment(templateNodes);
+      const cleanup = renderFn(frag, itemCtx, store, handlers);
+      const newNodes = Array.from(frag.childNodes);
+
+      const firstOldNode = block.nodes[0];
+      const parent = firstOldNode?.parentNode;
+      if (parent) {
+        parent.insertBefore(frag, firstOldNode);
+        for (const node of block.nodes) {
+          node.parentNode?.removeChild(node);
+        }
+      }
+
+      block.nodes = newNodes;
+      block.cleanup = cleanup;
+      block.item = newItem;
+      block.idx = newIdx;
+
+      callBlockHook(afterHandlerName, firstElementNode(newNodes), store, handlers, 'after');
+      return true;
     }
 
     /**
@@ -320,6 +365,9 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
       for (const keyVal of newKeyOrder) {
         if (keyedBlocks.has(keyVal)) {
           const block = keyedBlocks.get(keyVal);
+          const { item, idx } = newItemMap.get(keyVal);
+          checkAndUpdateBlock(keyVal, block, item, idx);
+
           const firstNode = block.nodes[0];
           if (firstNode && firstNode.previousSibling === expectedPrev) {
             // Already correct: just advance expectedPrev
@@ -372,6 +420,9 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
 
         if (keyedBlocks.has(keyVal)) {
           const block = keyedBlocks.get(keyVal);
+          const { item, idx } = newItemMap.get(keyVal);
+          checkAndUpdateBlock(keyVal, block, item, idx);
+
           if (!stayPutNewPositions.has(newPos)) {
             // Inner loop goes FORWARD even though the outer loop is backward:
             // each call inserts right before the SAME fixed `anchor`, so a
@@ -390,7 +441,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
           const frag    = cloneToFragment(templateNodes);
           const cleanup = renderFn(frag, itemCtx, store, handlers);
           const nodes   = Array.from(frag.childNodes);
-          keyedBlocks.set(keyVal, { nodes, cleanup });
+          keyedBlocks.set(keyVal, { nodes, cleanup, item, idx });
           for (const node of nodes) insertBeforeRef(node, anchor); // forward -- see note above
           callBlockHook(afterHandlerName, firstElementNode(nodes), store, handlers, 'after');
           anchor = nodes[0];
@@ -472,6 +523,12 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
       // Covers ~95% of chat/log append scenarios with zero extra DOM work.
       if (orderedKeys.length <= newKeyOrder.length &&
           orderedKeys.every((k, i) => newKeyOrder[i] === k)) {
+        for (let i = 0; i < orderedKeys.length; i++) {
+          const keyVal = orderedKeys[i];
+          const block = keyedBlocks.get(keyVal);
+          const { item, idx } = newItemMap.get(keyVal);
+          checkAndUpdateBlock(keyVal, block, item, idx);
+        }
         const tailKeys = newKeyOrder.slice(orderedKeys.length);
         for (const keyVal of tailKeys) {
           const { item, idx } = newItemMap.get(keyVal);
@@ -526,7 +583,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
       const frag    = cloneToFragment(templateNodes);
       const cleanup = renderFn(frag, itemCtx, store, handlers);
       const nodes   = Array.from(frag.childNodes);
-      keyedBlocks.set(keyVal, { nodes, cleanup });
+      keyedBlocks.set(keyVal, { nodes, cleanup, item, idx: i });
     }
 
     orderedKeys = Array.from(keyedBlocks.keys());
