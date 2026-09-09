@@ -158,8 +158,8 @@ function hasSpecialTags(root) {
 
   return (
     pending('partial') ||
-    pending('for:not([data-live])') ||
-    pending('if:not([data-live])')
+    pending('for:not([data-live]), template[data-for]:not([data-live])') ||
+    pending('if:not([data-live]), template[data-if]:not([data-live])')
   );
 }
 

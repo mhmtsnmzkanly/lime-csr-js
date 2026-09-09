@@ -89,13 +89,16 @@ export function evalCondition(ifEl, context) {
  * @returns {void}
  */
 export function processIf(ifEl, context) {
-  const condition     = evalCondition(ifEl, context);
-  // replaceWith on a live NodeList is unsafe; copy first
-  const directChildren = Array.from(ifEl.childNodes);
+  const condition = evalCondition(ifEl, context);
+  const isTemplate = ifEl.tagName === 'TEMPLATE';
+  const childSource = isTemplate ? ifEl.content : ifEl;
+  const directChildren = Array.from(childSource.childNodes);
 
-  // Find only the DIRECT child <else>; don't descend into grandchildren — parentage guarantee
+  // Find only the DIRECT child <else> or <template data-else>
   const elseEl = directChildren.find(
-    (ch) => ch.nodeType === Node.ELEMENT_NODE && ch.tagName === 'ELSE',
+    (ch) =>
+      ch.nodeType === Node.ELEMENT_NODE &&
+      (ch.tagName === 'ELSE' || (ch.tagName === 'TEMPLATE' && ch.hasAttribute('data-else'))),
   ) ?? null;
 
   // Tolerance: warn if an element node follows <else>, but still proceed
@@ -112,7 +115,9 @@ export function processIf(ifEl, context) {
   // Then: all direct children other than the <else> element (position-independent)
   const thenNodes = directChildren.filter((ch) => ch !== elseEl);
   // Else: <else>'s inside; empty if there's no <else>
-  const elseNodes = elseEl ? Array.from(elseEl.childNodes) : [];
+  const elseNodes = elseEl
+    ? Array.from((elseEl.tagName === 'TEMPLATE' ? elseEl.content : elseEl).childNodes)
+    : [];
 
   // Remove <if>, put the winner in its place (empty spread → element is deleted)
   ifEl.replaceWith(...(condition ? thenNodes : elseNodes));
@@ -132,7 +137,7 @@ export function processIf(ifEl, context) {
 export function processAllIfs(root, context) {
   let candidates;
 
-  while ((candidates = Array.from(root.querySelectorAll('if'))).length > 0) {
+  while ((candidates = Array.from(root.querySelectorAll('if, template[data-if]'))).length > 0) {
     // Outermost <if>s: no ancestor is an <if>, does not carry data-live, AND
     // is not inside a not-yet-expanded <if data-live>/<for data-live> block,
     // AND is not inside an ignored block.
@@ -141,7 +146,7 @@ export function processAllIfs(root, context) {
     // they'll only get the correct (branch/item) context via renderFn's (render()) call.
     const outermost = candidates.filter(
       (el) =>
-        !el.parentElement?.closest('if') &&
+        !el.parentElement?.closest('if, template[data-if]') &&
         !el.hasAttribute('data-live') &&
         !inLiveBlock(el) &&
         !inIgnoredBlock(el),

@@ -40,7 +40,7 @@ import { inLiveBlock, inIgnoredBlock } from './shared.js';
  */
 export function expandLoops(root, context, pipeline = null) {
   // Copy up front to avoid the live-NodeList problem
-  const fors = Array.from(root.querySelectorAll('for'));
+  const fors = Array.from(root.querySelectorAll('for, template[data-for]'));
 
   for (const forEl of fors) {
     // May already have left the DOM via replaceWith if it was inside an already-processed <for>
@@ -81,7 +81,8 @@ export function expandLoops(root, context, pipeline = null) {
     }
 
     // Store <for>'s content as template nodes; don't mutate the original
-    const templateNodes = Array.from(forEl.childNodes).map((n) => n.cloneNode(true));
+    const childSource = forEl.tagName === 'TEMPLATE' ? forEl.content : forEl;
+    const templateNodes = Array.from(childSource.childNodes).map((n) => n.cloneNode(true));
 
     const allNodes = [];
 
