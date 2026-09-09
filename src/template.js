@@ -47,7 +47,8 @@ const TABLE_CHILD_SELECTOR = 'tr, td, th, tbody, thead, tfoot, caption, col, col
 const PLACEHOLDER = /\$\{([^}]+)\}/g;
 
 /**
- * Resolves a dotted path from the context object. Returns an empty string if not found.
+ * Resolves a dotted path from the context object, falling back to the store
+ * if provided and the path is undefined in context. Returns an empty string if not found.
  *
  * Returns a raw string (NO escaping): the result is only ever written to
  * node.nodeValue / attr.value, neither of which parses HTML, so escaping
@@ -56,24 +57,30 @@ const PLACEHOLDER = /\$\{([^}]+)\}/g;
  *
  * @param {string} path    - Dotted path, e.g. "user.name"
  * @param {Object} context - Plain object to read values from
+ * @param {import('./store.js').Store|null} [store=null] - Optional store for fallback resolution
  * @returns {string}
  */
-function resolvePath(path, context) {
-  const value = getByPath(context, path.trim());
+function resolvePath(path, context, store = null) {
+  const cleanPath = path.trim();
+  let value = getByPath(context, cleanPath);
+  if (value === undefined && store && typeof store.get === 'function') {
+    value = store.get(cleanPath);
+  }
   if (value == null) return "";
   return String(value);
 }
 
 /**
- * Resolves every ${path} placeholder in a string from the context.
- * new Function is NEVER used; only path resolution via getByPath.
+ * Resolves every ${path} placeholder in a string from the context or store fallback.
+ * new Function is NEVER used; only path resolution via getByPath or store.get.
  *
  * @param {string} str     - Raw string that may contain ${...}
  * @param {Object} context - Object to read values from
+ * @param {import('./store.js').Store|null} [store=null] - Optional store fallback
  * @returns {string}
  */
-function resolveString(str, context) {
-  return str.replace(PLACEHOLDER, (_match, path) => resolvePath(path, context));
+function resolveString(str, context, store = null) {
+  return str.replace(PLACEHOLDER, (_match, path) => resolvePath(path, context, store));
 }
 
 /**
@@ -211,9 +218,10 @@ export function getTemplate(name) {
  *
  * @param {DocumentFragment|Element} root - Root node to traverse
  * @param {Object} context                - Object used for path resolution
+ * @param {import('./store.js').Store|null} [store=null] - Optional store fallback
  * @returns {void}
  */
-export function resolveStatic(root, context) {
+export function resolveStatic(root, context, store = null) {
   // TreeWalker: traverses both text nodes (SHOW_TEXT) and elements (SHOW_ELEMENT)
   const walker = document.createTreeWalker(
     root,
@@ -232,14 +240,14 @@ export function resolveStatic(root, context) {
       // needed, is done by bindings.js.
       if (PLACEHOLDER.test(node.nodeValue)) {
         PLACEHOLDER.lastIndex = 0; // reset the stateful regex
-        node.nodeValue = resolveString(node.nodeValue, context);
+        node.nodeValue = resolveString(node.nodeValue, context, store);
       }
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       // ${} in element attributes
       for (const attr of Array.from(node.attributes)) {
         if (PLACEHOLDER.test(attr.value)) {
           PLACEHOLDER.lastIndex = 0;
-          let resolved = resolveString(attr.value, context);
+          let resolved = resolveString(attr.value, context, store);
           if (URL_ATTRS.has(attr.name.toLowerCase())) {
             if (!isSafeUrlProtocol(resolved)) {
               if (isDevMode()) errors.unsafeUrlAttr(attr.name, node);
@@ -256,7 +264,7 @@ export function resolveStatic(root, context) {
 
 /**
  * Reads the template, clones it, resolves ${path} placeholders with the
- * context, and returns a ready DocumentFragment.
+ * context (and optional store fallback), and returns a ready DocumentFragment.
  *
  * Why it returns a fragment (not a string): reactive handles (bindings.js)
  * will later bind directly to DOM nodes; that binding couldn't be
@@ -264,11 +272,12 @@ export function resolveStatic(root, context) {
  *
  * @param {string} name    - Template name
  * @param {Object} [context={}] - Value object for ${path} resolution
+ * @param {import('./store.js').Store|null} [store=null] - Optional store fallback
  * @returns {DocumentFragment|null} Ready fragment; null if the template isn't found.
  */
-export function renderTemplate(name, context = {}) {
+export function renderTemplate(name, context = {}, store = null) {
   const fragment = getTemplate(name);
   if (!fragment) return null;
-  resolveStatic(fragment, context);
+  resolveStatic(fragment, context, store);
   return fragment;
 }

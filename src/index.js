@@ -149,18 +149,19 @@ function isMountOptions(value) {
  * @param {Element|DocumentFragment} root
  * @returns {boolean}
  */
+const PIPELINE_SELECTOR =
+  'partial, for:not([data-live]), template[data-for]:not([data-live]), if:not([data-live]), template[data-if]:not([data-live])';
+
 function hasSpecialTags(root) {
   // Ignored tags are never expanded, so they must not keep the pipeline pending.
-  const pending = (selector) =>
-    Array.from(root.querySelectorAll(selector)).some(
-      (el) => !inLiveBlock(el) && !inIgnoredBlock(el),
-    );
-
-  return (
-    pending('partial') ||
-    pending('for:not([data-live]), template[data-for]:not([data-live])') ||
-    pending('if:not([data-live]), template[data-if]:not([data-live])')
-  );
+  const elements = root.querySelectorAll(PIPELINE_SELECTOR);
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    if (!inLiveBlock(el) && !inIgnoredBlock(el)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -222,7 +223,7 @@ export function render(fragment, context, store, handlers, ownerDocument, plugin
   runPipeline(fragment, context);
 
   // 4. Resolve the remaining static ${path} placeholders.
-  resolveStatic(fragment, context);
+  resolveStatic(fragment, context, store);
 
   // 5b. Two-way form binding (data-model). RUNS FIRST (2h): when data-model
   //     and data-on-input are on the same element, model's listener is
