@@ -21,6 +21,8 @@ export default [
         HTMLInputElement: 'readonly',
         HTMLSelectElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
         console: 'readonly',
       },
     },

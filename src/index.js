@@ -329,11 +329,13 @@ export function render(fragment, context, store, handlers, ownerDocument, plugin
  *   handlers?: Object<string, function(Event, Element): void>,
  *   computed?: Object<string, { deps: string[], fn: function(): * }>,
  *   plugins?: ReadonlyArray<Object>,
+ *   signal?: AbortSignal,
  *   beforeRender?: function(Object, import('./store.js').Store): void,
  *   afterRender?:  function(Element, import('./store.js').Store): void
  * }} [options={}]
  *   handlers: event delegation (bindings-events.js). Omit for zero cost.
  *   computed: mount-scoped computeds (disposed by cleanup/unmount).
+ *   signal:   optional AbortSignal — automatically triggers unmount() when aborted.
  *   beforeRender(context, store): called BEFORE the render pipeline.
  *   afterRender(rootEl, store):   called AFTER content is appended to target.
  *   All optional and backward-compatible.
@@ -356,6 +358,11 @@ export function mount(templateName, context, target, store, options = {}) {
     previous.cleanup();
     // textContent = '' removes all child nodes (faster than innerHTML, no XSS risk)
     target.textContent = '';
+  }
+
+  // Abort early if the signal is already aborted
+  if (options.signal?.aborted) {
+    return () => {};
   }
 
   // Existing lifecycle order is preserved for plugin-free mounts: this hook
@@ -428,6 +435,11 @@ export function mount(templateName, context, target, store, options = {}) {
   };
 
   mountedTargets.set(target, { cleanup });
+
+  if (options.signal) {
+    options.signal.addEventListener('abort', () => unmount(target), { once: true });
+  }
+
   return cleanup;
 }
 
