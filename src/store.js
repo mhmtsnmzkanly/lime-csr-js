@@ -142,6 +142,35 @@ export function createStore(initialState = {}) {
   // Map holding subscriber functions per path
   const subscribers = new Map();
 
+  // Index mapping each ancestor prefix to the set of subscribed descendant paths
+  // E.g. "a.b.c" registered -> prefixIndex("a") has "a.b.c", prefixIndex("a.b") has "a.b.c"
+  const prefixIndex = new Map();
+
+  function indexSubscribedPath(path) {
+    const segments = String(path).split(".");
+    for (let i = 1; i < segments.length; i++) {
+      const prefix = segments.slice(0, i).join(".");
+      let set = prefixIndex.get(prefix);
+      if (!set) {
+        set = new Set();
+        prefixIndex.set(prefix, set);
+      }
+      set.add(path);
+    }
+  }
+
+  function unindexSubscribedPath(path) {
+    const segments = String(path).split(".");
+    for (let i = 1; i < segments.length; i++) {
+      const prefix = segments.slice(0, i).join(".");
+      const set = prefixIndex.get(prefix);
+      if (set) {
+        set.delete(path);
+        if (set.size === 0) prefixIndex.delete(prefix);
+      }
+    }
+  }
+
   // Set of computed paths — direct store.set() on these warns in dev-mode
   const computedPaths = new Set();
 
@@ -203,11 +232,15 @@ export function createStore(initialState = {}) {
     });
 
     // Downward: notify all subscribers whose path starts with `path + "."`
-    const prefix = path + ".";
-    for (const [subPath, bucket] of subscribers) {
-      if (!subPath.startsWith(prefix)) continue;
-      const currentValue = getByPath(initialState, subPath);
-      bucket.forEach((callback) => invoke(callback, currentValue, undefined));
+    // Looked up via prefixIndex in O(matchingDescendants) instead of linear scan over all subscribers
+    const descendants = prefixIndex.get(path);
+    if (descendants) {
+      for (const subPath of descendants) {
+        const bucket = subscribers.get(subPath);
+        if (!bucket) continue;
+        const currentValue = getByPath(initialState, subPath);
+        bucket.forEach((callback) => invoke(callback, currentValue, undefined));
+      }
     }
   }
 
@@ -354,13 +387,19 @@ export function createStore(initialState = {}) {
      * @returns {function(): void} Cleanup — removes the subscription.
      */
     subscribe(path, callback) {
-      if (!subscribers.has(path)) subscribers.set(path, new Set());
+      if (!subscribers.has(path)) {
+        subscribers.set(path, new Set());
+        indexSubscribedPath(path);
+      }
       subscribers.get(path).add(callback);
       return () => {
         const bucket = subscribers.get(path);
         if (!bucket) return;
         bucket.delete(callback);
-        if (bucket.size === 0) subscribers.delete(path);
+        if (bucket.size === 0) {
+          subscribers.delete(path);
+          unindexSubscribedPath(path);
+        }
       };
     },
 
