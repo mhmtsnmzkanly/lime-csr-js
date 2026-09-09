@@ -65,9 +65,11 @@ import { createStore, mount } from './src/index.js';
   from the store.
 - `<if>`, `<for>`, and `<partial>` are structural template elements. Add
   `data-live` to `<if>` or keyed `<for>` blocks when the store should update
-  them.
+  them. For `<table>` and `<select>` elements where browser HTML parsers would
+  foster-parent custom tags, use `<template data-if>` and `<template data-for>`.
 - `data-on-click`, `data-on-dblclick`, `data-on-input`, `data-on-change`,
-  `data-on-submit`, `data-on-keydown`, and `data-on-keyup` use event
+  `data-on-submit`, `data-on-keydown`, `data-on-keyup`, `data-on-focus`,
+  `data-on-blur`, `data-on-focusin`, and `data-on-focusout` use event
   delegation and named handler functions. `data-on-keydown-enter`-style key
   modifiers restrict keydown/keyup handlers to a single key.
 - `data-lime-ignore` is an escape hatch: any element with this attribute and
@@ -212,7 +214,7 @@ const unsubscribe = subscribeDiagnostics(({ code, message }) => {
   }
 });
 
-const cleanup = mount('app', {}, target, store);
+const cleanup = mount('app', { target, store });
 
 // Later:
 unsubscribe();
@@ -241,10 +243,11 @@ do not insert untrusted HTML into template markup.
 
 ## Known Limitations
 
-`<if>`, `<for>`, and `<partial>` should not be placed directly in tables due
-to HTML parser foster parenting. Live condition branches are rebuilt when the
-condition changes, and live lists require unique keys. See the detailed
-limitations in [DOCS.md](DOCS.md#8-known-limitations).
+Custom tags `<if>`, `<for>`, and `<partial>` should not be placed directly in
+tables or selects due to HTML parser foster parenting; use `<template data-if>`
+and `<template data-for>` in those contexts. Live condition branches are rebuilt
+when the condition changes, and live lists require unique keys. See the detailed
+limitations in [DOCS.md](DOCS.md#9-known-limitations).
 
 ## Technical Documentation
 

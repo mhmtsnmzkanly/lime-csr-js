@@ -162,9 +162,10 @@ Prints a value from **context** once; never watched again.
 
 **Parameters**
 - `path` (string): a dotted path, e.g. `post.title`. Resolved via
-  `getByPath` against the **context** object passed to `render`/`mount` —
-  never the store. Missing/`null`/`undefined` resolves to an empty string
-  (no crash, no warning).
+  `getByPath` against the **context** object passed to `render`/`mount`.
+  If the path is undefined or absent in context and a `store` was provided,
+  it falls back to resolving from the store. Missing/`null`/`undefined` in
+  both resolves to an empty string (no crash, no warning).
 
 **Behavior**
 `${...}` is only ever a path — never an expression. It's resolved by
@@ -172,7 +173,9 @@ Prints a value from **context** once; never watched again.
 expanded, so `${item.x}` inside a `<for>` correctly sees the loop's item
 context. Resolved values are written raw into `textContent`/attribute
 values — since neither of those parses HTML, this is XSS-safe without any
-extra escaping.
+extra escaping. (For URL attributes such as `href`/`src`, values are checked
+against the safe URL protocol whitelist; unsafe schemes emit `UNSAFE_URL_ATTR`
+and become empty strings — see §3.3).
 
 **Example**
 ```html
@@ -289,8 +292,8 @@ value correct after a partial update. Once binding is set up, the consumed
 `href`, `src`, `action`, `formaction`, `data`, `cite`, `poster`, `ping`, the
 resolved value is checked against a URL protocol whitelist
 (`http(s)://`, root-relative `/...`, `#...`) before being written —
-`javascript:`/`data:`/other dangerous schemes resolve to an empty string
-instead of being set.
+`javascript:`/`data:`/other dangerous schemes emit an `UNSAFE_URL_ATTR`
+diagnostic warning and resolve to an empty string instead of being set.
 
 **Example**
 ```html
@@ -301,9 +304,9 @@ instead of being set.
 ```
 WRONG:  <a href="{link}" data-link="dangerousUrl"></a>
         store.set('dangerousUrl', 'javascript:alert(1)');
-        -- href silently becomes "" (protocol rejected). Not an error, not
-           a warning — just blocked. Don't rely on this attribute "working"
-           for arbitrary store-controlled URLs; treat it as protocol-filtered.
+        -- href is sanitized to "" and an UNSAFE_URL_ATTR diagnostic warning
+           is issued. Disallowed schemes (javascript:, data:, vbscript:, //)
+           are rejected.
 
 RIGHT:  Only feed URL attributes with values you've validated are meant to
         be links (root-relative paths, http(s) URLs, #anchors).
@@ -351,10 +354,11 @@ protection below).
 <input type="range" min="0" max="100" data-model="volume">
 ```
 Event: `input`. Writes `Number(el.value)` to the store — so a numeric
-comparison like `is-gt="age" than="18"` works directly on it. Exception: if
-the field is empty or not yet a valid number (e.g. `"-"` or `"1."` mid-typing),
-the **raw string** is stored instead, so a half-typed value is never
-silently lost or coerced to `0`/`NaN`.
+comparison like `is-gt="age" than="18"` works directly on it. When cleared
+(`el.value === ''`), it writes `null` to the store to preserve numeric type
+consistency rather than reverting to a string. If the value is mid-typing
+or not yet a valid number (e.g. `"-"` or `"1."`), the **raw string** is
+stored instead, so a half-typed value is never silently lost or coerced to `0`/`NaN`.
 
 #### checkbox
 ```html
@@ -599,11 +603,26 @@ RIGHT:  Keep <if>...</if> (and any <else> inside it) fully nested within a
         single parent element, like any other HTML tag pair.
 ```
 
-Also see [§10](#10-architecture-reference) for the `<table>` **foster-parenting**
-trap: an `<if>`/`<for>`/`<else>` written directly inside `<table>` (not
-inside a `<tr>`/`<td>`) gets silently relocated by the HTML parser itself,
-before lime-csr ever sees it. Detected in dev-mode (`TABLE_FOSTER_PARENTING`),
-not fixable at the engine level — move the tag outside `<table>` instead.
+#### Tables, selects, and foster-parenting: `<template data-if>`
+
+Custom tags like `<if>` written directly inside `<table>`, `<tbody>`, `<tr>`, or `<select>` are relocated by the browser HTML parser to outside the table before JavaScript runs (standard WHATWG HTML parser foster-parenting; detected in dev-mode as `TABLE_FOSTER_PARENTING`).
+
+To conditionally render content safely inside `<table>` and `<select>` elements, use `<template data-if>` instead:
+
+```html
+<table>
+  <tbody>
+    <template data-if is-truthy="hasDiscount">
+      <tr><td>Discount applied</td></tr>
+    <else>
+      <tr><td>Standard pricing</td></tr>
+    </else>
+    </template>
+  </tbody>
+</table>
+```
+
+Because `<template>` is a standard, parser-valid child in HTML5 table and select content models, the browser parser leaves it in-place. All operators (`is-gt`, `is-eq`, `is-truthy`, etc.) and reactive `data-live` work identically on `<template data-if>`.
 
 ---
 
@@ -744,6 +763,30 @@ RIGHT:  <for each="todos" as="todo" key="todo.id" data-live>
           <li>${todo.text}</li>
         </for>
         -- Use data-live and key to make a loop reactive.
+```
+
+#### Tables, selects, and foster-parenting: `<template data-for>`
+
+Like `<if>`, custom `<for>` tags inside `<table>` or `<select>` elements are foster-parented by the browser parser. Use `<template data-for>` for valid in-table and in-select loops:
+
+```html
+<select data-model="selectedId">
+  <template data-for each="options" as="opt">
+    <option value="${opt.id}">${opt.label}</option>
+  </template>
+</select>
+```
+
+For reactive lists inside tables or selects, add `key="..."` and `data-live`:
+
+```html
+<table>
+  <tbody>
+    <template data-for each="users" as="user" key="user.id" data-live>
+      <tr><td>${user.name}</td></tr>
+    </template>
+  </tbody>
+</table>
 ```
 
 ---
@@ -958,9 +1001,12 @@ handler dictionary — never an expression.
 | `data-on-submit` | `submit` | ALWAYS calls `preventDefault()` |
 | `data-on-keydown` | `keydown` | fires for EVERY key; accepts a `-{key}` modifier |
 | `data-on-keyup` | `keyup` | fires for EVERY key; accepts a `-{key}` modifier |
+| `data-on-focus` | `focusin` | Delegated via native bubbling `focusin` |
+| `data-on-blur` | `focusout` | Delegated via native bubbling `focusout` |
+| `data-on-focusin` | `focusin` | |
+| `data-on-focusout` | `focusout` | |
 
-`focus`/`blur`/`mouseenter`/`mouseleave` are deliberately unsupported — they
-don't bubble, so the single-delegated-listener design can't catch them.
+`focus` and `blur` are delegated to the mount root using bubbling `focusin` and `focusout` events under the hood. `mouseenter` and `mouseleave` remain unsupported as they do not bubble.
 
 **Key modifiers** — `keydown`/`keyup` only
 
@@ -1381,6 +1427,7 @@ const cleanup = mount('page', {
 | `handlers` | object, optional | See [§3.11](#311-data-on---event-handling) and [§6](#6-lifecycle-hooks) — also used for block-level `data-after`/`data-before`. |
 | `computed` | object, optional | Mount-scoped computeds — see below. Requires `store`; given without one → `COMPUTED_WITHOUT_STORE` warning, skipped. |
 | `plugins` | array, optional | Frozen values returned by `definePlugin()`; each gets isolated state and cleanup for this mount only. See [§7](#7-plugin-api-v1). |
+| `signal` | `AbortSignal`, optional | Automatically unmounts when aborted. If already aborted before mount, the mount is skipped immediately. |
 | `beforeRender` | `(context, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
 | `afterRender` | `(rootEl, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
 
@@ -1653,13 +1700,17 @@ const mirrorPlugin = definePlugin({
 });
 ```
 
-Only registered attributes are queried. Directive setup occurs after
-`data-show` and before live `<for>`/`<if>` setup. Normal elements inside an
-unexpanded live block are deferred; the same mount runtime installs them
-later through the recursive render with the correct branch/item context.
-When a live branch closes, a list item is deleted, or `data-diff="replace"`
-recreates an item, directive cleanup runs while its DOM node is still present,
-before removal. `data-lime-ignore` regions remain completely untouched.
+Only registered attributes are queried. Registered directive attributes are
+collected in a single consolidated `querySelectorAll` query per render pass
+rather than scanning repeatedly. Furthermore, a defensive detached node guard
+(`!root.contains(element)`) ensures elements detached or altered by prior
+directives are safely skipped. Directive setup occurs after `data-show` and
+before live `<for>`/`<if>` setup. Normal elements inside an unexpanded live
+block are deferred; the same mount runtime installs them later through the
+recursive render with the correct branch/item context. When a live branch
+closes, a list item is deleted, or `data-diff="replace"` recreates an item,
+directive cleanup runs while its DOM node is still present, before removal.
+`data-lime-ignore` regions remain completely untouched.
 
 `IF`, `ELSE`, `FOR`, `PARTIAL`, and `TEMPLATE` are structural elements and
 cannot directly host plugin directives; such targets are skipped with
@@ -1750,7 +1801,7 @@ const unsubscribe = subscribeDiagnostics(({ code, message }) => {
   }
 });
 
-const cleanup = mount('app', {}, target, store);
+const cleanup = mount('app', { target, store });
 
 // Later:
 unsubscribe();
@@ -1771,15 +1822,16 @@ cleanup();
 | `BINDING_MISSING_PATH` | `data-text=""` (empty) | Give it a store path |
 | `BINDING_MISSING_DATA_ATTR` | An `{x}` placeholder has no matching `data-x` | Add `data-x="store.path"`, or remove the `{x}` placeholder |
 | `UNSAFE_EVENT_ATTR` | A reactive `{x}`/`data-x` targets an `on*` attribute | Never bind reactive data to event-handler attributes; use `data-on-*` (§3.11) for events |
+| `UNSAFE_URL_ATTR` | A URL attribute (`href`, `src`, etc.) resolved with an unsafe scheme (e.g. `javascript:`, `data:`, `vbscript:`, `//`) | Use safe protocols: `http:`, `https:`, root-relative (`/`), or `#anchor`. Unsafe URLs resolve to `""`. |
 | `LIVE_IF_MISSING_OP` | `<if data-live>` has no valid operator | Add one (same table as `UNKNOWN_OPERATOR`) |
 | `PIPELINE_DEPTH_LIMIT` | `render()`'s structural pipeline hit `MAX_PIPELINE_ITERATIONS` (100) | Look for runaway nested `<partial>`/`<for>`/`<if>` structures, often a self-referencing partial |
 | `MOUNT_TEMPLATE_NOT_FOUND` | `mount()`'s `templateName` has no matching `tpl-*` | Check the name passed to `mount()` against your `<template id>`s |
 | `FOR_MISSING_KEY` | `<for data-live>` has no `key` | Add `key="item.idPath"` |
 | `FOR_DUPLICATE_KEY` | Two items resolved to the same `key` | Use a genuinely unique field, usually an id |
 | `MODEL_MISSING_PATH` | `data-model=""` (empty) | Give it a store path |
-| `TABLE_FOSTER_PARENTING` | A special tag inside `<table>` looks like it got relocated by the HTML parser | Move the tag outside `<table>`, or wrap the row-producing content in a `<partial>` called from outside the table |
+| `TABLE_FOSTER_PARENTING` | A custom tag (`<if>`, `<for>`, `<partial>`) inside `<table>` or `<select>` was relocated by the browser HTML parser | Use `<template data-if>` or `<template data-for>` (§3.6, §3.8) for valid in-table/select conditionals and loops, or move the tag outside |
 | `SHOW_MISSING_PATH` | `data-show=""` (empty) | Give it a store path |
-| `UNKNOWN_EVENT` | `data-on-{event}` uses an unsupported event type | Use one of `click`/`dblclick`/`input`/`change`/`submit`/`keydown`/`keyup` |
+| `UNKNOWN_EVENT` | `data-on-{event}` uses an unsupported event type | Use one of `click`/`dblclick`/`input`/`change`/`submit`/`keydown`/`keyup`/`focus`/`blur`/`focusin`/`focusout` (§3.11) |
 | `UNKNOWN_KEY_MODIFIER` | `data-on-keydown-{key}`/`data-on-keyup-{key}` uses an unsupported key modifier | Use one of `enter`/`escape`/`space`/`tab`/`up`/`down`/`left`/`right`/`delete`/`backspace` (§3.11) |
 | `HANDLER_NOT_FOUND` | `data-on-*`'s handler name isn't in `handlers` | Define it in the `handlers` object passed to `mount()` |
 | `RESERVED_ATTR_NAME` | A `{x}`/`data-x` placeholder used a reserved name | Rename it — reserved: `text`, `model`, `show`, `live`, `ref`, `diff`, anything starting with `on-` |
@@ -1810,14 +1862,13 @@ cleanup();
 
 ## 9. Known limitations
 
-- **`<table>` foster-parenting is detected, not fixed.** The HTML parser
-  itself moves an `<if>`/`<for>`/`<else>` written directly inside `<table>`
-  (outside a `<tr>`/`<td>`) to BEFORE the table, before lime-csr ever runs —
-  this is standard browser HTML-parsing behavior, outside any framework's
-  control. Detected in dev-mode on first template read
-  (`TABLE_FOSTER_PARENTING`, §8), not correctable at runtime. **Workaround**:
-  move the condition/loop outside `<table>`, or produce the row markup via
-  a `<partial>` called from outside the table.
+- **`<table>` and `<select>` foster-parenting is avoided with `<template data-if>` / `<template data-for>`.**
+  The HTML parser itself moves custom element tags like `<if>`/`<for>`/`<else>` written directly inside
+  `<table>` (outside a `<tr>`/`<td>`) or `<select>` to BEFORE the container, before lime-csr
+  ever runs — this is standard browser HTML-parsing behavior, outside any framework's control.
+  Detected in dev-mode on first template read (`TABLE_FOSTER_PARENTING`, §8).
+  **Solution**: use standard `<template data-if>` or `<template data-for>` (§3.6, §3.8), which are
+  valid HTML5 children inside table and select content models, or move the condition/loop outside `<table>`.
 
 - **`than`/`to` is never reactive.** `<if data-live>` only tracks the
   operator's LEFT side; the right-hand comparison value is always
