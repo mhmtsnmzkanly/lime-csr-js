@@ -55,7 +55,7 @@
 
 import { getByPath } from './store.js';
 import { renderTemplate } from './template.js';
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inLiveBlock, inUnexpandedFor, inIgnoredBlock } from './shared.js';
 
 /** Maximum recursion depth against infinite loops. */
@@ -89,7 +89,7 @@ export function expandPartials(root, context, depth = 0, pipeline = null) {
     // infinite/exponentially growing amount of work. So the remaining
     // <partial>s are removed (degrade gracefully).
     if (partials.length > 0) {
-      errors.partialDepthLimit(MAX_DEPTH, root);
+      error('PARTIAL_DEPTH_LIMIT', { depth: MAX_DEPTH }, root);
       for (const el of partials) el.remove();
     }
     return;
@@ -113,7 +113,7 @@ export function expandPartials(root, context, depth = 0, pipeline = null) {
 
     const name = partialEl.getAttribute('name');
     if (!name) {
-      errors.partialMissingName(partialEl);
+      error('PARTIAL_MISSING_NAME', partialEl);
       partialEl.remove();
       continue;
     }
@@ -140,7 +140,7 @@ export function expandPartials(root, context, depth = 0, pipeline = null) {
     if (!fragment) {
       const available = Array.from(document.querySelectorAll('template[id^="tpl-"]'))
         .map((t) => t.id.slice(4));
-      errors.partialNotFound(name, available, partialEl);
+      error('PARTIAL_NOT_FOUND', { name, available }, partialEl);
       partialEl.remove();
       continue;
     }

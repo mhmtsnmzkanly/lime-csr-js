@@ -85,7 +85,7 @@ import { setupShowBindings } from './bindings-show.js';
 import { setupEventBindings } from './bindings-events.js';
 import { setupLiveIfs }   from './bindings-blocks.js';
 import { setupLiveFors }  from './bindings-loops.js';
-import { errors }         from './errors.js';
+import { error }          from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 import { createPluginRuntime } from './plugins.js';
 
@@ -178,7 +178,7 @@ function runPipeline(frag, ctx, depth = 0) {
   let iterations = 0;
   while (hasSpecialTags(frag)) {
     if (++iterations > MAX_PIPELINE_ITERATIONS) {
-      errors.pipelineDepthLimit(MAX_PIPELINE_ITERATIONS, frag);
+      error('PIPELINE_DEPTH_LIMIT', { maxIter: MAX_PIPELINE_ITERATIONS }, frag);
       break;
     }
     // Passing the pipeline callback: so inner if/for/partial also resolve
@@ -350,7 +350,7 @@ export function mount(templateName, context, target, store, options = {}) {
     ({ context = {}, target, store = null } = options);
   } else if (!legacySignatureWarned) {
     legacySignatureWarned = true;
-    errors.mountLegacySignature();
+    error('MOUNT_LEGACY_SIGNATURE');
   }
 
   // If already mounted on this target: cancel old subscriptions and clear content
@@ -376,7 +376,7 @@ export function mount(templateName, context, target, store, options = {}) {
   if (!fragment) {
     const available = Array.from(document.querySelectorAll('template[id^="tpl-"]'))
       .map((t) => t.id.slice(4));
-    errors.mountTemplateNotFound(templateName, available, target);
+    error('MOUNT_TEMPLATE_NOT_FOUND', { name: templateName, available }, target);
     return () => {};
   }
 
@@ -386,7 +386,7 @@ export function mount(templateName, context, target, store, options = {}) {
   const computedDisposes = [];
   if (options.computed) {
     if (!store) {
-      errors.computedWithoutStore(Object.keys(options.computed));
+      error('COMPUTED_WITHOUT_STORE', { paths: Object.keys(options.computed) });
     } else {
       for (const [path, def] of Object.entries(options.computed)) {
         computedDisposes.push(store.computed(path, def.deps, def.fn));

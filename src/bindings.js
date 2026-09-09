@@ -30,11 +30,11 @@
  *   The following names CANNOT be used as {x} placeholders in attribute templates
  *   because lime-csr uses data-{name} for its own engine attributes:
  *   text, model, show, live, ref, diff, lime-ignore — and any name starting with "on-".
- *   Detected in setupAttrBindings; errors.reservedAttrName is issued.
+ *   Detected in setupAttrBindings; RESERVED_ATTR_NAME is issued.
  */
 
 
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { isSafeUrlProtocol } from './utils.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
@@ -80,7 +80,7 @@ function setupTextBindings(root, store) {
     const path = el.getAttribute('data-text');
 
     if (!path) {
-      errors.bindingMissingPath(el);
+      error('BINDING_MISSING_PATH', el);
       continue;
     }
 
@@ -142,7 +142,7 @@ function setupAttrBindings(root, store) {
 
       // onclick/onerror/... : reactive data is never bound to an event handler.
       if (EVENT_ATTR_PATTERN.test(attr.name)) {
-        errors.unsafeEventAttr(attr.name, el);
+        error('UNSAFE_EVENT_ATTR', { attrName: attr.name }, el);
         continue;
       }
 
@@ -155,14 +155,14 @@ function setupAttrBindings(root, store) {
 
         // 2b: reserved name check
         if (isReservedName(key)) {
-          errors.reservedAttrName(key, el);
+          error('RESERVED_ATTR_NAME', { name: key }, el);
           allResolved = false;
           break;
         }
 
         const storePath = el.getAttribute(`data-${key}`);
         if (!storePath) {
-          errors.bindingMissingDataAttr(attr.name, key, el);
+          error('BINDING_MISSING_DATA_ATTR', { attrName: attr.name, key }, el);
           allResolved = false;
           break;
         }

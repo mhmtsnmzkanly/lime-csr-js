@@ -96,7 +96,7 @@
  *   (e.g. `data-id="42"` → `el.dataset.id`; see the "Events" section in README).
  */
 
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inIgnoredBlock } from './shared.js';
 
 /** @type {Set<string>} Event types supported as data-on-{event}. */
@@ -186,11 +186,11 @@ function scanTemplateEvents(tpl) {
       const eventName = match[1];
       const parsed = parseEventName(eventName);
       if (!parsed) {
-        errors.unknownEvent(eventName, Array.from(SUPPORTED_EVENTS), el);
+        error('UNKNOWN_EVENT', { eventName, validEvents: Array.from(SUPPORTED_EVENTS) }, el);
         continue;
       }
       if (parsed.badModifier !== undefined) {
-        errors.unknownKeyModifier(eventName, Array.from(KEY_MODIFIERS.keys()), el);
+        error('UNKNOWN_KEY_MODIFIER', { eventName, validKeys: Array.from(KEY_MODIFIERS.keys()) }, el);
         continue;
       }
 
@@ -268,7 +268,7 @@ export function setupEventBindings(root, store, handlers) {
         const handler = Object.hasOwn(handlers, handlerName) ? handlers[handlerName] : undefined;
 
         if (!handler) {
-          errors.handlerNotFound(handlerName, Object.keys(handlers), el);
+          error('HANDLER_NOT_FOUND', { name: handlerName, available: Object.keys(handlers) }, el);
           continue;
         }
 

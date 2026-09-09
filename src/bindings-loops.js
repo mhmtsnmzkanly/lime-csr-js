@@ -13,7 +13,7 @@
  *   regression risk, and separation of concerns. loops.js — bindings-loops.js symmetry.
  *
  * KEY REQUIRED:
- *   data-live <for> MUST carry a key. If missing: errors.missingKey + not made
+ *   data-live <for> MUST carry a key. If missing: FOR_MISSING_KEY + not made
  *   reactive (stays empty — <for> removed). Avoid silent wrong behaviour.
  *
  * PLACEHOLDER PATTERN (same as bindings-blocks.js):
@@ -40,7 +40,7 @@
  *     Identity is NEVER preserved. Use for huge lists where per-item state
  *     doesn't matter and diff bookkeeping isn't worth it.
  *
- *   Unknown data-diff value → errors.unknownDiffStrategy, falls back to simple.
+ *   Unknown data-diff value → UNKNOWN_DIFF_STRATEGY, falls back to simple.
  *
  * RECONCILE IMPROVEMENTS (simple + lcs; replace skips both by design):
  *   1. In-place preservation: simple's local guard / lcs's LIS both avoid
@@ -104,12 +104,12 @@
  *   MOVED/reordered/stay-put survivors (simple's in-place guard, lcs's LIS,
  *   or a no-op position) never trigger either hook -- the item's node was
  *   never destroyed, so there's nothing to (re)initialize or tear down.
- *   Missing handler name -> errors.blockAfterNotFound/blockBeforeNotFound,
+ *   Missing handler name -> BLOCK_AFTER_NOT_FOUND/BLOCK_BEFORE_NOT_FOUND,
  *   warn and continue (no crash).
  */
 
 import { getByPath } from './store.js';
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inLiveBlock, inIgnoredBlock, longestIncreasingSubsequenceIndices, shallowEqual } from './shared.js';
 
 let forCounter = 0;
@@ -153,8 +153,8 @@ function callBlockHook(handlerName, rootEl, store, handlers, kind) {
   const handler = handlers ? handlers[handlerName] : undefined;
   if (typeof handler !== 'function') {
     const available = handlers ? Object.keys(handlers) : [];
-    if (kind === 'after') errors.blockAfterNotFound(handlerName, available, rootEl);
-    else errors.blockBeforeNotFound(handlerName, available, rootEl);
+    if (kind === 'after') error('BLOCK_AFTER_NOT_FOUND', { name: handlerName, available }, rootEl);
+    else error('BLOCK_BEFORE_NOT_FOUND', { name: handlerName, available }, rootEl);
     return;
   }
   handler(rootEl, store);
@@ -209,7 +209,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
     // Missing key — do NOT make reactive. loops.js already skipped this <for>
     // (data-live filter); skip here too, but at least warn and remove it.
     if (!keyPath) {
-      errors.missingKey(each ?? '?');
+      error('FOR_MISSING_KEY', { templateName: each ?? '?' });
       forEl.remove();
       continue;
     }
@@ -227,7 +227,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
       if (VALID_DIFF_STRATEGIES.has(diffAttr)) {
         diffStrategy = diffAttr;
       } else {
-        errors.unknownDiffStrategy(diffAttr, each);
+        error('UNKNOWN_DIFF_STRATEGY', { value: diffAttr, templateName: each });
       }
     }
 
@@ -473,7 +473,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
         const keyVal  = getByPath(itemCtx, keyPath);
 
         if (seenKeys.has(keyVal)) {
-          errors.duplicateKey(String(keyVal ?? ''), each);
+          error('FOR_DUPLICATE_KEY', { keyVal: String(keyVal ?? ''), templateName: each });
           continue;
         }
         seenKeys.add(keyVal);
@@ -509,7 +509,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
         const keyVal  = getByPath(itemCtx, keyPath);
 
         if (newKeySet.has(keyVal)) {
-          errors.duplicateKey(String(keyVal ?? ''), each);
+          error('FOR_DUPLICATE_KEY', { keyVal: String(keyVal ?? ''), templateName: each });
           continue;
         }
         newKeySet.add(keyVal);
@@ -575,7 +575,7 @@ export function setupLiveFors(root, context, store, renderFn, handlers) {
       const keyVal  = getByPath(itemCtx, keyPath);
 
       if (seenKeys.has(keyVal)) {
-        errors.duplicateKey(String(keyVal ?? ''), each);
+        error('FOR_DUPLICATE_KEY', { keyVal: String(keyVal ?? ''), templateName: each });
         continue;
       }
       seenKeys.add(keyVal);

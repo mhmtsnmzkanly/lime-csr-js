@@ -41,7 +41,7 @@
  *   renderFn's (render()) call, in its own (correct) branch/item context.
  */
 
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 const SHOW_ATTR = 'data-show';
@@ -92,7 +92,7 @@ export function setupShowBindings(root, store, ownerDocument) {
   for (const el of elements) {
     const path = el.getAttribute(SHOW_ATTR);
     if (!path) {
-      errors.showMissingPath(el);
+      error('SHOW_MISSING_PATH', el);
       continue;
     }
 

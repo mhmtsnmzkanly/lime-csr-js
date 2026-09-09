@@ -59,7 +59,7 @@
  *   null if the branch has no element nodes at all (e.g. pure text).
  *   Same-condition re-evaluation (currentCondition unchanged) never fires
  *   either hook, since no branch switch happens at all in that case.
- *   Missing handler name -> errors.blockAfterNotFound/blockBeforeNotFound,
+ *   Missing handler name -> BLOCK_AFTER_NOT_FOUND/BLOCK_BEFORE_NOT_FOUND,
  *   warn and continue (no crash). data-after/data-before are only evaluated
  *   if `handlers` was supplied to render() (see index.js); without it, they
  *   silently do nothing beyond the same missing-handler warning.
@@ -69,7 +69,7 @@
  */
 
 import { OPERATORS } from './conditionals.js';
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 const OPERATOR_NAMES = /** @type {string[]} */ (Object.keys(OPERATORS));
@@ -98,8 +98,8 @@ function callBlockHook(handlerName, rootEl, store, handlers, kind) {
     : undefined;
   if (typeof handler !== 'function') {
     const available = handlers ? Object.keys(handlers) : [];
-    if (kind === 'after') errors.blockAfterNotFound(handlerName, available, rootEl);
-    else errors.blockBeforeNotFound(handlerName, available, rootEl);
+    if (kind === 'after') error('BLOCK_AFTER_NOT_FOUND', { name: handlerName, available }, rootEl);
+    else error('BLOCK_BEFORE_NOT_FOUND', { name: handlerName, available }, rootEl);
     return;
   }
   handler(rootEl, store);
@@ -133,7 +133,7 @@ function nextBlockRef() { return `lb${++blockCounter}`; }
 function evalLiveCondition(ifEl, store) {
   const opName = OPERATOR_NAMES.find((op) => ifEl.hasAttribute(op));
   if (!opName) {
-    errors.liveIfMissingOperator(ifEl);
+    error('LIVE_IF_MISSING_OP', ifEl);
     return false;
   }
   const path      = ifEl.getAttribute(opName);

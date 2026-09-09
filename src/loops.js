@@ -25,7 +25,7 @@
 
 import { getByPath } from './store.js';
 import { resolveStatic } from './template.js';
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 
@@ -61,7 +61,7 @@ export function expandLoops(root, context, pipeline = null) {
     const indexAttr = forEl.getAttribute('index'); // optional: 0, 1, 2...
 
     if (!each || !as) {
-      errors.forMissingAttr(forEl);
+      error('FOR_MISSING_ATTR', forEl);
       forEl.remove();
       continue;
     }
@@ -69,7 +69,7 @@ export function expandLoops(root, context, pipeline = null) {
     const list = getByPath(context, each);
 
     if (!Array.isArray(list)) {
-      errors.forNotArray(each, list === null ? 'null' : typeof list, forEl);
+      error('FOR_NOT_ARRAY', { path: each, type: list === null ? 'null' : typeof list }, forEl);
       forEl.remove();
       continue;
     }

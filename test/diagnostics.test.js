@@ -7,8 +7,8 @@ import {
   setDevMode,
   subscribeDiagnostics,
   warn,
+  error,
 } from '../src/index.js';
-import { errors } from '../src/errors.js';
 
 let previousDevMode;
 
@@ -140,11 +140,11 @@ test('existing direct warn signature remains compatible', () => {
   assert.deepEqual(received[0], { code: 'DIRECT_WARN', message: 'direct message', context });
 });
 
-test('mountTemplateNotFound wrapper reaches subscribers with its existing diagnostic', () => {
+test('reportError reaches subscribers with its formatted diagnostic', () => {
   const context = { target: 'app' };
   const received = [];
   const unsubscribe = subscribeDiagnostics((diagnostic) => received.push(diagnostic));
-  errors.mountTemplateNotFound('missing', ['available'], context);
+  error('MOUNT_TEMPLATE_NOT_FOUND', { name: 'missing', available: ['available'] }, context);
   unsubscribe();
   assert.equal(received.length, 1);
   assert.equal(received[0].code, 'MOUNT_TEMPLATE_NOT_FOUND');

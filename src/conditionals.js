@@ -24,7 +24,7 @@
  */
 
 import { getByPath } from './store.js';
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 /**
@@ -61,9 +61,9 @@ export function evalCondition(ifEl, context) {
   if (!opName) {
     const unknownOp = Array.from(ifEl.attributes).find((a) => a.name.startsWith('is-'));
     if (unknownOp) {
-      errors.unknownOperator(unknownOp.name, OPERATOR_NAMES, ifEl);
+      error('UNKNOWN_OPERATOR', { op: unknownOp.name, validOps: OPERATOR_NAMES }, ifEl);
     } else {
-      errors.missingOperator(ifEl);
+      error('MISSING_OPERATOR', ifEl);
     }
     return false;
   }
@@ -108,7 +108,7 @@ export function processIf(ifEl, context) {
       .slice(idxElse + 1)
       .filter((ch) => ch.nodeType === Node.ELEMENT_NODE);
     if (afterElse.length > 0) {
-      errors.elseAfterContent(ifEl);
+      error('ELSE_AFTER_CONTENT', ifEl);
     }
   }
 

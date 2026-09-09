@@ -59,7 +59,7 @@
  *   points to the wrong item. Use a reactive <for data-live key=...> loop instead.
  */
 
-import { errors } from './errors.js';
+import { error } from './errors.js';
 import { inLiveBlock, inIgnoredBlock } from './shared.js';
 
 const MODEL_ATTR = 'data-model';
@@ -159,7 +159,7 @@ function bindElement(el, store) {
 
   // 2a T1: warn if path contains numeric index (path drift risk)
   if (INDEXED_PATH_RE.test(path)) {
-    errors.indexedModelPath(path, el);
+    error('INDEXED_MODEL_PATH', { path }, el);
   }
 
   handler.write(el, store.get(path)); // initial value: state → DOM
@@ -237,7 +237,7 @@ export function setupModelBindings(root, store) {
   for (const el of elements) {
     const path = el.getAttribute(MODEL_ATTR);
     if (!path) {
-      errors.modelMissingPath(el);
+      error('MODEL_MISSING_PATH', el);
       continue;
     }
     if (classify(el) === 'radio') {

@@ -25,7 +25,7 @@
  */
 
 import { getByPath } from "./store.js";
-import { errors, isDevMode } from "./errors.js";
+import { error, isDevMode } from "./errors.js";
 import { inLiveBlock, inUnexpandedFor, inIgnoredBlock } from "./shared.js";
 import { isSafeUrlProtocol } from "./utils.js";
 
@@ -171,7 +171,7 @@ function detectTableFosterParenting(fragment, templateName) {
     if (!prev || !SPECIAL_TAGS.has(prev.tagName)) continue;
     const isEmptyShell = prev.childElementCount === 0 && prev.textContent.trim() === '';
     if (isEmptyShell && table.querySelector(TABLE_CHILD_SELECTOR)) {
-      errors.tableFosterParenting(templateName);
+      error('TABLE_FOSTER_PARENTING', { templateName });
       return; // one warning per template is enough
     }
   }
@@ -192,7 +192,7 @@ export function getTemplate(name) {
   if (!templateCache.has(name)) {
     const el = document.getElementById(`tpl-${name}`);
     if (!el || el.tagName !== "TEMPLATE") {
-      errors.templateNotFound(name);
+      error('TEMPLATE_NOT_FOUND', { name });
       return null;
     }
     if (isDevMode()) detectTableFosterParenting(el.content, name);
@@ -250,7 +250,7 @@ export function resolveStatic(root, context, store = null) {
           let resolved = resolveString(attr.value, context, store);
           if (URL_ATTRS.has(attr.name.toLowerCase())) {
             if (!isSafeUrlProtocol(resolved)) {
-              if (isDevMode()) errors.unsafeUrlAttr(attr.name, node);
+              if (isDevMode()) error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
               resolved = "";
             }
           }
