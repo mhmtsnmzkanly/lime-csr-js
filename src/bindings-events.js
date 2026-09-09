@@ -100,7 +100,16 @@ import { errors } from './errors.js';
 import { inIgnoredBlock } from './shared.js';
 
 /** @type {Set<string>} Event types supported as data-on-{event}. */
-const SUPPORTED_EVENTS = new Set(['click', 'dblclick', 'input', 'change', 'submit', 'keydown', 'keyup']);
+const SUPPORTED_EVENTS = new Set([
+  'click', 'dblclick', 'input', 'change', 'submit', 'keydown', 'keyup',
+  'focus', 'blur', 'focusin', 'focusout',
+]);
+
+/** @type {Map<string, string>} Maps non-bubbling event names to bubbling DOM equivalents. */
+const DOM_EVENT_MAP = new Map([
+  ['focus', 'focusin'],
+  ['blur', 'focusout'],
+]);
 
 /** @type {Set<string>} Event types that accept a -{key} modifier suffix. */
 const KEYED_EVENTS = new Set(['keydown', 'keyup']);
@@ -141,7 +150,10 @@ const EVENT_ATTR_PATTERN = /^data-on-(.+)$/;
  * @returns {{ type: string, requiredKey?: (string|null), badModifier?: string }|null}
  */
 function parseEventName(eventName) {
-  if (SUPPORTED_EVENTS.has(eventName)) return { type: eventName, requiredKey: null };
+  if (SUPPORTED_EVENTS.has(eventName)) {
+    const domType = DOM_EVENT_MAP.get(eventName) ?? eventName;
+    return { type: domType, requiredKey: null };
+  }
 
   const dashIndex = eventName.indexOf('-');
   if (dashIndex > 0) {
@@ -158,27 +170,41 @@ function parseEventName(eventName) {
   return null;
 }
 
+/** Cache mapping parsed template content to its detected data-on-* events. */
+const templateEventsCache = new WeakMap();
+
+function scanTemplateEvents(tpl) {
+  if (templateEventsCache.has(tpl)) {
+    return templateEventsCache.get(tpl);
+  }
+  const tplTypes = new Map();
+  for (const el of tpl.content.querySelectorAll('*')) {
+    for (const attr of el.attributes) {
+      const match = EVENT_ATTR_PATTERN.exec(attr.name);
+      if (!match) continue;
+
+      const eventName = match[1];
+      const parsed = parseEventName(eventName);
+      if (!parsed) {
+        errors.unknownEvent(eventName, Array.from(SUPPORTED_EVENTS), el);
+        continue;
+      }
+      if (parsed.badModifier !== undefined) {
+        errors.unknownKeyModifier(eventName, Array.from(KEY_MODIFIERS.keys()), el);
+        continue;
+      }
+
+      if (!tplTypes.has(parsed.type)) tplTypes.set(parsed.type, new Map());
+      tplTypes.get(parsed.type).set(`data-on-${eventName}`, parsed.requiredKey);
+    }
+  }
+  templateEventsCache.set(tpl, tplTypes);
+  return tplTypes;
+}
+
 /**
  * Scans ALL <template> contents on the page and collects the data-on-{event}
  * types actually in use (intersected with SUPPORTED_EVENTS).
- *
- * WHY "ALL templates" (not just THIS mount's template):
- *   An <if data-live>'s else branch, a <for data-live>'s currently-empty loop
- *   body, or a <partial>'s OWN template may not YET be VISIBLE in the live
- *   DOM at mount TIME (they only appear once the relevant branch/item/partial
- *   is rendered). So scanning only the CURRENTLY rendered DOM would be
- *   insufficient — a data-on-* type that gets added LATER via reactivity
- *   would never have gotten a listener set up for it. The raw <template>
- *   sources (document.querySelectorAll('template')), however, are NEVER
- *   mutated (see template.js: the cache always returns cloneNode(true)) — so
- *   as written, regardless of which branch/loop/partial they belong to, they
- *   safely surface ALL data-on-* usages. If an unknown (outside
- *   SUPPORTED_EVENTS) type is found, it's warned about here (once, at scan
- *   time) — same for an unknown key modifier (data-on-keydown-foo).
- *
- * Key modifiers share their base type's entry: data-on-keydown-enter is
- * registered under 'keydown' as one more ATTRIBUTE variant — never as a
- * separate DOM event type.
  *
  * @returns {Map<string, Map<string, string|null>>}
  *   base event type → (attribute name in use → required event.key, or null
@@ -188,24 +214,12 @@ function collectUsedEventTypes() {
   const types = new Map();
 
   for (const tpl of document.querySelectorAll('template')) {
-    for (const el of tpl.content.querySelectorAll('*')) {
-      for (const attr of el.attributes) {
-        const match = EVENT_ATTR_PATTERN.exec(attr.name);
-        if (!match) continue;
-
-        const eventName = match[1];
-        const parsed = parseEventName(eventName);
-        if (!parsed) {
-          errors.unknownEvent(eventName, Array.from(SUPPORTED_EVENTS), el);
-          continue;
-        }
-        if (parsed.badModifier !== undefined) {
-          errors.unknownKeyModifier(eventName, Array.from(KEY_MODIFIERS.keys()), el);
-          continue;
-        }
-
-        if (!types.has(parsed.type)) types.set(parsed.type, new Map());
-        types.get(parsed.type).set(`data-on-${eventName}`, parsed.requiredKey);
+    const tplTypes = scanTemplateEvents(tpl);
+    for (const [domType, attrMap] of tplTypes) {
+      if (!types.has(domType)) types.set(domType, new Map());
+      const mergedMap = types.get(domType);
+      for (const [attrName, requiredKey] of attrMap) {
+        mergedMap.set(attrName, requiredKey);
       }
     }
   }
