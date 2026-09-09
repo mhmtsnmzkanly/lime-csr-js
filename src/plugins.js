@@ -310,6 +310,18 @@ export function createPluginRuntime(plugins, environment) {
     );
   }
 
+  function collectDirectiveElements(root) {
+    if (directives.size === 0) return [];
+    const names = Array.from(directives.keys());
+    const selector = names.map((d) => `[${d}]`).join(', ');
+    const elements = [];
+    if (root.nodeType === 1 && names.some((d) => root.hasAttribute(d))) {
+      elements.push(root);
+    }
+    elements.push(...root.querySelectorAll(selector));
+    return elements;
+  }
+
   return {
     beforeMount() {
       for (const record of records) runHook(record, 'beforeMount');
@@ -321,15 +333,11 @@ export function createPluginRuntime(plugins, environment) {
 
     diagnoseStructuralTargets(root) {
       if (directives.size === 0) return;
-      for (const [directive, { record }] of directives) {
-        const elements = [];
-        if (root.nodeType === 1 && root.hasAttribute(directive)) elements.push(root);
-        elements.push(...root.querySelectorAll(`[${directive}]`));
-        for (const element of elements) {
-          if (
-            !inIgnoredBlock(element) &&
-            STRUCTURAL_TAGS.has(element.tagName)
-          ) {
+      const elements = collectDirectiveElements(root);
+      for (const element of elements) {
+        if (inIgnoredBlock(element) || !STRUCTURAL_TAGS.has(element.tagName)) continue;
+        for (const [directive, { record }] of directives) {
+          if (element.hasAttribute(directive)) {
             diagnoseStructuralTarget(element, directive, record);
           }
         }
@@ -339,20 +347,20 @@ export function createPluginRuntime(plugins, environment) {
     setupDirectives(root, context) {
       if (directives.size === 0) return () => {};
       const instanceCleanups = [];
+      const elements = collectDirectiveElements(root);
 
       for (const [directive, entry] of directives) {
         const { record, definition } = entry;
-        const elements = [];
-        if (root.nodeType === 1 && root.hasAttribute(directive)) elements.push(root);
-        elements.push(...root.querySelectorAll(`[${directive}]`));
 
         for (const element of elements) {
+          if (!root.contains(element)) continue;
           if (inIgnoredBlock(element)) continue;
           if (STRUCTURAL_TAGS.has(element.tagName)) {
             diagnoseStructuralTarget(element, directive, record);
             continue;
           }
           if (inLiveBlock(element)) continue;
+          if (!element.hasAttribute(directive)) continue;
 
           const cleanups = [];
           const activity = { active: true };
