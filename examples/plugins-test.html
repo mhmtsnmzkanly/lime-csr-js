@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>lime-csr plugins — verification</title>
+  <style>
+    body   { font-family: monospace; padding: 1.5rem; background: #0f1117; color: #e2e8f0; }
+    h1     { font-size: 1rem; color: #94a3b8; margin-bottom: 1.5rem; }
+    h2     { font-size: .85rem; color: #60a5fa; margin: 1.25rem 0 .25rem; }
+    .pass  { color: #4ade80; }
+    .fail  { color: #f87171; }
+    .group { color: #60a5fa; }
+    .note  { color: #fbbf24; }
+    .box   { border: 1px solid #334155; padding: .4rem .75rem; border-radius: 4px;
+             margin-top: .25rem; font-size: .8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<h1>src/plugins.js — Plugin API verification tests</h1>
+<pre id="log"></pre>
+<div id="renders"></div>
+
+<!-- Templates for verification -->
+<template id="tpl-plugin-basic">
+  <div class="card" data-lime-tooltip="tipText" data-lime-highlight>
+    <span class="label">Hello Plugin</span>
+  </div>
+</template>
+
+<template id="tpl-plugin-reactive">
+  <div>
+    <button id="btn" data-lime-count="clicks">Click Me</button>
+  </div>
+</template>
+
+<script type="module">
+  import {
+    createStore,
+    definePlugin,
+    mount,
+    unmount,
+    PLUGIN_API_VERSION,
+  } from '../src/index.js';
+
+  const log  = document.getElementById('log');
+  const area = document.getElementById('renders');
+  let passed = 0, failed = 0;
+
+  function assert(label, actual, expected) {
+    const ok  = JSON.stringify(actual) === JSON.stringify(expected);
+    const det = ok ? '' :
+      `\n  expected: ${JSON.stringify(expected)}  actual: ${JSON.stringify(actual)}`;
+    log.innerHTML += `<span class="${ok ? 'pass' : 'fail'}">${ok ? '✓' : '✗'} ${label}${det}</span>\n`;
+    ok ? passed++ : failed++;
+  }
+
+  function group(label) {
+    log.innerHTML += `\n<span class="group">── ${label}</span>\n`;
+  }
+
+  function note(msg) {
+    log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
+  }
+
+  function show(title, el) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    area.appendChild(h);
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.appendChild(el);
+    area.appendChild(box);
+  }
+
+  // ── 1. definePlugin structure & freeze ──────────────────────────────────────
+  group('1. definePlugin creates frozen plugin definition');
+  {
+    const plugin = definePlugin({
+      name: 'example-tooltip',
+      apiVersion: PLUGIN_API_VERSION,
+      directives: {
+        'data-lime-tooltip'({ element, value, get }) {
+          element.title = get(value) ?? '';
+        },
+      },
+    });
+
+    assert('plugin is frozen', Object.isFrozen(plugin), true);
+    assert('plugin apiVersion matches', plugin.apiVersion, 1);
+    assert('plugin directives frozen', Object.isFrozen(plugin.directives), true);
+    note('definePlugin ensures immutable plugin shape across mounts ✓');
+  }
+
+  // ── 2. Directive setup & execution ──────────────────────────────────────────
+  group('2. Directive initializes and applies attributes');
+  {
+    let cleanupsRun = 0;
+    const plugin = definePlugin({
+      name: 'ui-enhancements',
+      apiVersion: PLUGIN_API_VERSION,
+      directives: {
+        'data-lime-tooltip'({ element, value, get }) {
+          element.setAttribute('title', get(value));
+          return () => { cleanupsRun++; };
+        },
+        'data-lime-highlight'({ element }) {
+          element.classList.add('is-highlighted');
+          return () => { cleanupsRun++; };
+        },
+      },
+    });
+
+    const store = createStore({ tipText: 'Helpful hint' });
+    const target = document.createElement('div');
+    const cleanup = mount('plugin-basic', {
+      target,
+      store,
+      plugins: [plugin],
+    });
+
+    const card = target.querySelector('.card');
+    assert('data-lime-tooltip set title attribute', card.getAttribute('title'), 'Helpful hint');
+    assert('data-lime-highlight added CSS class', card.classList.contains('is-highlighted'), true);
+
+    cleanup();
+    assert('all directive cleanups executed on mount cleanup', cleanupsRun, 2);
+    show('2. Directives applied to card', target);
+  }
+
+  // ── 3. Reactive watch inside directive ──────────────────────────────────────
+  group('3. Directive uses api.watch for store reactivity');
+  {
+    const plugin = definePlugin({
+      name: 'counter-badge',
+      apiVersion: PLUGIN_API_VERSION,
+      directives: {
+        'data-lime-count'({ element, value, watch }) {
+          return watch(value, (count) => {
+            element.dataset.current = String(count);
+          }, { immediate: true });
+        },
+      },
+    });
+
+    const store = createStore({ clicks: 0 });
+    const target = document.createElement('div');
+    mount('plugin-reactive', {
+      target,
+      store,
+      plugins: [plugin],
+    });
+
+    const btn = target.querySelector('#btn');
+    assert('initial count synced via watch', btn.dataset.current, '0');
+
+    store.set('clicks', 5);
+    assert('updated count synced via watch', btn.dataset.current, '5');
+
+    unmount(target);
+    store.set('clicks', 10);
+    assert('unmount stopped reactive watch updates', btn.dataset.current, '5');
+  }
+
+  // ── Summary ─────────────────────────────────────────────────────────────────
+  log.innerHTML += `\n<span class="${failed === 0 ? 'pass' : 'fail'}">`
+    + `${passed + failed} tests: ${passed} passed, ${failed} failed.</span>\n`;
+</script>
+</body>
+</html>

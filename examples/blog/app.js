@@ -14,11 +14,7 @@ function initials(name) {
 }
 
 function makeAvatarUrl(name, tint) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="${name}">
-    <rect width="96" height="96" rx="48" fill="#${tint}"/>
-    <text x="48" y="56" text-anchor="middle" font-family="Georgia, serif" font-size="30" font-weight="700" fill="#fff">${initials(name)}</text>
-  </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || '?')}&background=${tint}&color=fff&rounded=true&bold=true`;
 }
 
 function likeStatusText(liked, count) {
@@ -81,14 +77,7 @@ function buildInitialState() {
     kicker: 'Demleme Rehberi',
     subtitle:
       'Doğru öğütüm, doğru su sıcaklığı ve sabırlı bir dökme tekniğiyle, ilk demlemenden itibaren fark edeceğin bir sonuç.',
-    heroUrl:
-      'data:image/svg+xml;charset=UTF-8,' +
-      encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420">
-        <rect width="960" height="420" fill="#e9d9c4"/>
-        <circle cx="230" cy="230" r="150" fill="#7a4e2b" opacity="0.18"/>
-        <circle cx="760" cy="140" r="90" fill="#c18b5b" opacity="0.28"/>
-        <rect x="360" y="120" width="240" height="240" rx="24" fill="#fffaf2" opacity="0.6"/>
-      </svg>`),
+    heroUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=960&h=420&fit=crop',
     heroAlt: 'Ahşap masada V60 dripper, cam sürahi ve taze öğütülmüş kahve',
     featured: true,
     author,
@@ -535,7 +524,11 @@ function initActions() {
   });
 }
 
-mount('page', store.get(), root, store);
+mount('page', {
+  target: root,
+  context: store.get(),
+  store,
+});
 initComposerListeners();
 initActions();
 

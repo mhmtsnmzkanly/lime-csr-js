@@ -227,7 +227,7 @@
   }
 
   // ── 7. number: converts to Number(); invalid/empty → raw string ──────────
-  group('number: valid number → Number, empty/invalid → raw string');
+  group('number: valid number → Number, empty/invalid → null');
   {
     const store = createStore({ age: 0 });
     const host  = document.createElement('div');
@@ -244,7 +244,7 @@
 
     input.value = '';
     input.dispatchEvent(new Event('input'));
-    assert('empty field → raw empty string', store.get('age'), '');
+    assert('empty field → null', store.get('age'), null);
 
     store.set('age', 42);
     assert('store.set(42) → input.value "42"', input.value, '42');
