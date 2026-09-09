@@ -40,13 +40,10 @@ export function inIgnoredBlock(node) {
  */
 export function inLiveBlock(node) {
   if (!node) return false;
-  if (node.nodeType !== 1) { // Node.ELEMENT_NODE is 1
-    const parent = node.parentElement;
-    return !!(parent?.closest?.('if[data-live]') || parent?.closest?.('for[data-live]'));
-  }
-  // Start at the parent so the node itself is not mistaken for an ancestor.
   const parent = node.parentElement;
-  return !!(parent?.closest?.('if[data-live]') || parent?.closest?.('for[data-live]'));
+  return !!(
+    parent?.closest?.('if[data-live], for[data-live], template[data-if][data-live], template[data-for][data-live]')
+  );
 }
 
 /**
@@ -62,13 +59,14 @@ export function inLiveBlock(node) {
  */
 export function inUnexpandedFor(node) {
   if (!node) return false;
+  const selector = 'for:not([data-live]), template[data-for]:not([data-live])';
   if (node.nodeType !== 1) {
     const parent = node.parentElement;
-    return !!parent?.closest?.('for:not([data-live])');
+    return !!parent?.closest?.(selector);
   }
-  const isForRoot = node.matches?.('for:not([data-live])');
+  const isForRoot = node.matches?.(selector);
   if (isForRoot) return false;
-  return !!node.closest?.('for:not([data-live])');
+  return !!node.closest?.(selector);
 }
 
 /**
@@ -122,4 +120,32 @@ export function longestIncreasingSubsequenceIndices(seq) {
     k = predecessors[k];
   }
   return result;
+}
+
+/**
+ * Performs a shallow equality check between two values.
+ *
+ * @param {*} a
+ * @param {*} b
+ * @returns {boolean}
+ */
+export function shallowEqual(a, b) {
+  if (Object.is(a, b)) return true;
+  if (a == null || b == null || typeof a !== 'object' || typeof b !== 'object') return false;
+
+  const aIsArray = Array.isArray(a);
+  const bIsArray = Array.isArray(b);
+  if (aIsArray !== bIsArray) return false;
+
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+
+  for (let i = 0; i < keysA.length; i++) {
+    const key = keysA[i];
+    if (!Object.hasOwn(b, key) || !Object.is(a[key], b[key])) {
+      return false;
+    }
+  }
+  return true;
 }

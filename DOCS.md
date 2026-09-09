@@ -1600,6 +1600,11 @@ lowercase/hyphen pattern shown above. Directive attributes must match
 calls throw a clear `TypeError`. Per-mount mutable data belongs in `api.state`,
 not on the frozen definition or in shared module-level variables.
 
+Directive definitions support exactly two forms: a short setup function, or
+an object whose `setup(api)` property is a **required function**. Empty objects,
+misspellings such as `setUp`, and non-function `setup` values throw `TypeError`
+instead of creating a directive that silently does nothing.
+
 Plugins install in array order. Duplicate names are skipped; if two plugins
 claim the same directive, the first plugin wins. Hook/directive failures are
 diagnosed and isolated so later plugins and Lime rendering continue. Cleanup
@@ -1616,8 +1621,9 @@ runs once in reverse registration/plugin order.
 | `state` | State shared only by this plugin's hooks/directives in this mount. |
 | `store`, `context` | Mount store and the current render context (including a live-list item context). |
 | `document`, `window` | The target's owner document and its window. |
-| `get(path)` / `set(path, value)` | Read/write the mount store. Without a store, `set` returns `false` and reports `PLUGIN_STORE_REQUIRED`. |
-| `watch(path, callback, options?)` | Subscribe to a non-empty store path. `{ immediate: true }` calls back immediately; the returned unwatch is also attached to directive cleanup automatically. |
+| `get(path)` | Read the mount store. Without a store, returns `undefined` and emits `PLUGIN_STORE_REQUIRED`. |
+| `set(path, value)` | Write the mount store. Without a store, returns `false` and emits `PLUGIN_STORE_REQUIRED`. |
+| `watch(path, callback, options?)` | Subscribe to a non-empty store path. `{ immediate: true }` calls back immediately; the returned unwatch is also attached to directive cleanup automatically. Without a store, returns a no-op unsubscribe function and emits `PLUGIN_STORE_REQUIRED`. |
 | `afterConnect(callback)` | Run in a microtask only if the directive is still active and its element is connected. Use for focus, measurements, observers, canvas, or widget setup. |
 | `onCleanup(callback)` | Register teardown; callbacks run once in reverse registration order. |
 | `diagnostic(code, message, context)` | Emit a structured, non-throwing diagnostic through Lime's normal subscriber/dev-mode channel. |
@@ -1690,6 +1696,25 @@ does not use `eval`, `new Function`, or dynamic script injection. Canvas,
 WebGL, or Three.js-style integrations can be built as plugins, but those
 libraries remain application/plugin dependencies—Lime does not depend on or
 load them.
+
+### 7.5 Publishing plugin packages
+
+Official and third-party plugin packages should declare Lime as a peer
+dependency instead of bundling their own runtime copy:
+
+```json
+{
+  "peerDependencies": {
+    "lime-csr-js": "^0.2.0"
+  }
+}
+```
+
+This avoids unnecessary duplicate runtimes, reduces bundle size, lets the host
+application choose its Lime version, and states Plugin API compatibility through
+the peer dependency range. Plugin definitions now use an API-versioned global
+symbol so separate source/dist module instances can recognize each other, but
+that compatibility guard does not replace the peer dependency recommendation.
 
 ---
 

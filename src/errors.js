@@ -262,6 +262,16 @@ export const errors = {
     );
   },
 
+  /** A URL attribute was resolved with an unsafe protocol (e.g. javascript:). */
+  unsafeUrlAttr(attrName, context) {
+    warn(
+      'UNSAFE_URL_ATTR',
+      `"${attrName}" contained an unsafe URL protocol and was sanitized to an empty string. ` +
+        `Allowed protocols: http, https, root-relative (/), or #anchor.`,
+      context,
+    );
+  },
+
   /** No valid condition operator found on <if data-live>. */
   liveIfMissingOperator(context) {
     warn(

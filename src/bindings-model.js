@@ -105,7 +105,7 @@ const KIND_HANDLERS = {
     event: 'input',
     read: (el) => {
       const raw = el.value;
-      if (raw === '') return '';
+      if (raw === '') return null;
       const n = Number(raw);
       return Number.isNaN(n) ? raw : n; // invalid/partial input → raw string (no data loss)
     },

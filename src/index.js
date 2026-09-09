@@ -149,18 +149,19 @@ function isMountOptions(value) {
  * @param {Element|DocumentFragment} root
  * @returns {boolean}
  */
+const PIPELINE_SELECTOR =
+  'partial, for:not([data-live]), template[data-for]:not([data-live]), if:not([data-live]), template[data-if]:not([data-live])';
+
 function hasSpecialTags(root) {
   // Ignored tags are never expanded, so they must not keep the pipeline pending.
-  const pending = (selector) =>
-    Array.from(root.querySelectorAll(selector)).some(
-      (el) => !inLiveBlock(el) && !inIgnoredBlock(el),
-    );
-
-  return (
-    pending('partial') ||
-    pending('for:not([data-live])') ||
-    pending('if:not([data-live])')
-  );
+  const elements = root.querySelectorAll(PIPELINE_SELECTOR);
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    if (!inLiveBlock(el) && !inIgnoredBlock(el)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -222,7 +223,7 @@ export function render(fragment, context, store, handlers, ownerDocument, plugin
   runPipeline(fragment, context);
 
   // 4. Resolve the remaining static ${path} placeholders.
-  resolveStatic(fragment, context);
+  resolveStatic(fragment, context, store);
 
   // 5b. Two-way form binding (data-model). RUNS FIRST (2h): when data-model
   //     and data-on-input are on the same element, model's listener is
@@ -329,11 +330,13 @@ export function render(fragment, context, store, handlers, ownerDocument, plugin
  *   handlers?: Object<string, function(Event, Element): void>,
  *   computed?: Object<string, { deps: string[], fn: function(): * }>,
  *   plugins?: ReadonlyArray<Object>,
+ *   signal?: AbortSignal,
  *   beforeRender?: function(Object, import('./store.js').Store): void,
  *   afterRender?:  function(Element, import('./store.js').Store): void
  * }} [options={}]
  *   handlers: event delegation (bindings-events.js). Omit for zero cost.
  *   computed: mount-scoped computeds (disposed by cleanup/unmount).
+ *   signal:   optional AbortSignal — automatically triggers unmount() when aborted.
  *   beforeRender(context, store): called BEFORE the render pipeline.
  *   afterRender(rootEl, store):   called AFTER content is appended to target.
  *   All optional and backward-compatible.
@@ -356,6 +359,11 @@ export function mount(templateName, context, target, store, options = {}) {
     previous.cleanup();
     // textContent = '' removes all child nodes (faster than innerHTML, no XSS risk)
     target.textContent = '';
+  }
+
+  // Abort early if the signal is already aborted
+  if (options.signal?.aborted) {
+    return () => {};
   }
 
   // Existing lifecycle order is preserved for plugin-free mounts: this hook
@@ -428,6 +436,11 @@ export function mount(templateName, context, target, store, options = {}) {
   };
 
   mountedTargets.set(target, { cleanup });
+
+  if (options.signal) {
+    options.signal.addEventListener('abort', () => unmount(target), { once: true });
+  }
+
   return cleanup;
 }
 
