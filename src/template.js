@@ -27,6 +27,10 @@
 import { getByPath } from "./store.js";
 import { errors, isDevMode } from "./errors.js";
 import { inLiveBlock, inUnexpandedFor, inIgnoredBlock } from "./shared.js";
+import { isSafeUrlProtocol } from "./utils.js";
+
+// URL attributes that require protocol safety validation
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'cite', 'poster', 'ping']);
 
 /** @type {Map<string, DocumentFragment>} Holds original fragments; used before cloning. */
 const templateCache = new Map();
@@ -235,7 +239,14 @@ export function resolveStatic(root, context) {
       for (const attr of Array.from(node.attributes)) {
         if (PLACEHOLDER.test(attr.value)) {
           PLACEHOLDER.lastIndex = 0;
-          attr.value = resolveString(attr.value, context);
+          let resolved = resolveString(attr.value, context);
+          if (URL_ATTRS.has(attr.name.toLowerCase())) {
+            if (!isSafeUrlProtocol(resolved)) {
+              if (isDevMode()) errors.unsafeUrlAttr(attr.name, node);
+              resolved = "";
+            }
+          }
+          attr.value = resolved;
         }
       }
     }
