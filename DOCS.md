@@ -1777,22 +1777,16 @@ the public `subscribeDiagnostics(listener)` API. Each listener receives a stable
 `{ code, message, context }` object; `context` is the original optional value and DOM
 nodes are not serialized.
 
-### Dev vs. Prod Bundles and Presentation
+### Dev vs. Prod Presentation (Single Bundle Architecture)
 
-- **Development (`dist/index.dev.min.js` or raw `src/` no-build):**
-  Lime logs `console.warn('[lime-csr] CODE: message', context?)` with full actionable
-  explanations and renders a visual toast overlay in the bottom right corner. Repeated
-  identical errors are automatically deduplicated with a badge count (`x2`, `x3`) to
-  prevent viewport overflow, and the container has scroll protection (`max-height: 85vh`).
-- **Production (`dist/index.min.js`):**
-  Compiled with `__DEV__ = false`. All verbose English strings and overlay DOM code are
-  completely eliminated by dead-code elimination. The console logs concise
-  `console.warn('[lime-error] CODE', context?)`. Logic, diagnostics delivery, and control
-  flow remain 100% identical between dev and prod.
-- **Runtime Toggle:**
-  `setDevMode(false)` suppresses Lime's own console output and overlay in development, but
-  does not suppress subscribed applications. Consumers decide which codes map to their
-  own loading or error UI; diagnostics are not exceptions and never crash the page.
+Lime-CSR ships a single lightweight bundle (`dist/index.min.js`) alongside an on-demand error message catalog (`dist/errors-messages.js`). No double-bundle or build flag switching is required.
+
+- **Development Mode (`setDevMode(true)` or `'dev'` — Default):**
+  Lime dynamically loads the error catalog (`errors-messages.js`) on startup and logs `console.warn('[lime-csr] CODE: message', context?)` with full actionable explanations, rendering a visual toast overlay in the bottom-right corner. Repeated identical errors are automatically deduplicated with a badge count (`x2`, `x3`) to prevent viewport overflow, and the container has scroll protection (`max-height: 85vh`).
+- **Production Mode (`setDevMode('prod')`):**
+  Lime does not load the error catalog and renders no overlay. The console logs concise `console.warn('[lime-error] CODE', context?)`. Logic, diagnostics delivery, and control flow remain 100% identical.
+- **Silent Mode (`setDevMode(false)`):**
+  Suppresses all Lime console output and overlay completely. Subscribed applications still receive all diagnostic events via `subscribeDiagnostics`. Consumers decide which codes map to their own loading or error UI; diagnostics are not exceptions and never crash the page.
 
 ```js
 import {

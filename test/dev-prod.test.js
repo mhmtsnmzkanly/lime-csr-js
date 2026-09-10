@@ -20,7 +20,8 @@ function installDom() {
   return dom;
 }
 
-test('reportError and error alias dispatch structured diagnostics with dev message formatting', () => {
+test('reportError and error alias dispatch structured diagnostics with dev message formatting', async () => {
+  await setDevMode(true);
   const received = [];
   const unsubscribe = subscribeDiagnostics((diagnostic) => received.push(diagnostic));
 
@@ -69,24 +70,23 @@ test('overlay container has scroll and height boundaries to prevent viewport ove
   assert.match(container.style.cssText, /overflow-y:\s*auto/);
 });
 
-test('dist production bundle logs concise [lime-error] CODE without dev strings or overlay', async () => {
+test('dist bundle in production mode logs concise [lime-error] CODE without dev strings or overlay', async () => {
   installDom();
-  const distProd = await import('../dist/index.min.js');
-  distProd.setDevMode(true);
+  const dist = await import('../dist/index.min.js');
+  dist.setDevMode('prod');
 
   const warnings = [];
   const oldWarn = console.warn;
   console.warn = (...args) => warnings.push(args);
 
   const diagnostics = [];
-  const unsubscribe = distProd.subscribeDiagnostics((d) => diagnostics.push(d));
+  const unsubscribe = dist.subscribeDiagnostics((d) => diagnostics.push(d));
 
   try {
-    distProd.reportError('TEST_PROD_ERROR', { extra: 123 });
+    dist.reportError('TEST_PROD_ERROR', { extra: 123 });
   } finally {
     unsubscribe();
     console.warn = oldWarn;
-    distProd.setDevMode(false);
   }
 
   assert.equal(diagnostics.length, 1);
@@ -100,24 +100,24 @@ test('dist production bundle logs concise [lime-error] CODE without dev strings 
   assert.equal(document.getElementById('lime-csr-error-overlay-container'), null);
 });
 
-test('dist development bundle includes full dev description and overlay', async () => {
+test('dist bundle in development mode loads dev descriptions and shows overlay', async () => {
   installDom();
-  const distDev = await import('../dist/index.dev.min.js');
-  distDev.setDevMode(true);
+  const dist = await import('../dist/index.min.js');
+  await dist.setDevMode(true);
 
   const warnings = [];
   const oldWarn = console.warn;
   console.warn = (...args) => warnings.push(args);
 
   const diagnostics = [];
-  const unsubscribe = distDev.subscribeDiagnostics((d) => diagnostics.push(d));
+  const unsubscribe = dist.subscribeDiagnostics((d) => diagnostics.push(d));
 
   try {
-    distDev.reportError('BINDING_MISSING_PATH');
+    dist.reportError('BINDING_MISSING_PATH');
   } finally {
     unsubscribe();
     console.warn = oldWarn;
-    distDev.setDevMode(false);
+    dist.setDevMode(false);
   }
 
   assert.equal(diagnostics.length, 1);

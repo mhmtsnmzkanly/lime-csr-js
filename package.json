@@ -6,12 +6,9 @@
   "main": "src/index.js",
   "exports": {
     ".": {
-      "development": "./dist/index.dev.min.js",
-      "production": "./dist/index.min.js",
       "default": "./src/index.js"
     },
-    "./dist": "./dist/index.min.js",
-    "./dev": "./dist/index.dev.min.js"
+    "./dist": "./dist/index.min.js"
   },
   "files": [
     "src/",
@@ -39,9 +36,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build:prod": "esbuild src/index.js --bundle --minify --format=esm --platform=browser --define:__DEV__=false --outfile=dist/index.min.js",
-    "build:dev": "esbuild src/index.js --bundle --minify --format=esm --platform=browser --define:__DEV__=true --outfile=dist/index.dev.min.js",
-    "build": "npm run build:prod && npm run build:dev",
+    "build": "esbuild src/index.js --bundle --minify --format=esm --platform=browser --external:./errors-messages.js --outfile=dist/index.min.js && esbuild src/errors-messages.js --bundle --minify --format=esm --platform=browser --outfile=dist/errors-messages.js",
     "prepack": "npm run build",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",

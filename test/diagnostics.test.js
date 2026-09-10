@@ -140,7 +140,8 @@ test('existing direct warn signature remains compatible', () => {
   assert.deepEqual(received[0], { code: 'DIRECT_WARN', message: 'direct message', context });
 });
 
-test('reportError reaches subscribers with its formatted diagnostic', () => {
+test('reportError reaches subscribers with its formatted diagnostic', async () => {
+  await setDevMode(true);
   const context = { target: 'app' };
   const received = [];
   const unsubscribe = subscribeDiagnostics((diagnostic) => received.push(diagnostic));

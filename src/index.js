@@ -100,7 +100,7 @@ export { setupBindings } from './bindings.js';
 export { setupModelBindings } from './bindings-model.js';
 export { setupShowBindings } from './bindings-show.js';
 export { setupEventBindings } from './bindings-events.js';
-export { setDevMode, isDevMode, subscribeDiagnostics, warn, reportError, error } from './errors.js';
+export { setDevMode, isDevMode, subscribeDiagnostics, warn, reportError, error, loadDevMessages } from './errors.js';
 export { setupLiveIfs } from './bindings-blocks.js';
 export { setupLiveFors } from './bindings-loops.js';
 export { definePlugin, PLUGIN_API_VERSION } from './plugins.js';
