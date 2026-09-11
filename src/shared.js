@@ -9,9 +9,7 @@
  * If the node itself carries data-lime-ignore, it returns true (the node is
  * part of the ignored region).
  *
- * Used by: template.js, partials.js, loops.js, conditionals.js,
- * bindings.js, bindings-model.js, bindings-show.js, bindings-blocks.js,
- * bindings-loops.js, bindings-events.js.
+ * Used by: template.js, modules/loops.js, modules/conditionals.js.
  *
  * @param {Node} node
  * @returns {boolean}
@@ -32,8 +30,7 @@ export function inIgnoredBlock(node) {
  * live root nested inside another live block returns true and is deferred to
  * that ancestor's recursive render with the correct context.
  *
- * Used by: index.js, template.js, partials.js, loops.js, conditionals.js,
- * bindings.js, bindings-model.js, bindings-show.js.
+ * Used by: template.js, modules/conditionals.js, modules/loops.js.
  *
  * @param {Node} node
  * @returns {boolean}
@@ -52,7 +49,7 @@ export function inLiveBlock(node) {
  * If the node itself is the root <for> element, it returns false (so its own
  * attributes can still be resolved).
  *
- * Used by: template.js, partials.js, loops.js.
+ * Used by: template.js, modules/loops.js.
  *
  * @param {Node} node
  * @returns {boolean}
@@ -78,7 +75,7 @@ export function inUnexpandedFor(node) {
  * order — the LIS is the maximal set of survivors whose relative order is
  * unchanged, and can therefore stay physically untouched in the DOM.
  *
- * Used by: bindings-loops.js.
+ * Used by: modules/loops.js.
  *
  * @param {number[]} seq
  * @returns {Set<number>} indices into `seq`

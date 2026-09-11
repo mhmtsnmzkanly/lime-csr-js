@@ -21,7 +21,7 @@
 <div id="renders"></div>
 
 <script type="module">
-  import { processAllIfs, evalCondition, OPERATORS } from '../src/conditionals.js';
+  import { render } from '../src/index.js';
 
   const log  = document.getElementById('log');
   const area = document.getElementById('renders');
@@ -44,13 +44,13 @@
   }
 
   /**
-   * Test helper: writes HTML into a <div>, runs processAllIfs,
+   * Test helper: writes HTML into a <div>, runs render,
    * returns the resulting element and adds it to the DOM.
    */
   function run(html, context = {}) {
     const host = document.createElement('div');
     host.innerHTML = html;
-    processAllIfs(host, context);
+    render(host, { context });
     return host;
   }
 

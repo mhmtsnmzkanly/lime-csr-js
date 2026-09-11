@@ -36,10 +36,10 @@
 <script type="module">
   import {
     createStore,
-    definePlugin,
-    mount,
+    defineModule,
+    createEngine,
+    attr,
     unmount,
-    PLUGIN_API_VERSION,
   } from '../src/index.js';
 
   const log  = document.getElementById('log');
@@ -72,83 +72,89 @@
     area.appendChild(box);
   }
 
-  // ── 1. definePlugin structure & freeze ──────────────────────────────────────
-  group('1. definePlugin creates frozen plugin definition');
+  // ── 1. defineModule structure & freeze ──────────────────────────────────────
+  group('1. defineModule creates frozen module definition');
   {
-    const plugin = definePlugin({
+    const tooltipMod = defineModule({
       name: 'example-tooltip',
-      apiVersion: PLUGIN_API_VERSION,
-      directives: {
-        'data-lime-tooltip'({ element, value, get }) {
-          element.title = get(value) ?? '';
-        },
-      },
+      triggers: [
+        attr('data-lime-tooltip', {
+          phase: 'link',
+          setup(element, data, ctx) {
+            const path = element.getAttribute('data-lime-tooltip');
+            element.title = ctx.store ? ctx.store.get(path) ?? '' : '';
+          },
+        }),
+      ],
     });
 
-    assert('plugin is frozen', Object.isFrozen(plugin), true);
-    assert('plugin apiVersion matches', plugin.apiVersion, 1);
-    assert('plugin directives frozen', Object.isFrozen(plugin.directives), true);
-    note('definePlugin ensures immutable plugin shape across mounts ✓');
+    assert('module is frozen', Object.isFrozen(tooltipMod), true);
+    assert('module name matches', tooltipMod.name, 'example-tooltip');
+    assert('module triggers frozen', Object.isFrozen(tooltipMod.triggers), true);
+    note('defineModule ensures immutable module shape across engines ✓');
   }
 
-  // ── 2. Directive setup & execution ──────────────────────────────────────────
-  group('2. Directive initializes and applies attributes');
+  // ── 2. Custom Module setup & execution ──────────────────────────────────────
+  group('2. Module initializes and applies attributes via createEngine');
   {
     let cleanupsRun = 0;
-    const plugin = definePlugin({
+    const uiMod = defineModule({
       name: 'ui-enhancements',
-      apiVersion: PLUGIN_API_VERSION,
-      directives: {
-        'data-lime-tooltip'({ element, value, get }) {
-          element.setAttribute('title', get(value));
-          return () => { cleanupsRun++; };
-        },
-        'data-lime-highlight'({ element }) {
-          element.classList.add('is-highlighted');
-          return () => { cleanupsRun++; };
-        },
-      },
+      triggers: [
+        attr('data-lime-tooltip', {
+          phase: 'link',
+          setup(element, data, ctx) {
+            const path = element.getAttribute('data-lime-tooltip');
+            element.setAttribute('title', ctx.store?.get(path) || '');
+            return () => { cleanupsRun++; };
+          },
+        }),
+        attr('data-lime-highlight', {
+          phase: 'link',
+          setup(element) {
+            element.classList.add('is-highlighted');
+            return () => { cleanupsRun++; };
+          },
+        }),
+      ],
     });
 
+    const engine = createEngine({ modules: [uiMod] });
     const store = createStore({ tipText: 'Helpful hint' });
     const target = document.createElement('div');
-    const cleanup = mount('plugin-basic', {
-      target,
-      store,
-      plugins: [plugin],
-    });
+    const cleanup = engine.mount(target, 'plugin-basic', store);
 
     const card = target.querySelector('.card');
     assert('data-lime-tooltip set title attribute', card.getAttribute('title'), 'Helpful hint');
     assert('data-lime-highlight added CSS class', card.classList.contains('is-highlighted'), true);
 
     cleanup();
-    assert('all directive cleanups executed on mount cleanup', cleanupsRun, 2);
-    show('2. Directives applied to card', target);
+    assert('all trigger cleanups executed on mount cleanup', cleanupsRun, 2);
+    show('2. Custom module applied to card', target);
   }
 
-  // ── 3. Reactive watch inside directive ──────────────────────────────────────
-  group('3. Directive uses api.watch for store reactivity');
+  // ── 3. Reactive watch inside module ─────────────────────────────────────────
+  group('3. Module uses ctx.watch for store reactivity');
   {
-    const plugin = definePlugin({
+    const counterMod = defineModule({
       name: 'counter-badge',
-      apiVersion: PLUGIN_API_VERSION,
-      directives: {
-        'data-lime-count'({ element, value, watch }) {
-          return watch(value, (count) => {
-            element.dataset.current = String(count);
-          }, { immediate: true });
-        },
-      },
+      triggers: [
+        attr('data-lime-count', {
+          phase: 'link',
+          setup(element, data, ctx) {
+            const path = element.getAttribute('data-lime-count');
+            return ctx.watch(path, (count) => {
+              element.dataset.current = String(count);
+            }, { immediate: true });
+          },
+        }),
+      ],
     });
 
+    const engine = createEngine({ modules: [counterMod] });
     const store = createStore({ clicks: 0 });
     const target = document.createElement('div');
-    mount('plugin-reactive', {
-      target,
-      store,
-      plugins: [plugin],
-    });
+    engine.mount(target, 'plugin-reactive', store);
 
     const btn = target.querySelector('#btn');
     assert('initial count synced via watch', btn.dataset.current, '0');

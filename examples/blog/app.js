@@ -524,10 +524,8 @@ function initActions() {
   });
 }
 
-mount('page', {
-  target: root,
+mount(root, 'page', store, {
   context: store.get(),
-  store,
 });
 initComposerListeners();
 initActions();

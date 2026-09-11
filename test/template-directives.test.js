@@ -34,8 +34,7 @@ test('template data-if renders correctly inside table without foster parenting',
   const target = document.getElementById('app');
 
   // Test true branch
-  mount('table-test', {
-    target,
+  mount(target, 'table-test', null, {
     context: { count: 5 },
   });
 
@@ -47,8 +46,7 @@ test('template data-if renders correctly inside table without foster parenting',
   assert.equal(rowPos.textContent.trim(), 'Positive: 5');
 
   // Test false branch
-  mount('table-test', {
-    target,
+  mount(target, 'table-test', null, {
     context: { count: 0 },
   });
 
@@ -81,8 +79,7 @@ test('template data-for renders correctly inside select elements', () => {
 
   const target = document.getElementById('app');
 
-  mount('select-test', {
-    target,
+  mount(target, 'select-test', null, {
     context: {
       users: [
         { id: '1', name: 'Ada' },

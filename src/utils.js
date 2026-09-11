@@ -42,7 +42,7 @@ export function safeAttr(value = "") {
  * dangerous schemes (javascript:, data:, etc.).
  *
  * Does NOT escape (returns only a boolean) — a shared core for consumers that
- * need the raw value (e.g. bindings.js, which uses setAttribute); safeUrl
+ * need the raw value (e.g. text/model modules, which use setAttribute); safeUrl
  * adds escaping on top of this.
  *
  * @param {*} value

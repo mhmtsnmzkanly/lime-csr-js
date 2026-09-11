@@ -1,15 +1,24 @@
-# lime-csr.js
+# lime-csr-js
 
-An HTML-first client-side rendering engine built with standard browser APIs.
-Templates stay in HTML; the small ESM runtime provides reactive state,
-bindings, structural blocks, and delegated events without expression eval.
+An HTML-first, eval-free client-side rendering (CSR) engine built with standard browser APIs. Templates stay in declarative HTML `<template>` elements; an unprivileged Micro-Kernel orchestrates built-in template composition and discrete extensible modules for conditionals, loops, text, visibility, two-way form bindings, and delegated events.
 
-## Why?
+Zero compilation. Zero virtual DOM. Zero `eval` or `new Function`. Strict Content Security Policy (CSP) compatible out of the box.
 
-lime-csr.js is for browser-first pages that benefit from declarative HTML but
-do not need a compiler, virtual DOM, router, or framework runtime. Source
-modules run directly in modern browsers during development; a bundled ESM
-file is included for production convenience.
+---
+
+## Features
+
+- **HTML-First Templates**: Author templates in native `<template>` tags. No JSX, no compiler, no build step required during development.
+- **Unprivileged Micro-Kernel**: The kernel provides generic triggers, routing, prototypal scope, and lifecycle management without any hardcoded feature semantics.
+- **Built-in Composition**: Core `<partial>` and `<slot>` composition with isolated template scope, caller lexical scope projection, and fallback resolution.
+- **Extensible Standard Modules**: Conditionals, loops, partials, text, show, model, and events are discrete unprivileged modules that can be overridden or omitted.
+- **Extensible Module API**: Create custom domain directives using `defineModule()` and compose custom runtimes using `createEngine()`.
+- **Path-Based Reactive Store**: Fine-grained reactive state with prefix-tree indexing, batch updates, computed properties, and prototype-pollution guards.
+- **Keyed DOM Reconciliation**: Reactive `<for data-live>` loops support Longest Increasing Subsequence (LCS) diffing, preserving DOM identity and focus state.
+- **Strict CSP / Eval-Free**: Operates with `Content-Security-Policy: script-src 'self'`. All paths and handler names are identifier lookups, never evaluated JavaScript expressions.
+- **Lightweight Production Bundle**: 47.0 kB minified ESM bundle (`dist/index.min.js`) with on-demand development diagnostics.
+
+---
 
 ## Installation
 
@@ -17,257 +26,321 @@ file is included for production convenience.
 npm install lime-csr-js
 ```
 
-Package consumers import the public entry point:
+### Subpath Exports
+
+`lime-csr-js@0.3.0` provides clean, dedicated subpaths:
 
 ```js
-import { createStore, mount } from 'lime-csr-js';
+// 1. Root package (Facade, Store, Diagnostics, Standard Modules)
+import { mount, unmount, render, createStore, defineModule, createEngine } from 'lime-csr-js';
+
+// 2. Kernel primitives only (alternative direct subpath import)
+// import { createEngine, defineModule, attr, attrs, tag, pattern, createScope } from 'lime-csr-js/core';
+
+// 3. All standard modules
+import { partials, conditionals, loops, text, show, model, events } from 'lime-csr-js/modules';
+
+// 4. Granular single-module imports (for custom tree-shaken engines)
+// import show from 'lime-csr-js/modules/show';
+// import text from 'lime-csr-js/modules/text';
+
+// 5. Minified browser bundle
+import 'lime-csr-js/dist/index.min.js';
 ```
 
-The repository-only source import below is useful when cloning this project;
-it is not the recommended import path from an installed npm package.
+### Browser / CDN Usage
 
-```js
-import { createStore, mount } from './src/index.js';
-```
+Zero build tools or installation required. Lime can be loaded directly from standard CDNs (jsDelivr or unpkg) in any modern browser via native `<script type="module">`.
 
-## Quick Start
+#### Option A: Full Bundle (Default Engine + All 7 Modules)
+If you want the complete framework with all directives pre-registered:
 
 ```html
-<template id="tpl-counter">
-  <button data-on-click="increment">
-    Count: <span data-text="count"></span>
-  </button>
-</template>
-<main id="app"></main>
-
 <script type="module">
-  import { createStore, mount } from 'lime-csr-js';
+  // Via jsDelivr:
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/index.min.js';
+
+  // Or via unpkg:
+  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.0/dist/index.min.js';
+</script>
+```
+
+#### Option B: Modular Core + Discrete Modules (Cherry-Pick via CDN)
+If you only need specific directives (e.g. only text and events for a tiny widget), you can load the lightweight Micro-Kernel and only the individual module files you need:
+
+```html
+<script type="module">
+  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/events.min.js';
+
+  // Assemble a bespoke engine with only the modules you need
+  const engine = createEngine({
+    modules: [text(), events()]
+  });
 
   const store = createStore({ count: 0 });
-  mount('counter', {
-    target: document.getElementById('app'),
-    store,
+  engine.mount(document.getElementById('app'), 'counter', store, {
     handlers: {
-      increment() {
-        store.update('count', (count) => count + 1);
-      },
-    },
+      increment: () => store.update('count', (n) => n + 1),
+    }
   });
 </script>
 ```
 
-## Core Concepts
+#### Available CDN Distribution Files
 
-- `createStore(initialState)` exposes `get`, `set`, `update`, `subscribe`,
-  `computed`, and `batch` for path-based reactive state.
-- `${path}` is static interpolation from the context passed to `mount`.
-- `data-text`, `data-model`, `data-show`, and `{x}`/`data-x` read reactively
-  from the store.
-- `<if>`, `<for>`, and `<partial>` are structural template elements. Add
-  `data-live` to `<if>` or keyed `<for>` blocks when the store should update
-  them. For `<table>` and `<select>` elements where browser HTML parsers would
-  foster-parent custom tags, use `<template data-if>` and `<template data-for>`.
-- `data-on-click`, `data-on-dblclick`, `data-on-input`, `data-on-change`,
-  `data-on-submit`, `data-on-keydown`, `data-on-keyup`, `data-on-focus`,
-  `data-on-blur`, `data-on-focusin`, and `data-on-focusout` use event
-  delegation and named handler functions. `data-on-keydown-enter`-style key
-  modifiers restrict keydown/keyup handlers to a single key.
-- `data-lime-ignore` is an escape hatch: any element with this attribute and
-  its entire subtree are invisible to the engine, useful for embedding
-  third-party widgets (Turnstile, reCAPTCHA, etc.) that manage their own DOM.
-
-`store.batch(fn)` coalesces notifications: every `store.set()` inside the
-synchronous `fn` is queued, and when `fn` returns each changed path notifies
-its subscribers exactly once — so expensive subscribers (live-list
-reconciles, computed chains) run once per batch instead of once per set.
-
-```js
-store.batch(() => {
-  store.set('todos', nextTodos);
-  store.set('filter', 'active');
-}); // subscribers (and computeds depending on both) fire once, here
-```
-
-## Comparison with Alpine.js
-
-| Alpine directive | What it does in Alpine | lime-csr equivalent |
+| Distribution File | Description | Typical Size |
 |---|---|---|
-| `x-data` | Defines component state and scope | `createStore(initialState)` + `mount(name, { target, context, store })`; Lime uses a shared store with path-based access |
-| `x-text` | Reactively updates text | `data-text` |
-| `x-bind` | Reactively binds an attribute | `{x}`/`data-x` |
-| `x-on` | Adds an event listener and evaluates an expression | `data-on-*` using handler-name matching, never expressions |
-| `x-show` | Hides the DOM without removing it | `data-show`, using the native `hidden` attribute |
-| `x-if` | Conditionally adds/removes template content | `<if>` / `<if data-live>` |
-| `x-for` | Renders and reactively diffs a keyed list | `<for each as>` / `<for data-live key>` |
-| `x-model` | Two-way form binding | `data-model` |
-| `x-ignore` | Prevents Alpine from initializing an element subtree | `data-lime-ignore`, leaving the element and its subtree untouched by Lime |
-| `x-transition` | Adds enter/leave transition helpers | None |
-| `$store` | Provides global shared reactive state | A shared `createStore()` instance |
-| `$dispatch` | Dispatches custom events | None |
+| `dist/index.min.js` | **Full bundle**: Micro-Kernel, Store, Router, and all 7 standard modules | ~43 kB |
+| `dist/core.min.js` | **Micro-Kernel runtime**: `createEngine`, `defineModule`, triggers, scope | ~22 kB |
+| `dist/store.min.js` | **Reactive Store**: `createStore`, `getByPath`, `setByPath` | ~6.5 kB |
+| `dist/router.min.js` | **Compiled Trigger Router**: `createRouter` | ~6.2 kB |
+| `dist/modules/index.min.js` | **All Standard Modules** in one package | ~24.5 kB |
+| `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.5 kB |
+| `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~1.6 kB |
+| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~3.7 kB |
+| `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.5 kB |
+| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.6 kB |
+| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~12.7 kB |
+| `dist/modules/partials.min.js` | `<partial>` sub-template expansion & isolated scopes | ~8.6 kB |
 
-### Visibility with `data-show`
+---
 
-`data-show="path"` keeps its element in the DOM and manages the native
-`hidden` attribute: a falsy store value adds `hidden`, and a truthy value
-removes it. Lime never changes inline `style.display`; application CSS remains
-responsible for the visible layout. A single scoped runtime rule,
-`[data-show][hidden] { display: none !important; }`, ensures display utility
-classes cannot override the hidden state:
+## Quick Start (5 Minutes)
+
+Create an HTML file with a `<template>` and mount it using native ES modules:
 
 ```html
-<div class="d-flex" data-show="visible">
-  <input value="DOM identity and form state are preserved">
-</div>
-```
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lime Counter</title>
+</head>
+<body>
+  <!-- 1. Declarative HTML Template -->
+  <template id="tpl-counter">
+    <div class="counter-card">
+      <h2>Counter: <span data-text="count"></span></h2>
+      <button data-on-click="increment">+1</button>
+      <button data-on-click="decrement">-1</button>
+      <p data-show="isPositive">Great! The count is positive.</p>
+    </div>
+  </template>
 
-Unlike `<if data-live>`, `data-show` never removes or rebuilds the node, so
-DOM identity, input values, listeners, subscriptions, and scroll state survive
-visibility changes.
+  <!-- 2. Mount Target Container -->
+  <main id="app"></main>
 
-See [DOCS.md](DOCS.md) for all syntax, lifecycle semantics, error codes, and
-limitations.
+  <!-- 3. Reactive Logic -->
+  <script type="module">
+    import { createStore, mount } from 'lime-csr-js';
 
-## Plugin API v1
+    // Initialize reactive store
+    const store = createStore({ count: 0, isPositive: false });
 
-Plugins add trusted, mount-scoped `data-lime-*` directives without changing
-Lime's fixed render pipeline. There is no global registry: pass frozen plugin
-definitions explicitly to each mount that uses them.
+    // Computed property: updates automatically when count changes
+    store.computed('isPositive', ['count'], (count) => count > 0);
 
-```js
-import { definePlugin, mount, PLUGIN_API_VERSION } from 'lime-csr-js';
-
-const focusPlugin = definePlugin({
-  name: 'focus',
-  apiVersion: PLUGIN_API_VERSION,
-  directives: {
-    'data-lime-focus': {
-      setup({ element, value, afterConnect }) {
-        if (value === 'false') return;
-        afterConnect(() => element.focus());
+    // Mount template into target (CSS selector or DOM Element)
+    const instance = mount('#app', 'counter', store, {
+      handlers: {
+        increment() {
+          store.update('count', (c) => c + 1);
+        },
+        decrement() {
+          store.update('count', (c) => c - 1);
+        },
       },
-    },
+    });
+
+    // To unmount and clear content later:
+    // unmount(instance); // or unmount('#app');
+  </script>
+</body>
+</html>
+```
+
+---
+
+## Reactive Store
+
+The store provides path-based reactive state with upward and downward change notification:
+
+```js
+import { createStore } from 'lime-csr-js';
+
+const store = createStore({
+  user: {
+    profile: { name: 'Alice', age: 30 },
   },
+  todos: [
+    { id: 1, title: 'Learn Kernel Architecture', done: true },
+    { id: 2, title: 'Write Custom Module', done: false },
+  ],
 });
 
-mount('page', { target, store, plugins: [focusPlugin] });
-```
+// Read state via dotted path
+console.log(store.get('user.profile.name')); // "Alice"
 
-Each plugin receives fresh state and cleanup bookkeeping per mount. Directives
-inside live `<if>`/`<for>` content are installed when that content appears and
-cleaned before it is removed. See [DOCS.md](DOCS.md#7-plugin-api-v1) for the
-full directive/hook API, diagnostics, trust model, and structural limits.
-
-## Browser / CDN Usage
-
-Development can import repository source files with a relative module path.
-For production, use the bundled ESM file from the published npm package:
-
-```html
-<script type="module">
-  import { createStore, mount } from
-    'https://cdn.jsdelivr.net/npm/lime-csr-js@<published-version>/dist/index.min.js';
-</script>
-```
-
-Replace `<published-version>` with an exact published version (for example,
-the version in the release tag). Do not use `@latest` in production. The
-`dist/index.min.js` path is present in the npm tarball and is browser-native
-ESM; jsDelivr will serve that same file after npm publication.
-
-## API Overview
-
-```js
-const cleanup = mount(templateName, { target, context, store, handlers, computed, plugins });
-unmount(target);
-cleanup();
-```
-
-The legacy positional signature
-`mount(templateName, context, target, store, options)` still works but is
-deprecated (one-time dev-mode notice). Calling `mount` again for the same
-target cleans up the previous mount first. Both `cleanup()` and
-`unmount(target)` cancel store subscriptions, model listeners, delegated
-event listeners, plugin directive/hook resources, and dispose any `computed`
-entries registered by the mount.
-
-### Structured diagnostics
-
-`subscribeDiagnostics(listener)` observes structured, non-throwing Lime
-diagnostics in both production and development. `setDevMode(false)` disables
-only Lime's own `console.warn` and visual overlay; subscribers still receive
-`{ code, message, context }`. Applications may map selected codes to their own
-loading or error UI without treating every diagnostic as fatal. Unsubscribe
-when the listener is no longer needed.
-
-```js
-import {
-  mount,
-  setDevMode,
-  subscribeDiagnostics,
-} from 'lime-csr-js';
-
-setDevMode(false);
-
-const unsubscribe = subscribeDiagnostics(({ code, message }) => {
-  if (code === 'MOUNT_TEMPLATE_NOT_FOUND') {
-    showApplicationStartupError(code, message);
-  }
+// Subscribe to path changes
+const unsubscribe = store.subscribe('user.profile.name', (newVal, oldVal) => {
+  console.log(`Name changed from ${oldVal} to ${newVal}`);
 });
 
-const cleanup = mount('app', { target, store });
+// Write state (triggers subscribers)
+store.set('user.profile.name', 'Bob');
 
-// Later:
+// Batch updates: coalesces notifications into a single flush wave
+store.batch(() => {
+  store.set('user.profile.name', 'Charlie');
+  store.set('user.profile.age', 31);
+}); // Subscribers fire once here
+
+// Unsubscribe
 unsubscribe();
-cleanup();
 ```
 
-## Examples
+---
 
-Open the HTML files in [examples](examples/) through a local static server.
-They import `../src/index.js` and are intended for repository development.
+## Custom Modules
 
-## Runtime Support
+Lime's single extension mechanism is the **Module**. A module specifies trigger hooks that run in either the **Transform phase** (structural compilation) or the **Link phase** (behavioral attachment):
 
-Modern browsers with native ES modules, `<template>`, `WeakMap`, `Map`, and
-standard DOM APIs are required. The npm development toolchain requires Node
-20.19 or newer.
+```js
+import { defineModule, attr } from 'lime-csr-js';
 
-## Security
+// Define a custom tooltip module
+export const tooltipModule = defineModule({
+  name: 'tooltip',
+  triggers: [
+    attr('data-tooltip', {
+      phase: 'link',
 
-Template paths and event attributes are identifiers, not JavaScript
-expressions: the runtime does not use `eval` or `new Function`. Interpolated
-text is assigned through DOM text APIs, reactive event-handler attributes are
-rejected, and reactive URL attributes permit only `http`, `https`,
-root-relative, or fragment URLs. Templates remain application-authored HTML;
-do not insert untrusted HTML into template markup.
+      // 1. Pure read step: extracts configuration once during link setup
+      read(el, ctx) {
+        return { text: el.getAttribute('data-tooltip') };
+      },
 
-## Known Limitations
+      // 2. Setup step: binds listeners or watches store
+      setup(el, data, ctx) {
+        if (!data || !data.text) return;
 
-Custom tags `<if>`, `<for>`, and `<partial>` should not be placed directly in
-tables or selects due to HTML parser foster parenting; use `<template data-if>`
-and `<template data-for>` in those contexts. Live condition branches are rebuilt
-when the condition changes, and live lists require unique keys. See the detailed
-limitations in [DOCS.md](DOCS.md#9-known-limitations).
+        const showTooltip = () => {
+          el.setAttribute('title', data.text);
+        };
+        el.addEventListener('mouseenter', showTooltip);
 
-## Technical Documentation
-
-[DOCS.md](DOCS.md) is the complete public reference. Documentation and
-implementation are expected to agree; report a mismatch as a bug.
-
-## Development
-
-```bash
-npm ci
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm pack --dry-run
+        // Register teardown on the unified LIFO cleanup stack
+        ctx.onCleanup(() => {
+          el.removeEventListener('mouseenter', showTooltip);
+        });
+      },
+    }),
+  ],
+});
 ```
 
-`npm run build` creates the production ESM bundle. `prepack` runs that build,
-so `npm pack` and `npm publish` cannot package a stale bundle.
+---
+
+## Custom Engines
+
+The default `mount()` and `render()` functions use a built-in engine with all 7 standard modules. You can build a customized, isolated runtime using `createEngine()`:
+
+```js
+import { createEngine, createStore } from 'lime-csr-js';
+import { text, show, events } from 'lime-csr-js/modules';
+import { tooltipModule } from './tooltip-module.js';
+
+// Compose an engine with explicit module precedence:
+// Earlier modules take precedence over later modules for conflicting triggers.
+const engine = createEngine({
+  modules: [
+    tooltipModule, // Custom module runs first
+    text(),
+    show(),
+    events(),
+  ],
+});
+
+// Mount with custom engine
+const store = createStore({ message: 'Hello World' });
+const instance = engine.mount(document.getElementById('app'), 'my-template', store);
+```
+
+---
+
+## The 7 Standard Modules
+
+| Module | Phase | Triggers | Description |
+|---|---|---|---|
+| [partials](DOCS.md#13-standard-modules-reference) | Transform | `<partial name="..." data="...">` | Built-in template composition with isolated scopes, named/default `<slot>` projection, fallback content, and caller scope preservation. |
+| [conditionals](DOCS.md#14-conditionals) | Transform + Link | `<if>`, `<template data-if>`, `<else>` | Evaluates comparison operators (`is-gt`, `is-lt`, `is-gte`, `is-lte`, `is-eq`, `is-neq`, `is-truthy`). `data-live` provides reactive updates. |
+| [loops](DOCS.md#15-loops) | Transform + Link | `<for each as>`, `<template data-for>` | Renders array items with prototypal child scopes. `data-live key="..."` provides keyed LCS reconciliation. |
+| [text](DOCS.md#17-behavioral-modules) | Link | `data-text="path"`, `{x}` attribute templates | Reactively binds store values to `textContent` and attribute values with URL sanitization. |
+| [show](DOCS.md#17-behavioral-modules) | Link | `data-show="path"` | Toggles element visibility via the native `hidden` attribute without altering inline styles. |
+| [model](DOCS.md#17-behavioral-modules) | Link | `data-model="path"` | Two-way binding for inputs (text, number, checkbox, radio, select) with cursor preservation. |
+| [events](DOCS.md#137-event-delegation-module-events) | Link | `data-on-{event}="handler"`, `data-on-*-data` | Delegated event dispatch with single object payload `{ event, element, scope, store, data }`, companion data attributes, and prototype protection. |
+
+---
+
+## Architecture: Micro-Kernel & Lifecycle
+
+Lime enforces a strict separation of concerns:
+- **Kernel = Mechanism**: Implements generic trigger matching, route compilation, deterministic precedence, prototypal scope inheritance, unified LIFO cleanup stack, and diagnostic dispatch. The kernel has zero knowledge of `if`, `for`, or any specific attribute names.
+- **Module = Behavior**: All syntax and rendering semantics are encapsulated in discrete module definitions.
+
+```text
+HTML Template
+      ↓
+Phase 1: Transform (Fixed-Point Loop)
+  - Partials expansion (<partial>)
+  - Loop unrolling (<for>)
+  - Conditional branching (<if>/<else>)
+  - Static ${path} interpolation
+      ↓
+Phase 2: Link (Single-Pass Traversal)
+  - Two-way form binding (data-model)
+  - Reactive text & attributes (data-text, {x})
+  - Visibility toggling (data-show)
+  - Live conditionals & live loops reactive setup
+  - Delegated event listeners (data-on-*)
+      ↓
+Connected DOM with LIFO Cleanup Stack
+```
+
+---
+
+## Security Guarantees
+
+1. **No Expression Evaluation**: Lime never uses `eval()`, `new Function()`, or dynamic code generation.
+2. **CSP Compatibility**: Fully compliant with strict `script-src 'self'` policies.
+3. **Prototype Pollution Guard**: `store.set()` and `getByPath()` reject `__proto__`, `constructor`, and `prototype` path segments.
+4. **URL Protocol Sanitizer**: `href`, `src`, `action`, and other URL attributes only accept `http:`, `https:`, root-relative (`/`), or anchor (`#`) values. Dangerous schemes (`javascript:`, `data:`, `vbscript:`) are neutralized.
+5. **DOM API Safety**: Text is assigned via `textContent`, avoiding raw HTML interpretation.
+
+---
+
+## Migration from v0.2.x to v0.3.0
+
+- **Plugin API Removed**: The legacy `definePlugin()` and `PLUGIN_API_VERSION` are removed. Use `defineModule()` and `createEngine()`.
+- **Monolithic Helpers Removed**: Internal renderer functions (`setupBindings`, `expandLoops`, `processAllIfs`, etc.) are no longer exposed on the root package. Use the standard modules or facade `render()`/`mount()`.
+- **Root Public Exports Cleaned**: Root package exports exactly 34 clean symbols (Facade, Store, Diagnostics, Kernel Primitives, and Standard Modules).
+
+For full migration instructions and before/after code examples, see [DOCS.md: Migration Guide](DOCS.md#21-migration-guide).
+
+---
+
+## Documentation Links
+
+- **[DOCS.md](DOCS.md)**: Comprehensive technical reference manual covering architecture, triggers, lifecycle, store, scope, standard modules, error codes, and troubleshooting.
+- **[llms.txt](llms.txt)**: Compact, high-density reference optimized for LLM prompting and context windows.
+- **[llms-full.txt](llms-full.txt)**: Exhaustive machine-readable reference containing the complete public API and implementation semantics.
+- **[CHANGELOG.md](CHANGELOG.md)**: Version release notes and breaking changes log.
+
+---
 
 ## License
 
-MIT — see [LICENCE.md](LICENCE.md).
+MIT License — see [LICENCE.md](LICENCE.md).

@@ -80,17 +80,17 @@
     area.appendChild(box);
   }
 
-  // ── 1. click: is the handler called, is (event, element) correct ─────────
-  group('click: handler is called, is (event, element) correct');
+  // ── 1. click: is the handler called, is ({ event, element }) correct ─────
+  group('click: handler is called, is ({ event, element }) correct');
   {
     const store = createStore({});
     const target = document.createElement('div');
     let calledWith = null;
 
-    const cleanup = mount('events-basic', {}, target, store, {
+    const cleanup = mount(target, 'events-basic', store, {
       handlers: {
-        handleClick(e, el) {
-          calledWith = { type: e.type, tag: el.tagName };
+        handleClick({ event, element }) {
+          calledWith = { type: event.type, tag: element.tagName };
         },
       },
     });
@@ -112,9 +112,9 @@
     const target = document.createElement('div');
     let readId = null;
 
-    const cleanup = mount('events-basic', {}, target, store, {
+    const cleanup = mount(target, 'events-basic', store, {
       handlers: {
-        handleClick(e, el) { readId = el.dataset.id; },
+        handleClick({ element }) { readId = element.dataset.id; },
       },
     });
 
@@ -126,20 +126,19 @@
   }
 
   // ── 3. DELEGATION PROOF: newly added element works WITHOUT extra setup ───
-  group('delegation proof: adding a new element to a reactive &lt;for data-live&gt; → its button works with no extra setup');
+  group('delegation proof: adding a new element to a reactive <for data-live> → its button works with no extra setup');
   {
     const store = createStore({ items: [{ id: 1, label: 'A' }] });
     const target = document.createElement('div');
     const removedIds = [];
 
-    const cleanup = mount('events-list', {}, target, store, {
+    const cleanup = mount(target, 'events-list', store, {
       handlers: {
-        removeItem(e, el) { removedIds.push(el.dataset.id); },
+        removeItem({ element }) { removedIds.push(element.dataset.id); },
       },
     });
 
-    // A NEW element is added reactively — NO extra setup call is made for
-    // bindings-events.js (setupEventBindings was called ONLY ONCE, during mount()).
+    // A NEW element is added reactively — NO extra setup call is made.
     store.set('items', [...store.get('items'), { id: 2, label: 'B' }]);
 
     const buttons = target.querySelectorAll('button');
@@ -152,8 +151,8 @@
     assert('the original item\'s button also works', removedIds, ['2', '1']);
 
     cleanup();
-    note('setupEventBindings was set up ONCE on root (target); ' +
-      'no separate listener was added for the new &lt;li&gt;/&lt;button&gt;');
+    note('events listener was set up ONCE on root (target); ' +
+      'no separate listener was added for the new <li>/<button>');
     show('3. delegation proof (reactive for)', target.cloneNode(true));
   }
 
@@ -164,7 +163,7 @@
     const target = document.createElement('div');
     let submitted = false;
 
-    const cleanup = mount('events-submit', {}, target, store, {
+    const cleanup = mount(target, 'events-submit', store, {
       handlers: {
         handleSubmit() { submitted = true; },
       },
@@ -192,7 +191,7 @@
     let threw = false;
 
     try {
-      mount('events-basic', {}, target, store, { handlers: {} }); // handleClick NOT DEFINED
+      mount(target, 'events-basic', store, { handlers: {} }); // handleClick NOT DEFINED
       target.querySelector('button').click();
     } catch { threw = true; }
 
@@ -217,7 +216,7 @@
 
     const store = createStore({});
     const target = document.createElement('div');
-    mount('events-bad', { target, store, handlers: {} });
+    mount(target, 'events-bad', store, { handlers: {} });
 
     console.warn = orig;
 
@@ -235,7 +234,7 @@
     const target = document.createElement('div');
     let called = false;
 
-    mount('events-basic', {}, target, store, {
+    mount(target, 'events-basic', store, {
       handlers: { handleClick() { called = true; } },
     });
 
@@ -265,7 +264,7 @@
     let threw = false;
 
     try {
-      mount('events-basic', {}, target, store); // NO handlers
+      mount(target, 'events-basic', store); // NO handlers
       target.querySelector('button').click();
     } catch { threw = true; }
 

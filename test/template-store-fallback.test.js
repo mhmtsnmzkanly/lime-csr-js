@@ -35,9 +35,7 @@ test('static interpolation resolves from store fallback when absent in context',
   });
 
   const target = document.getElementById('app');
-  mount('fallback-test', {
-    target,
-    store,
+  mount(target, 'fallback-test', store, {
     context: {
       title: 'Hello',
       contextWin: 'ContextWon',

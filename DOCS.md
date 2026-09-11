@@ -1,2032 +1,1308 @@
-# lime-csr.js — Technical Reference
+# lime-csr-js — Technical Reference Manual
 
-This is the full technical reference for lime-csr.js: every template feature,
-the Store API, the Mount API, lifecycle hooks, every dev-mode error code, and
-the known limitations of the engine. It assumes you've read the philosophy
-and quick-feature-tour in [README.md](README.md) — content that already
-lives there (why lime-csr exists, the Alpine.js comparison) is **not
-repeated here**.
-
-Every code example on this page is written against the real, current API in
-`src/`. Documentation and implementation are expected to agree. A mismatch is
-a bug; please report it with a minimal reproduction.
-
-## Table of contents
-
-1. [Quick start](#1-quick-start)
-2. [Core concept](#2-core-concept)
-3. [Template syntax](#3-template-syntax)
-   - [3.1 `${path}` — static interpolation](#31-path--static-interpolation)
-   - [3.2 `data-text` — reactive text](#32-data-text--reactive-text)
-   - [3.3 `{x}` / `data-x` — reactive attribute binding](#33-x--data-x--reactive-attribute-binding)
-   - [3.4 `data-model` — two-way form binding](#34-data-model--two-way-form-binding)
-   - [3.5 `data-show` — visibility toggle](#35-data-show--visibility-toggle)
-   - [3.6 `<if>` / `<else>` — conditional rendering](#36-if--else--conditional-rendering)
-   - [3.7 `<if data-live>` — reactive conditional](#37-if-data-live--reactive-conditional)
-   - [3.8 `<for each as>` — static list rendering](#38-for-each-as--static-list-rendering)
-   - [3.9 `<for data-live>` — reactive list rendering](#39-for-data-live--reactive-list-rendering)
-   - [3.10 `<partial>` — template composition](#310-partial--template-composition)
-   - [3.11 `data-on-*` — event handling](#311-data-on---event-handling)
-   - [3.12 `data-lime-ignore` — escape hatch for third-party markup](#312-data-lime-ignore--escape-hatch-for-third-party-markup)
-4. [Store API](#4-store-api)
-5. [Mount API](#5-mount-api)
-6. [Lifecycle hooks](#6-lifecycle-hooks)
-7. [Plugin API v1](#7-plugin-api-v1)
-8. [Error codes](#8-error-codes)
-9. [Known limitations](#9-known-limitations)
-10. [Architecture (reference)](#10-architecture-reference)
+Version: **0.3.0**  
+Architecture: **Unprivileged Micro-Kernel + Discrete Modules**  
+Status: **Production Release**
 
 ---
 
-## 1. Quick start
+## Table of Contents
 
-One HTML file. No build, no npm install, no config file. Save this, open it
-in a browser (or serve it — `file://` works fine for `<script type="module">`
-as long as your browser allows local module imports), and it runs.
+1. [Overview](#1-overview)
+2. [Architecture](#2-architecture)
+   - [2.1 Micro-Kernel Philosophy](#21-micro-kernel-philosophy)
+   - [2.2 Execution Pipeline: Transform vs Link](#22-execution-pipeline-transform-vs-link)
+   - [2.3 Precedence vs Execution Order](#23-precedence-vs-execution-order)
+3. [Installation & Subpath Exports](#3-installation--subpath-exports)
+4. [Quick Start](#4-quick-start)
+5. [Public API Reference](#5-public-api-reference)
+   - [5.1 Facade API](#51-facade-api)
+   - [5.2 Store & Utility API](#52-store--utility-api)
+   - [5.3 Diagnostics API](#53-diagnostics-api)
+   - [5.4 Kernel Primitives](#54-kernel-primitives)
+   - [5.5 Standard Modules](#55-standard-modules)
+6. [Engine Runtime (`createEngine`)](#6-engine-runtime-createengine)
+   - [6.1 Engine Configuration & Immutability](#61-engine-configuration--immutability)
+   - [6.2 Engine Instance Isolation](#62-engine-instance-isolation)
+   - [6.3 Custom Engine Composition](#63-custom-engine-composition)
+7. [Module Authoring Guide (`defineModule`)](#7-module-authoring-guide-definemodule)
+   - [7.1 Module Contract](#71-module-contract)
+   - [7.2 Step-by-Step Custom Module Example](#72-step-by-step-custom-module-example)
+   - [7.3 Module Authoring Rules & Invariants](#73-module-authoring-rules--invariants)
+8. [Trigger API](#8-trigger-api)
+   - [8.1 `attr(name, hooks)`](#81-attrname-hooks)
+   - [8.2 `attrs(options, hooks)`](#82-attrsoptions-hooks)
+   - [8.3 `tag(tagName, hooks)`](#83-tagtagname-hooks)
+   - [8.4 `pattern(prefixOrRegex, hooks)`](#84-patternprefixorregex-hooks)
+   - [8.5 Matching Semantics](#85-matching-semantics)
+9. [Module Lifecycle](#9-module-lifecycle)
+   - [9.1 Lifecycle Sequence](#91-lifecycle-sequence)
+   - [9.2 Hook Specifications (`match`, `read`, `setup`, `update`, `cleanup`)](#92-hook-specifications)
+   - [9.3 Unified LIFO Cleanup Stack](#93-unified-lifo-cleanup-stack)
+10. [ModuleContext (`ctx`)](#10-modulecontext-ctx)
+11. [Scope System](#11-scope-system)
+    - [11.1 Prototypal Inheritance & Shadowing](#111-prototypal-inheritance--shadowing)
+    - [11.2 Scope vs Store](#112-scope-vs-store)
+    - [11.3 Isolated Scope for Partials](#113-isolated-scope-for-partials)
+12. [Reactive Store](#12-reactive-store)
+    - [12.1 Path-Based Reactivity](#121-path-based-reactivity)
+    - [12.2 Store API Reference](#122-store-api-reference)
+    - [12.3 Computed Properties](#123-computed-properties)
+    - [12.4 Batch Updates](#124-batch-updates)
+    - [12.5 Prototype Pollution Prevention](#125-prototype-pollution-prevention)
+13. [Standard Modules Reference](#13-standard-modules-reference)
+    - [13.1 Partials Module (`partials`)](#131-partials-module-partials)
+    - [13.2 Conditionals Module (`conditionals`)](#132-conditionals-module-conditionals)
+    - [13.3 Loops Module (`loops`)](#133-loops-module-loops)
+    - [13.4 Text & Attribute Bindings Module (`text`)](#134-text--attribute-bindings-module-text)
+    - [13.5 Visibility Module (`show`)](#135-visibility-module-show)
+    - [13.6 Two-Way Form Binding Module (`model`)](#136-two-way-form-binding-module-model)
+    - [13.7 Event Delegation Module (`events`)](#137-event-delegation-module-events)
+14. [Security Model](#14-security-model)
+15. [Diagnostics & Complete Error Catalog](#15-diagnostics--complete-error-catalog)
+16. [Migration Guide (v0.2.x → v0.3.0)](#16-migration-guide-v02x--v030)
+17. [Troubleshooting & FAQ](#17-troubleshooting--faq)
+
+---
+
+## 1. Overview
+
+`lime-csr-js` is an eval-free, client-side rendering engine designed for browser-first web applications under strict Content Security Policies.
+
+Unlike conventional JavaScript frameworks that rely on compilers, synthetic virtual DOM trees, or runtime expression parsers, `lime-csr-js` embraces standard browser APIs:
+- Templates are native HTML `<template>` elements.
+- State is managed through a lightweight, path-based reactive store.
+- Bindings are identifier lookups, never arbitrary JavaScript expressions.
+- The engine uses an **unprivileged Micro-Kernel** where all features (loops, conditionals, forms, events, text) exist as standard unprivileged modules.
+
+---
+
+## 2. Architecture
+
+### 2.1 Micro-Kernel Philosophy
+
+Lime adheres to a strict three-tier architectural separation:
+
+$$\text{Kernel} = \text{Mechanism} \quad\Big|\quad \text{Built-in Composition} = \text{Partial + Slot} \quad\Big|\quad \text{Modules} = \text{Behavior} \quad\Big|\quad \text{Mount} = \text{Runtime Boundary}$$
+
+```text
+                 Mount
+            runtime boundary
+                   │
+                   ▼
+             Micro-Kernel
+              mechanism
+                   │
+       ┌───────────┴───────────┐
+       │                       │
+ Built-in Composition     Extensible Modules
+       │                       │
+ ┌─────┴─────┐          ┌──────┴────────┐
+ │           │          │               │
+Partial     Slot     Standard         Custom
+                      Modules         Modules
+```
+
+- **Micro-Kernel (Mechanism):**
+  - Route compilation and trigger indexing (`createRouter`).
+  - Precedence evaluation and conflict resolution.
+  - Prototypal lexical scope hierarchy (`createScope`, `createIsolatedScope`).
+  - Lifecycle dispatch (`match` $\to$ `read` $\to$ `setup` $\to$ `update` $\to$ `cleanup`).
+  - Unified LIFO cleanup stacks and fault isolation (`createCleanupStack`).
+  - Centralized diagnostic reporting (`reportError`, `warn`).
+  - *The Kernel contains zero feature-specific directive logic.*
+
+- **Built-in Composition (Partial + Slot):**
+  - Core template composition capability built into the engine runtime (`src/core/composition.js`).
+  - `<partial name="..." data="..." [props...]>` instantiates sub-templates with isolated lexical scopes while sharing the mount store.
+  - Named and default `<slot>` projection maps caller children into templates while strictly preserving caller lexical scope.
+  - Also exported via `partials()` for CDN modularity and custom engine pipelines.
+
+- **Extensible Modules (Behavior):**
+  - Behavioral features are implemented as discrete modules via `defineModule()`: `conditionals`, `loops`, `text`, `show`, `model`, and `events`.
+  - Modules register declarative triggers using `attr`, `attrs`, `tag`, or `pattern`.
+  - Standard modules have no special privileges or private APIs; third-party custom modules possess the exact same capabilities.
+
+### 2.2 Execution Pipeline: Transform vs Link
+
+Rendering executes in two deterministic, non-overlapping phases:
+
+```text
+                  Incoming Fragment / Element
+                              │
+                              ▼
+        ┌───────────────────────────────────────────┐
+        │        PHASE 1: TRANSFORM PHASE           │
+        │        (Fixed-Point Macro Expansion)      │
+        ├───────────────────────────────────────────┤
+        │ • Structural DOM mutations allowed        │
+        │ • Elements expanded, cloned, or replaced   │
+        │ • Loop until DOM stabilizes (max 100 iter)│
+        │ • Modules: partials, conditionals, loops  │
+        │ • resolveStatic (${path} interpolation)   │
+        └───────────────────────────────────────────┘
+                              │
+                              ▼
+                  Stable DOM / Anchored Nodes
+                              │
+                              ▼
+        ┌───────────────────────────────────────────┐
+        │           PHASE 2: LINK PHASE             │
+        │        (Single-Pass Traversal)            │
+        ├───────────────────────────────────────────┤
+        │ • Zero structural mutations allowed       │
+        │ • Tree topology is strictly frozen        │
+        │ • Reactive watchers and listeners bound   │
+        │ • Modules: model, text, show, events,     │
+        │   live conditionals, live loops           │
+        └───────────────────────────────────────────┘
+                              │
+                              ▼
+                  Fully Connected Component
+```
+
+1. **Transform Phase (Phase 1):**
+   - Structural compilation.
+   - Elements may be created, cloned, moved, or deleted.
+   - Runs in a fixed-point loop (`MAX_PIPELINE_ITERATIONS = 100` guard against circular macros).
+   - Generates comment anchors for dynamic reactive blocks (`<!-- lif1 -->`, `<!-- lf1 -->`).
+
+2. **Link Phase (Phase 2):**
+   - Behavioral attachment.
+   - The DOM structure is immutable during this phase. Elements are visited once in a single tree walk.
+   - Modules attach reactive store watches (`ctx.watch`), DOM event listeners, and two-way form bindings.
+
+### 2.3 Precedence vs Execution Order
+
+Lime strictly distinguishes between **Module Precedence** and **DOM Execution Order**:
+
+- **Module Precedence:**
+  - Determined at engine creation by module registration array order: `modules[0] > modules[1] > ... > modules[N]`.
+  - When two modules claim conflicting routes on the same element, the earlier module wins. The losing route is shadowed, and `MODULE_TRIGGER_OVERRIDDEN` is emitted in development mode.
+  - In Phase 1 (Transform), a structural module that replaces or expands an element performs a terminal stop for that element in the current pass.
+
+- **DOM Execution Order:**
+  - During the Link phase on a single element, triggers execute in strict document order:
+    1. Tag trigger (if matched).
+    2. Attribute triggers in the exact order attributes are declared on the HTML element.
+  - Multi-attribute triggers (`attrs`) are anchored to the position of their first required attribute.
+
+---
+
+## 3. Installation & Subpath Exports
+
+Install via npm:
+
+```bash
+npm install lime-csr-js
+```
+
+### Package Entry Points
+
+```json
+{
+  "exports": {
+    ".": "./src/index.js",
+    "./core": "./src/core/index.js",
+    "./modules": "./src/modules/index.js",
+    "./modules/*": "./src/modules/*.js",
+    "./dist": "./dist/index.min.js",
+    "./dist/*": "./dist/*"
+  }
+}
+```
+
+- **`lime-csr-js`**: Default entry point providing the public Facade (`mount`, `unmount`, `render`), Store (`createStore`, `getByPath`, `setByPath`), Diagnostics, Kernel primitives, and the 7 standard modules.
+- **`lime-csr-js/core`**: Unprivileged Micro-Kernel primitives (`createEngine`, `defineModule`, `attr`, `attrs`, `tag`, `pattern`, `createScope`).
+- **`lime-csr-js/modules`**: The 7 standard unprivileged modules (`partials`, `conditionals`, `loops`, `text`, `show`, `model`, `events`).
+- **`lime-csr-js/modules/<name>`**: Granular single-module import (e.g. `lime-csr-js/modules/text`).
+- **`lime-csr-js/dist`**: Production pre-bundled, minified ESM bundle (`43.1 kB`).
+- **`lime-csr-js/dist/*`**: Direct access to discrete sub-bundles (`core.min.js`, `store.min.js`, `router.min.js`, `modules/*.min.js`).
+
+### Browser / CDN Usage
+
+Lime works 100% out of the box in standard web browsers with zero installation and zero build steps via modern CDNs (jsDelivr or unpkg).
+
+#### 1. Full Monolithic Bundle
+Use `dist/index.min.js` to get the complete framework with all 7 standard modules pre-configured on the default engine:
+
+```html
+<script type="module">
+  // Via jsDelivr:
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/index.min.js';
+
+  // Or via unpkg:
+  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.0/dist/index.min.js';
+</script>
+```
+
+#### 2. Modular Micro-Kernel + Discrete Modules (Cherry-Pick via CDN)
+If your application only needs a subset of features (e.g., only reactive text bindings and event delegation), you can avoid downloading unused directives by combining `dist/core.min.js` and individual discrete module bundles:
+
+```html
+<script type="module">
+  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/events.min.js';
+
+  // Create an engine configured strictly with text and events
+  const engine = createEngine({
+    modules: [text(), events()]
+  });
+
+  const store = createStore({ count: 0 });
+  engine.mount(document.getElementById('app'), 'counter', store, {
+    handlers: {
+      increment: () => store.update('count', (n) => n + 1),
+    }
+  });
+</script>
+```
+
+#### CDN Distribution Manifest
+
+| CDN Path | Purpose | Size |
+|---|---|---|
+| `dist/index.min.js` | Complete bundle: default engine, store, router, diagnostics, all 7 modules | ~43 kB |
+| `dist/core.min.js` | Micro-Kernel runtime: `createEngine`, `defineModule`, triggers, scope | ~22 kB |
+| `dist/store.min.js` | Standalone reactive store: `createStore`, `getByPath`, `setByPath` | ~6.5 kB |
+| `dist/router.min.js` | Standalone trigger router: `createRouter` | ~6.2 kB |
+| `dist/modules/index.min.js` | All 7 standard modules bundled together | ~24.5 kB |
+| `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.5 kB |
+| `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~1.6 kB |
+| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~3.7 kB |
+| `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.5 kB |
+| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.6 kB |
+| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~12.7 kB |
+| `dist/modules/partials.min.js` | `<partial>` sub-template expansion & isolated scopes | ~8.6 kB |
+| `dist/errors-messages.js` | Detailed development diagnostics (loaded on-demand) | ~7.1 kB |
+
+---
+
+## 4. Quick Start
+
+Below is a complete, standalone example with zero build tools required:
 
 ```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>lime-csr quick start</title>
+  <title>Lime Quick Start</title>
 </head>
 <body>
-  <div id="app"></div>
+  <!-- Declarative Template -->
+  <template id="tpl-todo-app">
+    <div class="todo-app">
+      <h1>${appName}</h1>
 
-  <template id="tpl-hello">
-    <h1>Hello, ${name}!</h1>
+      <form data-on-submit="addTodo">
+        <input type="text" data-model="newTodoText" placeholder="What needs doing?">
+        <button type="submit">Add</button>
+      </form>
+
+      <ul class="todo-list">
+        <for each="todos" as="todo" key="todo.id" data-live>
+          <li>
+            <input type="checkbox" data-model="todo.done">
+            <span data-text="todo.title"></span>
+            <button data-on-click="deleteTodo">×</button>
+          </li>
+        </for>
+      </ul>
+
+      <p data-show="hasCompleted">
+        Completed tasks exist!
+      </p>
+    </div>
   </template>
 
-  <script type="module">
-    import { createStore, mount } from './src/index.js';
+  <!-- Mount Target -->
+  <main id="app"></main>
 
-    const store = createStore({});
-    mount('hello', { target: document.getElementById('app'), context: { name: 'World' }, store });
+  <script type="module">
+    import { createStore, mount } from 'lime-csr-js';
+
+    const store = createStore({
+      newTodoText: '',
+      todos: [
+        { id: 1, title: 'Explore Kernel Architecture', done: true },
+        { id: 2, title: 'Build CSR App', done: false },
+      ],
+      hasCompleted: true,
+    });
+
+    // Recompute hasCompleted when todos change
+    store.computed('hasCompleted', ['todos'], (todos) =>
+      todos.some((t) => t.done)
+    );
+
+    mount('#app', 'todo-app', store, {
+      context: { appName: 'My Reactive Tasks' },
+      handlers: {
+        addTodo(event, el, ctx) {
+          const text = store.get('newTodoText')?.trim();
+          if (!text) return;
+          store.update('todos', (list) => [
+            ...list,
+            { id: Date.now(), title: text, done: false },
+          ]);
+          store.set('newTodoText', '');
+        },
+        deleteTodo(event, el, ctx) {
+          const id = ctx.scope.todo.id;
+          store.update('todos', (list) => list.filter((t) => t.id !== id));
+        },
+      },
+    });
   </script>
 </body>
 </html>
 ```
 
-That's it. No webpack, no Vite, no `package.json`, no `node_modules`. The
-`<template id="tpl-hello">` is standard HTML; `${name}` is resolved once from
-the context object (`{ name: 'World' }`) you pass to `mount()`; the result is
-appended into `#app`.
-
-For anything reactive — text/attributes/lists that update when data
-changes — see [§3 Template syntax](#3-template-syntax); everything reactive
-lives in the `store` (the 4th argument), not in the context object.
-
 ---
 
-## 2. Core concept
+## 5. Public API Reference
 
-The entire engine rests on one rule:
+The root package exports **exactly 34 clean public symbols**:
 
-> **No `data-*` (or special tag) → the engine never touches the element. It
-> stays plain, static HTML.**
+### 5.1 Facade API
 
-|                     | No `data-*`                          | Has `data-*`                            |
-|---------------------|---------------------------------------|------------------------------------------|
-| Source              | **context** (a plain JS object)       | **store** (`createStore(...)`)          |
-| Resolved            | Once, at render time                  | Continuously — re-applied on every change |
-| Syntax              | `${path}`                             | `data-text`, `{x}`/`data-x`, `data-model`, `data-show`, `data-live`, `data-on-*` |
-| Watched afterward?  | Never                                 | Yes, via `store.subscribe`               |
-
-Special tags (`<if>`, `<for>`, `<partial>`) follow the same split: without
-`data-live`, they resolve once from context and leave no trace in the final
-DOM; with `data-live`, they subscribe to the store and re-run on change.
-
-### Engine flow
-
-```
-mount(name, { target, context, store, ... })
-        │
-        ▼
-┌────────────────────────────┐
-│ 1. STRUCTURAL PIPELINE      │  <partial> → <for> → <if>/<else>
-│    (reads context only)     │  looped until no special tag remains
-└──────────────┬───────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 2. STATIC INTERPOLATION     │  remaining top-level ${path} resolved
-│    (reads context only)     │  once, from context
-└──────────────┬───────────────┘
-               │
-               ▼
-┌────────────────────────────┐
-│ 3. REACTIVE BINDINGS        │  data-model → data-text/{x} → data-show
-│    (reads + subscribes to   │  plugin directives → <for data-live>
-│     the store)              │  → <if data-live>
-│                              │  (nested live-blocks recurse through
-│                              │   this same pipeline per branch/item)
-└──────────────┬───────────────┘
-               │
-               ▼
-      target.appendChild(fragment)   ← nothing is visible before this point
-               │
-               ▼
-┌────────────────────────────┐
-│ 4. EVENT DELEGATION         │  data-on-* — only if options.handlers
-│    (outside the pipeline)   │  was given to mount()
-└──────────────┬───────────────┘
-               │
-               ▼
-      ╔════════════════════════╗
-      ║ store.set(path, value) ║ ──▶ notify subscribers ──▶ only the
-      ╚════════════════════════╝     bound DOM nodes update — nothing
-                                      else re-renders
-```
-
-The exact rationale for each step's position in this order is in
-[§10 Architecture](#10-architecture-reference).
-
----
-
-## 3. Template syntax
-
-The template syntax is split into two categories to help you learn and prioritize:
-- **Essentials (start here)**: `${path}` (§3.1), `data-text` (§3.2), `data-model` (§3.4), `<if>`/`<else>` (§3.6), `<for>` (§3.8), and `<partial>` (§3.10). These six cover most typical use cases.
-- **Advanced (reach for when needed)**: `{x}`/`data-x` (§3.3), `data-show` (§3.5), `<if data-live>` (§3.7), `<for data-live>` (§3.9), `data-on-*` (§3.11), lifecycle hooks (§6), container mode (`el=`), and `store.computed` (§4.6).
-
-### 3.1 `${path}` — static interpolation
-
-Prints a value from **context** once; never watched again.
-
-**Syntax**
-```html
-<h1>${path}</h1>
-<a href="/posts/${post.slug}">${post.title}</a>
-```
-
-**Parameters**
-- `path` (string): a dotted path, e.g. `post.title`. Resolved via
-  `getByPath` against the **context** object passed to `render`/`mount`.
-  If the path is undefined or absent in context and a `store` was provided,
-  it falls back to resolving from the store. Missing/`null`/`undefined` in
-  both resolves to an empty string (no crash, no warning).
-
-**Behavior**
-`${...}` is only ever a path — never an expression. It's resolved by
-`resolveStatic` after all structural tags (`<partial>`/`<for>`/`<if>`) are
-expanded, so `${item.x}` inside a `<for>` correctly sees the loop's item
-context. Resolved values are written raw into `textContent`/attribute
-values — since neither of those parses HTML, this is XSS-safe without any
-extra escaping. (For URL attributes such as `href`/`src`, values are checked
-against the safe URL protocol whitelist; unsafe schemes emit `UNSAFE_URL_ATTR`
-and become empty strings — see §3.3).
-
-**Example**
-```html
-<template id="tpl-card">
-  <div class="card">
-    <strong>${user.name}</strong>
-    <span>${user.role}</span>
-  </div>
-</template>
-```
 ```js
-mount('card', { target, store, context: { user: { name: 'Ada', role: 'Engineer' } } });
+import { mount, unmount, render } from 'lime-csr-js';
 ```
 
-**⚠ Common mistakes**
-```
-WRONG:  <p>${count + 1}</p>
-        -- Not an expression. "count + 1" is treated as a literal path
-           segment, which won't exist in context → renders as empty.
+- **`mount(target, template, store, options)`**:
+  Mounts a template or DOM element into a target container. Delegates to the private singleton `defaultEngine`.
+  - Signature:
+    ```js
+    const instance = mount(target, template, store?, options?);
+    ```
+  - **`target`**: CSS selector string (e.g. `'#app'`) matching exactly one element, or a DOM `Element` (connected or detached).
+  - **`template`**: Template name string (resolving `<template id="tpl-{name}">`), HTML string, `HTMLTemplateElement`, or `DocumentFragment`. Can be omitted for in-place mounting.
+  - **`store`**: Reactive `Store` instance. If omitted, `null`, or `undefined`, an isolated mount-local store is automatically created.
+  - **`options`**:
+    - `handlers`: Mount-scoped, prototype-safe event handler dictionary (`Object.hasOwn`).
+    - `signal`: `AbortSignal` connecting lifecycle deactivation and cleanup to abort.
+    - `context`: Lexical interpolation context for static template tokens (`${key}`).
+    - `computed`: Object dictionary of computed paths `{ deps, fn }`.
+    - `beforeRender(scope, store)`: Lifecycle hook before Transform/Link phases.
+    - `afterRender(target, store)`: Lifecycle hook after template placement.
+    - `document`: DOM document context (defaults to target ownerDocument or global).
+  - **Returns a Mount Instance**:
+    - `instance()`: Disposes subscriptions and cleans up runtime (clears Lime-created template content; leaves in-place caller DOM intact).
+    - `instance.unmount()`: Cleans up runtime and subscriptions. For template mounts (Lime-created content), clears content (`target.textContent = ''`). For in-place mounts (caller-provided existing DOM), preserves caller DOM intact. Never calls `target.remove()`.
+    - `instance.cleanup()`: Disposes reactive bindings and event listeners while keeping DOM content intact.
+    - `instance.target`: Target DOM Element.
+    - `instance.store`: Bound Store instance.
+    - `instance.scope`: Root lexical scope.
+    - `instance.active`: Boolean indicating if mount runtime is currently active.
 
-RIGHT:  <p>${incrementedCount}</p>
-        -- Compute it in JS first and put the result in context:
-           mount('page', { target, store, context: { incrementedCount: count + 1 } })
-```
-```
-WRONG:  <span>${user.name}</span>
-        store.set('user.name', 'New Name');  // <-- nothing happens on screen
+- **`unmount(targetOrInstance)`**:
+  ```js
+  unmount(instance); // Or unmount('#app') / unmount(targetElement);
+  ```
+  Cancels all reactive store subscriptions and disposes event delegation. Clears Lime-created content for template mounts; preserves caller-provided DOM for in-place mounts. Lime CSR never calls `target.remove()`.
 
-RIGHT:  <span data-text="user.name"></span>
-        store.set('user.name', 'New Name');  // <-- updates automatically
-        -- ${...} is resolved ONCE from context and never re-evaluated.
-           Use data-text (§3.2) for anything that needs to react to state.
-```
+- **`render(nodeOrFragment, options)`**:
+  Compiles an arbitrary DOM fragment or element in-place without mounting into a container.
+  ```js
+  const cleanup = render(fragment, { store, context, handlers, document });
+  ```
 
----
+### 5.2 Store & Utility API
 
-### 3.2 `data-text` — reactive text
-
-Binds an element's text content to a **store** path.
-
-**Syntax**
-```html
-<span data-text="path"></span>
-```
-
-**Parameters**
-- `data-text` (string, required): a **store** path (not context). Empty →
-  `BINDING_MISSING_PATH` warning, no binding is set up.
-
-**Behavior**
-Sets `el.textContent = store.get(path)` immediately, then subscribes to
-`path` — every subsequent `store.set(path, ...)` updates the text. Uses
-`el.textContent`, never `innerHTML`: the value is never parsed as HTML, so
-it can't inject markup or scripts — no manual escaping is needed or wanted.
-The same store path can be bound on multiple elements; all of them update
-together. `null`/`undefined` render as an empty string.
-
-**Example**
-```html
-<span data-text="likeCount"></span> likes
-```
 ```js
-const store = createStore({ likeCount: 12 });
-mount('page', { target, store });
-store.set('likeCount', 13); // the span updates automatically
+import { createStore, getByPath, setByPath, getTemplate, resolveStatic, renderTemplate, escapeHtml, safeAttr, safeUrl, safeStyleUrl } from 'lime-csr-js';
 ```
 
-**⚠ Common mistakes**
-```
-WRONG:  <span data-text="post.title"></span>
-        mount('page', { target, store, context: { post: { title: 'Hello' } } });
-        -- Renders empty. data-text ALWAYS reads from the STORE, never
-           context — "post" only exists in context here, not in the store.
+- **`createStore(initialState)`**: Returns a reactive `Store` instance.
+- **`getByPath(source, path)`**: Safely reads nested object properties via dot-path (`"user.profile.name"`). Protects against prototype pollution.
+- **`setByPath(source, path, value)`**: Writes nested object properties with prototype-pollution guards. Returns `{ changed: boolean, previousValue: * }`.
+- **`getTemplate(name, document?)`**: Retrieves and clones `<template id="tpl-{name}">` from document cache.
+- **`resolveStatic(fragment, context, store?)`**: Resolves static `${path}` placeholders in text nodes and attributes.
+- **`renderTemplate(name, context?, store?, document?)`**: Clones and statically resolves a template into a DocumentFragment.
+- **`escapeHtml(value)`**: Sanitizes strings against XSS by escaping `&`, `<`, `>`, `"`, and `'`.
+- **`safeAttr(value)`**: Escapes HTML entities and backticks for safe attribute values.
+- **`safeUrl(value)`**: Validates URL protocol (`http:`, `https:`, root-relative `/`, or `#`). Returns empty string for dangerous protocols (`javascript:`, `data:`).
+- **`safeStyleUrl(value)`**: Returns sanitized `url('...')` or `'none'` for CSS inline values.
+
+### 5.3 Diagnostics API
 
-RIGHT:  const store = createStore({ post: { title: 'Hello' } });
-        mount('page', { target, store });
-        <span data-text="post.title"></span>
-        -- Put reactive data in the store. If it's genuinely static and
-           never needs to change, use ${post.title} (§3.1) instead.
-```
-
----
-
-### 3.3 `{x}` / `data-x` — reactive attribute binding
-
-Binds a placeholder inside an attribute value to a **store** path via a
-matching `data-{name}` attribute.
-
-**Syntax**
-```html
-<a href="/user/{handle}" data-handle="user.handle">Profile</a>
-```
-
-**Parameters**
-- `{name}` — a placeholder inside any attribute value (except `data-*`
-  attributes themselves, which are the binding's *source*, not target).
-- `data-{name}` (string, required) — the matching store path. Missing →
-  `BINDING_MISSING_DATA_ATTR` warning, that binding is skipped.
-- `name` must NOT be a reserved word: `text`, `model`, `show`, `live`,
-  `ref`, `diff`, or anything starting with `on-` → `RESERVED_ATTR_NAME`
-  warning, binding rejected.
-
-**Behavior**
-Name-matching, not position-matching: `{handle}` is fed by `data-handle`.
-An attribute can hold multiple placeholders (`href="/u/{a}/post/{b}"`) —
-each needs its own `data-a`/`data-b`. The **whole attribute template is
-kept in memory** and **re-filled from scratch** (not find-and-replace)
-whenever ANY of its referenced store paths changes — this is what makes
-combining static text and multiple reactive placeholders in one attribute
-value correct after a partial update. Once binding is set up, the consumed
-`data-{name}` attributes are removed from the DOM (clean output); a
-`data-ref="lcsr-N"` handle is added in their place for internal bookkeeping
-— you don't write `data-ref` yourself. If the target attribute is one of
-`href`, `src`, `action`, `formaction`, `data`, `cite`, `poster`, `ping`, the
-resolved value is checked against a URL protocol whitelist
-(`http(s)://`, root-relative `/...`, `#...`) before being written —
-`javascript:`/`data:`/other dangerous schemes emit an `UNSAFE_URL_ATTR`
-diagnostic warning and resolve to an empty string instead of being set.
-
-**Example**
-```html
-<a href="/user/{a}/post/{b}" data-a="user.handle" data-b="post.id">View post</a>
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  <a href="{link}" data-link="dangerousUrl"></a>
-        store.set('dangerousUrl', 'javascript:alert(1)');
-        -- href is sanitized to "" and an UNSAFE_URL_ATTR diagnostic warning
-           is issued. Disallowed schemes (javascript:, data:, vbscript:, //)
-           are rejected.
-
-RIGHT:  Only feed URL attributes with values you've validated are meant to
-        be links (root-relative paths, http(s) URLs, #anchors).
-```
-```
-WRONG:  <span title="{text}" data-text="msg"></span>
-        -- "text" is a RESERVED placeholder name → RESERVED_ATTR_NAME
-           warning, this binding never gets set up.
-
-RIGHT:  <span title="{msg}" data-msg="msg"></span>
-        -- Reserved names: text, model, show, live, ref, diff, and anything
-           starting with "on-". Pick a different placeholder name.
-```
-
----
-
-### 3.4 `data-model` — two-way form binding
-
-Binds a form element to a store path in **both** directions: typing/checking
-writes to the store, and the store changing updates the element.
-
-**Syntax**
-```html
-<input type="text" data-model="path">
-```
-
-**Parameters**
-- `data-model` (string, required): a store path. Empty → `MODEL_MISSING_PATH`
-  warning.
-
-**Behavior** is per input kind — each binds a different DOM event and reads/writes a different shape:
-
-#### text / textarea (default)
-```html
-<input type="text" data-model="user.name">
-<textarea data-model="post.body"></textarea>
-```
-Event: `input`. Writes `el.value` (string) to the store on every keystroke;
-writes back to `el.value` on external store changes (subject to the cursor
-protection below).
-
-#### number / range
-```html
-<input type="number" data-model="age">
-<input type="range" min="0" max="100" data-model="volume">
-```
-Event: `input`. Writes `Number(el.value)` to the store — so a numeric
-comparison like `is-gt="age" than="18"` works directly on it. When cleared
-(`el.value === ''`), it writes `null` to the store to preserve numeric type
-consistency rather than reverting to a string. If the value is mid-typing
-or not yet a valid number (e.g. `"-"` or `"1."`), the **raw string** is
-stored instead, so a half-typed value is never silently lost or coerced to `0`/`NaN`.
-
-#### checkbox
-```html
-<input type="checkbox" data-model="agree">
-```
-Event: `change`. Writes `el.checked` (boolean) to the store; the box is
-checked/unchecked to match the store's truthiness.
-
-#### radio
-```html
-<input type="radio" name="plan" value="free" data-model="plan">
-<input type="radio" name="plan" value="pro"  data-model="plan">
-```
-Event: `change`. All radios sharing the same `data-model` path form a
-group bound with **one shared subscription** (not one per radio) — the
-checked radio's `value` is written to the store; setting the store path
-checks whichever radio's `value` matches and unchecks the rest.
-
-#### select (single)
-```html
-<select data-model="city">
-  <option value="ist">Istanbul</option>
-  <option value="ank">Ankara</option>
-</select>
-```
-Event: `change`. Writes `el.value` (string) to the store, same as text inputs.
-
-#### select (multiple)
-```html
-<select multiple data-model="tags">
-  <option value="a">A</option>
-  <option value="b">B</option>
-</select>
-```
-Event: `change`. Writes an ARRAY of the selected options' `value`s to the
-store; setting the store path to an array selects the matching options and
-deselects the rest.
-
-**Cursor protection** (applies to all kinds above): writing from the store
-back to the DOM is skipped if the element's current value already matches
-(`el.value === next`) — this is what keeps the text cursor from jumping to
-the end while the user is typing (the store-set that a keystroke itself
-triggers would otherwise immediately write the "same" value back).
-
-**Example**
-```html
-<input type="text" data-model="user.name">
-<input type="number" data-model="age">
-<input type="checkbox" data-model="agree">
-<input type="radio" name="plan" value="free" data-model="plan">
-<input type="radio" name="plan" value="pro"  data-model="plan">
-<select data-model="city"><option value="ist">Istanbul</option></select>
-<select multiple data-model="tags"><option value="a">A</option></select>
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  <input data-model="items.2.name">
-        -- INDEXED_MODEL_PATH warning. If "items" is ever reordered or an
-           earlier item removed, index 2 silently starts pointing at the
-           WRONG item (the path doesn't move with the data).
-
-RIGHT:  Use a reactive <for data-live key="item.id"> loop and bind
-        data-model to the LOOP VARIABLE's own field instead of a
-        store-array-index path:
-        <for each="items" as="item" key="item.id" data-live>
-          <input data-model="???">  <!-- see note below -->
-        </for>
-        -- data-model still needs a STORE path, so in practice this means
-           giving each item its own addressable store location (e.g. a
-           store keyed by id: store.set(`items.byId.${item.id}.name`, …))
-           rather than a positional array index.
-```
-```
-WRONG:  const list = store.get('todos');
-        list.push(newTodo);
-        store.set('todos', list);  // <-- SAME array reference as before
-        -- IN_PLACE_MUTATION warning; store.set() returns false and NO
-           subscriber fires (Object.is(existing, value) is true — the
-           store can't tell anything changed). Any data-model/data-text/
-           <for data-live> bound to "todos" silently does not update.
-
-RIGHT:  store.set('todos', [...store.get('todos'), newTodo]);
-        -- Always pass a NEW array/object reference on mutation.
-```
-
----
-
-### 3.5 `data-show` — visibility toggle
-
-Shows/hides an element with the native `hidden` attribute, without ever
-removing it from the DOM.
-
-**Syntax**
-```html
-<div data-show="path">...</div>
-```
-
-**Parameters**
-- `data-show` (string, required): a store path. Empty → `SHOW_MISSING_PATH`
-  warning.
-
-**Behavior**
-When `store.get(path)` is falsy Lime adds `hidden`; when it is truthy Lime
-removes `hidden`. `data-show` becomes authoritative after binding, including
-when the template initially contains `hidden`. It is always reactive (there's
-no static/one-time variant; for that, use ordinary HTML/CSS).
-
-Lime never reads, clears, overwrites, remembers, or restores inline
-`style.display`. Application styles and the browser remain responsible for the
-visible layout, so `display:grid`, `display:flex`, and stylesheet-derived
-layouts survive every visibility transition unchanged. Lime installs at most
-one scoped rule per document when a managed `data-show` binding is present:
-
-```css
-[data-show][hidden] { display: none !important; }
-```
-
-The scope prevents a utility such as `.d-flex { display:flex !important; }`
-from keeping a hidden Lime-managed element visible without changing global
-`[hidden]` behavior or arbitrary application styles. The rule is installed
-before mounted content is appended, and the initial `hidden` state is also
-applied while the fragment is detached, preventing an initial visibility
-flash (FOUC).
-
-Unlike `<if data-live>` (§3.7), the element is **never removed** — its DOM
-identity, any input values inside it, scroll position, and CSS transition
-state all survive a toggle. This is the right tool for modals, accordions,
-and tabs.
-
-**Example**
-```html
-<div class="d-flex" data-show="visible">
-  <input type="text" placeholder="stays intact across toggles">
-</div>
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  <div data-show="count > 0"></div>
-        -- Not an expression. "count > 0" is treated as a literal store path,
-           which won't exist -> resolves to falsy (hidden).
-
-RIGHT:  store.computed('hasCount', ['count'], () => store.get('count') > 0);
-        <div data-show="hasCount"></div>
-        -- Precompute the condition with a computed path in the store.
-```
-```
-WRONG:  <div data-show="user.name"></div>
-        mount('page', { target, store, context: { user: { name: 'Ada' } } });
-        -- Renders hidden. data-show reads from the STORE, never context.
-
-RIGHT:  const store = createStore({ user: { name: 'Ada' } });
-        <div data-show="user.name"></div>
-        -- Put reactive data in the store.
-```
-
----
-
-### 3.6 `<if>` / `<else>` — conditional rendering
-
-Statically selects one of two content branches based on a condition
-evaluated against **context**.
-
-**Syntax**
-```html
-<if is-gt="path" than="value">
-  ...then content...
-  <else>
-    ...else content...
-  </else>
-</if>
-```
-
-**Parameters** — exactly one operator attribute, plus `than`/`to` for the
-right-hand side (`is-truthy` ignores it):
-
-| Operator | Meaning |
-|---|---|
-| `is-gt` | left `>` right (numeric) |
-| `is-lt` | left `<` right (numeric) |
-| `is-gte` | left `>=` right (numeric) |
-| `is-lte` | left `<=` right (numeric) |
-| `is-eq` | left `===` right (string comparison) |
-| `is-neq` | left `!==` right (string comparison) |
-| `is-truthy` | `Boolean(left)` — no right-hand side |
-
-The operator's attribute VALUE is a **context** path (`is-gt="score"` reads
-`context.score`); `than`/`to` is a raw **literal** string, never a path.
-
-**Behavior**
-`<else>` is a **wrapper**, not a self-closing marker — `<else></else>`.
-Among `<if>`'s DIRECT children, everything EXCEPT the `<else>` element is
-the "then" group; `<else>`'s own children are the "else" group. Neither
-`<if>` nor `<else>` remain in the final DOM — only the winning content is
-left in place. Processing is outer-to-inner (an inner `<if>` waits until
-its ancestor `<if>` resolves). If content follows `<else>` at the same
-level, a tolerant warning (`ELSE_AFTER_CONTENT`) is issued but it still
-works (that content is simply counted as "then").
-
-**Example**
-```html
-<if is-gt="commentCount" than="0">
-  <p>${commentCount} comments</p>
-  <else>
-    <p>No comments yet.</p>
-  </else>
-</if>
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  <if is-truthy="loggedIn">
-          <p>Welcome</p>
-          <else/>
-          <p>Please log in</p>
-        </if>
-        -- HTML5 does not treat <else/> as a void element. The parser
-           swallows everything after it (including the real content and
-           the closing </if>) INTO the self-closed <else>, corrupting the
-           structure in ways that are hard to predict.
-
-RIGHT:  <if is-truthy="loggedIn">
-          <p>Welcome</p>
-          <else>
-            <p>Please log in</p>
-          </else>
-        </if>
-        -- Always write <else>...</else> as a full wrapper.
-```
-```
-WRONG:  <div>
-          <if is-truthy="x">
-        </div>
-          <p>content</p>
-        </if>
-        -- <else>/<if> must nest cleanly within normal HTML structure; an
-           <if> spanning across an unrelated element's boundary produces
-           unpredictable DOM (the parser will auto-close/reparent things).
-
-RIGHT:  Keep <if>...</if> (and any <else> inside it) fully nested within a
-        single parent element, like any other HTML tag pair.
-```
-
-#### Tables, selects, and foster-parenting: `<template data-if>`
-
-Custom tags like `<if>` written directly inside `<table>`, `<tbody>`, `<tr>`, or `<select>` are relocated by the browser HTML parser to outside the table before JavaScript runs (standard WHATWG HTML parser foster-parenting; detected in dev-mode as `TABLE_FOSTER_PARENTING`).
-
-To conditionally render content safely inside `<table>` and `<select>` elements, use `<template data-if>` instead:
-
-```html
-<table>
-  <tbody>
-    <template data-if is-truthy="hasDiscount">
-      <tr><td>Discount applied</td></tr>
-    <else>
-      <tr><td>Standard pricing</td></tr>
-    </else>
-    </template>
-  </tbody>
-</table>
-```
-
-Because `<template>` is a standard, parser-valid child in HTML5 table and select content models, the browser parser leaves it in-place. All operators (`is-gt`, `is-eq`, `is-truthy`, etc.) and reactive `data-live` work identically on `<template data-if>`.
-
----
-
-### 3.7 `<if data-live>` — reactive conditional
-
-The reactive counterpart of `<if>`: re-evaluates and swaps branches
-whenever the condition's **store** path changes.
-
-**Syntax**
-```html
-<if is-gt="path" than="value" data-live>
-  ...
-  <else>...</else>
-</if>
-```
-
-**Parameters** — same operator/`than`/`to` rules as `<if>` (§3.6), except
-the operator's LEFT side is now a **store** path (not context), plus:
-
-- `data-live` (empty or a path): empty → tracks the operator's own path
-  (`is-gt="count"` → watches `"count"`). Set to an explicit path
-  (`data-live="x"`) to watch something other than/in addition to the
-  operator's own path — needed if the condition depends on more than one
-  store value.
-- `el` (optional, tag name): wraps branch content in a persistent
-  container element instead of bare comment anchors — see "Container mode" below.
-- `data-after` / `data-before` (optional, handler names): see [§6](#6-lifecycle-hooks).
-
-**Behavior**
-`than`/`to` is **always** static/literal, even if it looks like a path —
-it is never tracked from the store. When the condition changes, the ACTIVE
-BRANCH IS COMPLETELY TORN DOWN and rebuilt: input focus, scroll position,
-and any DOM identity inside it are lost. If the condition re-evaluates to
-the SAME truthiness as before, nothing happens (no teardown, no hooks fire).
-
-**Container mode (`el="tag"`)**: without `el`, the branch is placed between
-two fixed HTML comment anchors (`<!-- live-if:ref --> ... <!-- /live-if:ref -->`).
-With `el="div"` (or any tag), branch content instead goes inside a real
-`<div>` element that is **created once and never recreated** across
-switches — useful when you need one stable DOM node to attach a
-CSS transition class to, or to pass to a third-party widget. Any
-non-reserved attribute on `<if>` (e.g. `class`, `id`) is copied onto that
-container.
-
-**Example**
-```html
-<if is-gt="commentCount" than="0" data-live>
-  <p><span data-text="commentCount"></span> comments so far.</p>
-  <else>
-    <p>Be the first to comment!</p>
-  </else>
-</if>
-```
-```html
-<!-- container mode, for a chart that needs a stable mount point -->
-<if is-truthy="showChart" data-live el="div" class="chart-box"
-    data-after="initChart" data-before="destroyChart">
-  <canvas></canvas>
-</if>
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  <if is-gt="user.score" than="user.limit" data-live>
-        -- "user.limit" is NOT tracked — than/to is always a literal. If
-           user.limit changes in the store, this <if> does NOT re-evaluate,
-           even though it looks like a reactive comparison of two paths.
-
-RIGHT:  store.computed('scoreOverLimit', ['user.score', 'user.limit'],
-          () => store.get('user.score') > store.get('user.limit'));
-        <if is-truthy="scoreOverLimit" data-live>
-        -- Precompute the comparison into a single derived path (§4.6) and
-           track THAT with data-live.
-```
-
----
-
-### 3.8 `<for each as>` — static list rendering
-
-Renders a list once, from a **context** array; never updates afterward.
-
-**Syntax**
-```html
-<for each="path" as="item">
-  ...
-</for>
-```
-
-**Parameters**
-- `each` (string, required): a context path resolving to an array.
-- `as` (string, required): the variable name each item is bound to inside the loop.
-- `index` (string, optional): if given, also binds the item's 0-based
-  position under this name.
-
-**Behavior**
-**Inherited context** — the defining difference from `<partial>` (§3.10):
-the parent context is preserved, `as` (and `index`) is merely added on top
-(`{ ...context, [as]: item }`). Accessing outer variables
-(`${post.title}` inside a `<for>` over `post.comments`) works naturally. In
-a nested `<for>`, the inner loop's `as` shadows the outer one for its own
-scope. An empty array removes `<for>` silently (not an error); if `each`
-doesn't resolve to an array at all, a warning (`FOR_NOT_ARRAY`) is issued
-and `<for>` is removed.
-
-**Example**
-```html
-<for each="comments" as="comment" index="i">
-  <p>${i}. ${comment.body} — by ${author.name}</p>
-  <!-- "author" here comes from the OUTER context, not from "comment" -->
-</for>
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  <for each="items" as="item">
-          <li><span data-text="item.name"></span></li>
-        </for>
-        mount('page', { target, store });
-        -- data-text attempts to read from the store, but static <for> only
-           binds "item" in the static context. Inside the store, there is
-           no path named "item.name" -> renders empty.
-
-RIGHT:  <for each="items" as="item">
-          <li><span>${item.name}</span></li>
-        </for>
-        -- Use static interpolation ${item.name} for static loops. If the list
-           needs to be reactive, use `<for data-live>` instead.
-```
-```
-WRONG:  <for each="todos" as="todo">
-          <li>${todo.text}</li>
-        </for>
-        store.set('todos', [...]); // expecting DOM to update
-        -- Since the loop lacks the `data-live` attribute, it is parsed once
-           from context and never updates on store changes.
-
-RIGHT:  <for each="todos" as="todo" key="todo.id" data-live>
-          <li>${todo.text}</li>
-        </for>
-        -- Use data-live and key to make a loop reactive.
-```
-
-#### Tables, selects, and foster-parenting: `<template data-for>`
-
-Like `<if>`, custom `<for>` tags inside `<table>` or `<select>` elements are foster-parented by the browser parser. Use `<template data-for>` for valid in-table and in-select loops:
-
-```html
-<select data-model="selectedId">
-  <template data-for each="options" as="opt">
-    <option value="${opt.id}">${opt.label}</option>
-  </template>
-</select>
-```
-
-For reactive lists inside tables or selects, add `key="..."` and `data-live`:
-
-```html
-<table>
-  <tbody>
-    <template data-for each="users" as="user" key="user.id" data-live>
-      <tr><td>${user.name}</td></tr>
-    </template>
-  </tbody>
-</table>
-```
-
----
-
-### 3.9 `<for data-live>` — reactive list rendering
-
-The reactive counterpart of `<for>`: updates the DOM via a key-based diff
-whenever the **store** array changes.
-
-**Syntax**
-```html
-<for each="path" as="item" key="item.idPath" data-live>
-  ...
-</for>
-```
-
-**Parameters** — same `each`/`as`/`index` as §3.8 (now `each` is a **store**
-path), plus:
-
-- `key` (string, **required**): a path, evaluated per item, that uniquely
-  identifies it (e.g. `item.id`). Missing → `FOR_MISSING_KEY` warning,
-  `<for>` is removed WITHOUT becoming reactive (fails safe, doesn't guess).
-  A key value that collides with another item's → `FOR_DUPLICATE_KEY`
-  warning, the duplicate is skipped.
-- `data-diff` (optional: `simple` | `lcs` | `replace`; default `simple`):
-  which reconcile strategy to use (see table below). An unrecognized value
-  → `UNKNOWN_DIFF_STRATEGY` warning, falls back to `simple`.
-- `el` (optional, tag name): wraps ALL item blocks in one persistent
-  container — same mechanism as `<if data-live el=...>` (§3.7), but here it
-  wraps the whole list, not each item.
-- `data-after` / `data-before` (optional, handler names): fire **per item**
-  added/removed — see [§6](#6-lifecycle-hooks).
-
-**Identity is always preserved for surviving keys**: the same `key` always
-maps to the same DOM node, moved via `insertBefore` when its position
-changes — never destroyed and recreated. If a field inside an item
-genuinely changes, reflect that through a reactive binding
-(`data-text`/`{x}`) inside the item template — the loop itself never
-re-renders a surviving key just because the underlying object reference
-changed (most immutable-update patterns build fresh objects on every
-change even when content is identical, so reference-equality is not a
-reliable signal of "this item's content changed").
-
-**Diff strategies:**
-
-| `data-diff` | What it does | When to use |
-|---|---|---|
-| *(omitted)* / `simple` | Forward pass; each item is left alone if already immediately after the previous one, otherwise moved to the end. Cheap, correct, but only catches LOCALLY-adjacent no-ops — one item moved far can cascade into moving everything after it. | Default. Fine for most lists, especially ones that mostly append/remove rather than reorder. |
-| `lcs` | Computes the Longest Increasing Subsequence of survivors' old positions; only items OUTSIDE that subsequence are moved — a globally minimal set of DOM operations for the given reorder. | Lists with frequent, non-trivial reordering (drag-to-reorder, sortable columns) where minimizing DOM churn/focus loss matters. |
-| `replace` | No diffing at all — every existing item is torn down (`cleanup()` + DOM removal) and the whole list is rendered from scratch, every single reconcile. Identity is NEVER preserved, even for a key that "didn't change." | Very large lists where per-item DOM identity doesn't matter (e.g. a read-only log viewer) and the bookkeeping cost of diffing isn't worth it. |
-
-Regardless of strategy, an **append fast-path** applies automatically
-whenever the old key list is an exact prefix of the new one (the common
-"new item(s) added to the end" case): only the new tail items are rendered
-and inserted — zero cost for the untouched prefix, and neither `simple` nor
-`lcs`'s full algorithm even runs. `replace` does not use this fast-path (by
-design — it always rebuilds everything). None of this needs to be turned on
-explicitly; it's automatic.
-
-**Example**
-```html
-<for each="comments" as="comment" key="comment.id" data-live data-diff="lcs">
-  <partial name="comment" data="comment"></partial>
-</for>
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  const items = store.get('items');
-        items.push(newItem);
-        store.set('items', items);  // <-- SAME array reference
-        -- IN_PLACE_MUTATION warning; store.set() returns false, no
-           subscriber fires — the list silently does not update.
-
-RIGHT:  store.set('items', [...store.get('items'), newItem]);
-```
-```
-WRONG:  <for each="items" as="item" data-live>
-          <li>${item.name}</li>
-        </for>
-        -- FOR_MISSING_KEY warning; <for> is removed WITHOUT becoming
-           reactive (renders once, like a static <for>, then never updates).
-
-RIGHT:  <for each="items" as="item" key="item.id" data-live>
-          <li>${item.name}</li>
-        </for>
-```
-```
-WRONG:  <for each="items" as="item" key="item.category" data-live>
-        -- if two items share the same category, FOR_DUPLICATE_KEY warns
-           and only the FIRST one with that key is kept.
-
-RIGHT:  Use a genuinely unique field (usually an id) as the key.
-```
-
----
-
-### 3.10 `<partial>` — template composition
-
-Expands a named template into the current one, with an **isolated**
-context of its own.
-
-**Syntax**
-```html
-<partial name="templateName" data="path"></partial>
-```
-
-**Parameters**
-- `name` (string, required): the target template's name (looked up as
-  `<template id="tpl-{name}">`). Missing → `PARTIAL_MISSING_NAME` warning.
-  Not found → `PARTIAL_NOT_FOUND` warning, `<partial>` is removed.
-- `data` (string, optional): a **parent-context** path resolving to an
-  object — becomes the ENTIRE base context inside the partial. Parent
-  context is otherwise completely invisible inside the partial. Omitted →
-  base context is `{}`.
-- any OTHER attribute (except ones starting with `data-`, reserved for the
-  engine) is a **prop**: its value is a parent-context path, resolved and
-  added to the partial's context under the attribute's own name, on top of
-  `data` (props win on a name collision).
-
-**Behavior**
-`<partial>` is fully isolated — unlike `<for>` (§3.8), it does NOT inherit
-the parent context. Recursive partials are supported (a comment reply is
-itself a comment) up to `MAX_DEPTH = 50`; beyond that, remaining
-`<partial>`s are removed and a `PARTIAL_DEPTH_LIMIT` warning is issued
-(protects against an accidental self-referencing partial). `<partial>`
-leaves no trace in the final DOM — only its expanded content remains.
-
-**Example**
-```html
-<template id="tpl-avatar">
-  <span class="avatar" title="${name}">${name}</span>
-</template>
-
-<template id="tpl-comment">
-  <partial name="avatar" data="author"></partial>
-  <p>${body}</p>
-</template>
-```
-```html
-<!-- multi-prop: data (base) + two extra props -->
-<partial name="like-button" data="post" action="likeAction" count="post.likeCount"></partial>
-```
-
-**Override example** — a prop with the SAME name as a field already present
-in `data` wins (note: the prop's OWN attribute name can be anything except
-`name`/`data` themselves, which are always reserved for the partial
-selector and the base object):
 ```js
-// context: { post: { label: 'from-data' }, altLabel: 'from-prop' }
-```
-```html
-<template id="tpl-badge"><span>${label}</span></template>
-<!-- data="post" resolves to {label:'from-data'}; the "label" prop below is
-     added ON TOP of that base object, so it overrides the "label" data
-     already carried — the badge renders "from-prop", not "from-data" -->
-<partial name="badge" data="post" label="altLabel"></partial>
+import { setDevMode, isDevMode, subscribeDiagnostics, warn, reportError, error, loadDevMessages } from 'lime-csr-js';
 ```
 
-**⚠ Common mistakes**
-```
-WRONG:  <template id="tpl-loop">
-          <partial name="loop"></partial>
-        </template>
-        -- No base case: recurses until MAX_DEPTH (50), then
-           PARTIAL_DEPTH_LIMIT warns and the remaining <partial>s are
-           removed. Page doesn't crash, but partially-expanded output
-           is probably not what you want.
+- **`setDevMode(mode)`**: Controls diagnostic presentation:
+  - `true` or `'dev'`: Console warnings with actionable explanations + visual error overlay.
+  - `'prod'` or `'production'`: Terse `[lime-error] CODE` console warnings without overlay.
+  - `false`: Silences console and overlay (listeners still receive events).
+- **`isDevMode()`**: Returns `true` if development mode is active.
+- **`subscribeDiagnostics(listener)`**: Subscribes to structured diagnostics `{ code, message, context }`. Returns an idempotent `unsubscribe()` function.
+- **`reportError(code, detailsOrContext?, context?)`**: Dispatches structured diagnostic.
+- **`warn(code, message?, context?)`**: Primary warning dispatch function.
+- **`error`**: Alias for `reportError`.
+- **`loadDevMessages()`**: Loads actionable error catalog on-demand in development mode.
 
-RIGHT:  Make sure every recursive partial (e.g. a comment → its replies)
-        has a real base case: an array that eventually becomes empty
-        (an empty replies list simply renders nothing further).
-```
-```
-WRONG:  <partial name="card" data-source="post"></partial>
-        -- "data-source" starts with "data-", so it's reserved for the
-           ENGINE (data-model, data-text, etc.) and is silently NOT
-           treated as a prop — ${source} inside the partial is undefined.
+### 5.4 Kernel Primitives
 
-RIGHT:  <partial name="card" source="post"></partial>
-        -- Prop attribute names must not start with "data-".
+```js
+import { createEngine, defineModule, attr, attrs, tag, pattern, createScope } from 'lime-csr-js';
+// Or from 'lime-csr-js/core'
+```
+
+- **`createEngine(options)`**: Compiles an isolated Engine with a custom module array.
+- **`defineModule(definition)`**: Validates and freezes a module definition.
+- **`attr(name, hooks)`**: Exact attribute trigger.
+- **`attrs(options, hooks)`**: Multi-attribute group trigger.
+- **`tag(tagName, hooks)`**: Exact tag trigger.
+- **`pattern(prefixOrRegex, hooks)`**: Attribute prefix or RegExp pattern trigger.
+- **`createScope(parentScope?, localData?)`**: Creates a prototypally inherited lexical scope.
+
+### 5.5 Standard Modules
+
+```js
+import { partials, conditionals, loops, text, show, model, events } from 'lime-csr-js';
+// Or from 'lime-csr-js/modules'
+```
+
+Factory functions returning module definitions for the 7 standard unprivileged modules.
+
+---
+
+## 6. Engine Runtime (`createEngine`)
+
+### 6.1 Engine Configuration & Immutability
+
+`createEngine` compiles routes, resolves module precedence, and initializes partition tables once at creation time:
+
+```js
+import { createEngine } from 'lime-csr-js/core';
+import { text, show, events } from 'lime-csr-js/modules';
+
+const engine = createEngine({
+  modules: [
+    text(),
+    show(),
+    events(),
+  ],
+});
+```
+
+**Key Invariants:**
+- **Precedence is immutable:** Modules registered earlier in the `modules` array take absolute precedence over later modules.
+- **Zero dynamic mutation:** There is **no `engine.use()`**. Adding modules requires creating a new engine instance.
+- **Compiled Partitioned Router:** Routes are partitioned by trigger type (`tag`, `attr`, `attrs`, `pattern`) and execution phase (`transform`, `link`) for $O(1)$ indexed lookup.
+
+### 6.2 Engine Instance Isolation
+
+Each `Engine` instance maintains its own isolated route table, partition indexes, and active mount targets. Multiple engines can coexist within the same application or web page without cross-talk.
+
+### 6.3 Custom Engine Composition
+
+To exclude unused features or introduce custom directives:
+
+```js
+import { createEngine } from 'lime-csr-js/core';
+import { conditionals, loops, text } from 'lime-csr-js/modules';
+import { customValidationModule } from './custom-validation.js';
+
+// Engine without partials, model, or show modules
+const minimalEngine = createEngine({
+  modules: [
+    customValidationModule,
+    conditionals(),
+    loops(),
+    text(),
+  ],
+});
 ```
 
 ---
 
-### 3.11 `data-on-*` — event handling
+## 7. Module Authoring Guide (`defineModule`)
 
-Attribute-based, eval-free event binding, resolved by NAME against a
-handler dictionary — never an expression.
+### 7.1 Module Contract
 
-**Syntax**
-```html
-<button data-on-click="handlerName">...</button>
-<input data-on-keydown-enter="save">  <!-- key-modified form -->
-```
+A module definition is declared using `defineModule()`:
 
-**Parameters**
-- `data-on-{event}`: `{event}` must be one of the supported events below.
-  Anything else → `UNKNOWN_EVENT` warning, ignored.
-- The attribute VALUE is a **key** looked up in the `handlers` dictionary
-  passed in `mount()`'s options (`{ handlers: { handlerName(event, el) {...} } }`).
-  Not found at click-time → `HANDLER_NOT_FOUND` warning, no crash.
-
-**Supported events**
-
-| Attribute | DOM event | Notes |
-|---|---|---|
-| `data-on-click` | `click` | |
-| `data-on-dblclick` | `dblclick` | |
-| `data-on-input` | `input` | |
-| `data-on-change` | `change` | |
-| `data-on-submit` | `submit` | ALWAYS calls `preventDefault()` |
-| `data-on-keydown` | `keydown` | fires for EVERY key; accepts a `-{key}` modifier |
-| `data-on-keyup` | `keyup` | fires for EVERY key; accepts a `-{key}` modifier |
-| `data-on-focus` | `focusin` | Delegated via native bubbling `focusin` |
-| `data-on-blur` | `focusout` | Delegated via native bubbling `focusout` |
-| `data-on-focusin` | `focusin` | |
-| `data-on-focusout` | `focusout` | |
-
-`focus` and `blur` are delegated to the mount root using bubbling `focusin` and `focusout` events under the hood. `mouseenter` and `mouseleave` remain unsupported as they do not bubble.
-
-**Key modifiers** — `keydown`/`keyup` only
-
-`data-on-keydown-{key}` / `data-on-keyup-{key}` call the handler ONLY when
-`event.key` matches the modifier; any other key silently does nothing. This
-is the eval-free counterpart of Alpine's `x-on:keydown.enter` /
-`@keydown.enter` — the modifier filters the key, the attribute value stays a
-handler NAME. The modifier is matched case-insensitively and maps to
-`event.key` as follows:
-
-| Modifier | `event.key` | Modifier | `event.key` |
-|---|---|---|---|
-| `enter` | `Enter` | `up` | `ArrowUp` |
-| `escape` | `Escape` | `down` | `ArrowDown` |
-| `space` | `' '` (a space) | `left` | `ArrowLeft` |
-| `tab` | `Tab` | `right` | `ArrowRight` |
-| `delete` | `Delete` | `backspace` | `Backspace` |
-
-Any other modifier (`data-on-keydown-foo`) → `UNKNOWN_KEY_MODIFIER` warning,
-and the attribute is inert. Unmodified `data-on-keydown`/`data-on-keyup`
-keeps firing for every key, and modified + unmodified attributes may coexist
-on the same element — each is evaluated independently:
-
-```html
-<input data-on-keydown="draft" data-on-keydown-enter="save" data-on-keydown-escape="cancel">
-<!-- every key → draft; Enter additionally → save; Escape additionally → cancel -->
-```
-
-Under the hood the modifier is parsed from the ATTRIBUTE name only — the
-delegated DOM listener is always the base `keydown`/`keyup` type, shared by
-all modified and unmodified variants.
-
-**Behavior**
-**Delegation, not per-element listeners**: ONE listener is set up per event
-TYPE actually used across the whole page's templates (not one per
-`data-on-*` element), attached to `mount()`'s `target`. This means elements
-added later by a reactive `<for data-live>`/`<if data-live>` need **no
-additional setup** — the single listener catches them via event bubbling
-the moment they're clicked. A handler always receives `(event, element)` —
-no context is injected; use `element.dataset` (paired with a
-`data-id="${id}"`-style attribute on the same element) to identify which
-item was interacted with, and reach the `store` via closure from wherever
-`handlers` was defined. `data-on-submit` ALWAYS calls `preventDefault()`
-(even if the handler isn't found) — this is a deliberate, non-configurable
-default (no page reload on submit is the overwhelmingly common need). If
-`options.handlers` isn't passed to `mount()` at all, the event system is
-never set up (zero cost).
-
-**Example**
-```html
-<button data-on-click="deleteItem" data-id="42">Delete</button>
-```
 ```js
-mount('page', {
-  target, store, context: ctx,
-  handlers: {
-    deleteItem(event, el) {
-      const id = el.dataset.id; // "42"
-      store.update('items', (items) => items.filter((i) => i.id !== id));
-    },
+import { defineModule, attr } from 'lime-csr-js';
+
+const myModule = defineModule({
+  name: 'my-feature', // Must match /^[a-z][a-z0-9-]*$/
+  version: '1.0.0',   // Optional semantic version
+
+  // Non-empty array of triggers
+  triggers: [
+    attr('data-my-feature', {
+      phase: 'link', // 'transform' | 'link'
+      read(el, ctx) { /* ... */ },
+      setup(el, data, ctx) { /* ... */ },
+    }),
+  ],
+
+  // Optional mount-level lifecycle hooks
+  beforeMount(ctx) {
+    // ctx: { target, options, scope, store }
+  },
+  afterMount(ctx) {
+    // ctx: { target, options, scope, store, unmount }
   },
 });
 ```
 
-**⚠ Common mistakes**
-```
-WRONG:  <button data-on-click="count++">Increment</button>
-        -- Not an expression. "count++" is treated as a literal HANDLER
-           NAME, looked up verbatim in the handlers dictionary — it will
-           never be found (HANDLER_NOT_FOUND).
+### 7.2 Step-by-Step Custom Module Example
 
-RIGHT:  <button data-on-click="increment">Increment</button>
-        mount('page', {
-          target, store, context: ctx,
-          handlers: { increment(e, el) { store.update('count', (v) => v + 1); } },
+Let's build a practical **Auto-Resize Textarea** module:
+
+```js
+import { defineModule, attr } from 'lime-csr-js';
+
+export const autoResizeModule = defineModule({
+  name: 'auto-resize',
+  triggers: [
+    attr('data-auto-resize', {
+      phase: 'link', // Behavioral attachment: does not mutate DOM structure
+
+      // 1. read(): Pure extraction. Runs once during initial setup.
+      read(el, ctx) {
+        if (el.tagName !== 'TEXTAREA') {
+          ctx.warn('AUTO_RESIZE_INVALID_ELEMENT', 'data-auto-resize only supports <textarea>.');
+          return null;
+        }
+        const minHeight = parseInt(el.getAttribute('data-min-height') || '60', 10);
+        return { minHeight };
+      },
+
+      // 2. setup(): Attaches listeners and registers teardown.
+      setup(el, data, ctx) {
+        if (!data) return;
+
+        const resize = () => {
+          el.style.height = 'auto';
+          el.style.height = `${Math.max(el.scrollHeight, data.minHeight)}px`;
+        };
+
+        el.addEventListener('input', resize);
+
+        // Initial sizing after element is connected to the DOM
+        ctx.afterConnect(resize);
+
+        // Register teardown on the unified LIFO cleanup stack
+        ctx.onCleanup(() => {
+          el.removeEventListener('input', resize);
         });
+      },
+    }),
+  ],
+});
 ```
-```
-WRONG:  <input data-on-enter="save">
-        -- A modifier without a base event. "enter" is not an event type
-           (UNKNOWN_EVENT); the key modifier always rides on keydown or
-           keyup.
 
-RIGHT:  <input data-on-keydown-enter="save">
-        -- base event (keydown) + key modifier (enter): the "save" handler
-           fires only when event.key === 'Enter'.
-```
+### 7.3 Module Authoring Rules & Invariants
+
+1. **Phase Discipline:**
+   - Use `phase: 'transform'` only if your module replaces, clones, or expands DOM elements.
+   - Use `phase: 'link'` for event listeners, reactive bindings, visibility, or styling. Never perform structural DOM mutations (`appendChild`, `remove`, `replaceWith`) in the Link phase.
+2. **Pure `read()`:**
+   - `read(el, ctx)` must be pure. It extracts configuration from DOM attributes and does not mutate DOM or subscribe to the store.
+   - `read()` runs once during initial setup; reactive updates do not re-run `read()`.
+3. **Always Register Cleanups:**
+   - Use `ctx.onCleanup(fn)` or return a cleanup function from `setup()`.
+   - Store watches established via `ctx.watch()` automatically register unwatch callbacks on the cleanup stack.
+4. **Isolate Failures:**
+   - Do not catch errors with silent suppression. Use `ctx.error(code, details)` or `ctx.warn(code, message)` to integrate with Lime's diagnostic system.
 
 ---
 
-### 3.12 `data-lime-ignore` — escape hatch for third-party markup
+## 8. Trigger API
 
-Marks an element and its entire subtree as invisible to the lime-csr engine.
-The engine will not process any `${...}`, `data-*` attributes, or special
-tags (`<if>`, `<for>`, `<partial>`) inside an ignored block — useful for
-embedding third-party widgets that manage their own DOM and data-* attributes.
+Triggers specify how elements are matched and routed to module handlers.
 
-**Syntax**
-```html
-<div data-lime-ignore>
-  <!-- third-party widget markup, untouched by lime-csr -->
-</div>
+### 8.1 `attr(name, hooks)`
+
+Matches an exact attribute name:
+
+```js
+import { attr } from 'lime-csr-js/core';
+
+attr('data-highlight', {
+  phase: 'link',
+  setup(el, data, ctx) {
+    el.style.backgroundColor = 'yellow';
+  },
+});
 ```
 
-**Parameters**
-- `data-lime-ignore` (attribute, presence-based): the value is irrelevant;
-  presence alone marks the region as ignored. Any non-empty value is fine.
-  A common convention: `data-lime-ignore` (the value is often omitted entirely
-  in HTML).
+### 8.2 `attrs(options, hooks)`
 
-**Behavior**
-- The element carrying `data-lime-ignore` is itself part of the ignored
-  region (its attributes and children are skipped).
-- All descendants are completely ignored — `${...}` placeholders are left as-is,
-  `data-*` attributes are never processed, and special tags are never
-  expanded.
-- Nesting: if an ancestor already has `data-lime-ignore`, inner `data-lime-ignore`
-  attributes are redundant (all descendants are already ignored).
-- Events: delegation checks the `data-on-*` handler element's ancestry, not
-  `event.target`'s ancestry. A handler whose own element is inside an ignored
-  region is suppressed. If a non-ignored handler element contains an ignored
-  subtree, clicks originating in that subtree still bubble to the outer
-  handler because the handler element itself is not ignored.
-- The attribute name `lime-ignore` cannot be used as a `{x}` placeholder in
-  reactive attributes (e.g. `href="/u/{lime-ignore}"`) — reserved to prevent
-  confusion with the actual `data-lime-ignore` attribute.
+Matches a group of attributes. Requires all `required` attributes to be present:
 
-**Example — Turnstile CAPTCHA**
-```html
-<template id="tpl-contact-form">
-  <form data-on-submit="submitForm">
-    <input type="email" data-model="email" placeholder="Email">
-    <input type="text" data-model="name" placeholder="Name">
-    
-    <!-- Turnstile manages its own data-* attributes; leave it untouched -->
-    <div data-lime-ignore>
-      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>
-      <div class="cf-turnstile" data-sitekey="..."></div>
+```js
+import { attrs } from 'lime-csr-js/core';
+
+attrs({
+  required: ['data-dialog', 'data-modal'],
+  optional: ['data-backdrop'],
+  phase: 'link',
+}, {
+  read(el, ctx) {
+    return {
+      backdrop: el.getAttribute('data-backdrop') !== 'false',
+    };
+  },
+  setup(el, data, ctx) {
+    // Guaranteed that both data-dialog and data-modal exist
+  },
+});
+```
+
+- **Anchor Position:** A multi-attribute trigger produces **exactly one match** per element and is anchored to the DOM attribute index of its first required attribute.
+
+### 8.3 `tag(tagName, hooks)`
+
+Matches an exact HTML tag name (automatically normalized to uppercase):
+
+```js
+import { tag } from 'lime-csr-js/core';
+
+tag('CUSTOM-CARD', {
+  phase: 'transform',
+  setup(el, data, ctx) {
+    // Replace custom tag with component markup
+  },
+});
+```
+
+### 8.4 `pattern(prefixOrRegex, hooks)`
+
+Matches attributes starting with a prefix string or satisfying a regular expression:
+
+```js
+import { pattern } from 'lime-csr-js/core';
+
+// String prefix:
+pattern('data-on-', {
+  phase: 'link',
+  setup(el, data, ctx) {
+    const attrName = ctx.matchedAttribute; // e.g. "data-on-click"
+  },
+});
+
+// Regular expression:
+pattern(/^x-bind:/, {
+  phase: 'link',
+  setup(el, data, ctx) { /* ... */ },
+});
+```
+
+### 8.5 Matching Semantics
+
+- **Attribute Existence:** An attribute matches if `el.hasAttribute(name)` is true. Empty attributes (e.g. `<div data-active></div>`) match successfully.
+- **Custom `match(el)`:** Optional filter predicate. If provided, the route matches only when `match(el)` returns truthy.
+
+---
+
+## 9. Module Lifecycle
+
+### 9.1 Lifecycle Sequence
+
+For each matched element, execution proceeds through the following deterministic pipeline:
+
+```text
+       ┌─────────┐
+       │  match  │  (Predicate: does this element qualify?)
+       └────┬────┘
+            │ true
+            ▼
+       ┌─────────┐
+       │  read   │  (Pure extraction: reads attributes once)
+       └────┬────┘
+            │ data
+            ▼
+       ┌─────────┐
+       │  setup  │  (Initial setup: attaches listeners / watches)
+       └────┬────┘
+            │
+            ├───────────────┐
+            │               ▼
+            │        ┌─────────────┐
+            │        │   update*   │  (Reactive callback on store change)
+            │        └─────────────┘
+            ▼
+       ┌─────────┐
+       │ cleanup │  (Teardown: LIFO order upon element unmount)
+       └─────────┘
+```
+
+### 9.2 Hook Specifications
+
+- **`match(element)`**:
+  - Optional. Fast boolean predicate.
+- **`read(element, ctx)`**:
+  - Optional. Pure extraction function.
+  - Takes `(element, ctx)` and returns a structured data payload.
+  - Runs **once** during initial setup; never re-runs during updates.
+- **`setup(element, data, ctx)`**:
+  - Primary initialization hook.
+  - Receives the payload returned by `read()`.
+  - Can register cleanups via `ctx.onCleanup(fn)` or return a cleanup function directly.
+- **`update(element, arg, ctx)`**:
+  - Optional reactive update hook.
+  - Invoked explicitly via `ctx.update(arg)`.
+- **`cleanup(element, ctx)`**:
+  - Optional explicit cleanup callback.
+
+### 9.3 Unified LIFO Cleanup Stack
+
+Every element and subtree has a unified cleanup stack:
+- **Strict LIFO Order:** Cleanups execute in reverse registration order (Last-In, First-Out).
+- **Idempotent:** Running cleanup multiple times is safe; cleanups execute exactly once.
+- **Fault-Isolated:** If one cleanup throws an exception, it is caught and reported as `MODULE_CLEANUP_FAILED`. Remaining cleanups run unconditionally without interruption.
+
+---
+
+## 10. ModuleContext (`ctx`)
+
+`ModuleContext` is passed to trigger lifecycle hooks. It provides access to scope, store, lifecycle registration, and DOM inspection while strictly encapsulating engine internals:
+
+| Property / Method | Type | Description |
+|---|---|---|
+| `ctx.scope` | `Object` | Current lexical scope with prototypal inheritance. |
+| `ctx.store` | `Store \| null` | The reactive store instance (if one was passed to mount/render). |
+| `ctx.element` | `Element` | The DOM element currently being processed. |
+| `ctx.trigger` | `TriggerDefinition` | The trigger definition that matched this element. |
+| `ctx.moduleName` | `string` | Name of the module owning this trigger. |
+| `ctx.document` | `Document` | Owning DOM Document. |
+| `ctx.window` | `Window \| null` | Owning DOM Window. |
+| `ctx.matchedAttribute` | `string \| null` | Exact name of the matched attribute (for pattern/attr triggers). |
+| `ctx.attributeName` | `string \| null` | Alias for `ctx.matchedAttribute`. |
+| `ctx.handlers` | `Object \| null` | Handler dictionary passed to `mount()` or `render()`. |
+| `ctx.options` | `Object \| null` | Full options object passed to `mount()` or `render()`. |
+| `ctx.target` | `Element \| null` | Mount container target element. |
+| `ctx.onCleanup(fn)` | `(fn) => fn` | Registers a teardown function on the unified LIFO cleanup stack. |
+| `ctx.watch(path, cb, opts?)` | `(path, cb) => unwatch` | Subscribes to store path; auto-registers unwatch on cleanup stack. |
+| `ctx.afterConnect(fn)` | `(fn) => void` | Schedules a microtask to run after the element is connected to the DOM document. |
+| `ctx.update(fnOrArg?)` | `(fnOrArg) => void` | Executes an update safely with `MODULE_UPDATE_FAILED` isolation. |
+| `ctx.transform(node, subScope?)` | `(node, scope) => number` | Runs the Transform phase on a subtree within an optional sub-scope. |
+| `ctx.link(node, subScope?)` | `(node, scope) => void` | Runs the Link phase on a subtree within an optional sub-scope. |
+| `ctx.error(code, details?, ctx?)` | `Function` | Reports an error through the centralized diagnostic system. |
+| `ctx.warn(code, msg?, ctx?)` | `Function` | Reports a warning through the centralized diagnostic system. |
+
+---
+
+## 11. Scope System
+
+### 11.1 Prototypal Inheritance & Shadowing
+
+Lime represents lexical template context using JavaScript's native prototypal inheritance (`Object.create`):
+
+```js
+import { createScope } from 'lime-csr-js/core';
+
+const parentScope = { user: 'Alice', theme: 'dark' };
+const childScope = createScope(parentScope, { user: 'Bob' });
+
+console.log(childScope.user);  // "Bob" (shadows parent)
+console.log(childScope.theme); // "dark" (inherited from parent)
+console.log(parentScope.user); // "Alice" (parent is untouched)
+```
+
+**Benefits:**
+- $O(1)$ child scope creation with zero dictionary cloning.
+- Natural variable shadowing (e.g. inner loops shadowing outer loop variable names).
+- Prototypal shadowing protects parent scope from child modifications (child property writes do not mutate parent).
+
+### 11.2 Scope vs Store
+
+It is critical to distinguish between **Scope** and **Store**:
+
+| Dimension | Scope | Store |
+|---|---|---|
+| **Purpose** | Lexical template variables (`as="item"`, `index="i"`). | Mount-level reactive application state. |
+| **Mutation** | Lexically scoped, prototype-inherited object (shadowable; not reactively tracked). | Reactively mutable (`store.set`, `store.update`). |
+| **Inheritance**| Prototypal hierarchy ($Child \to Parent$). | Flat dot-path namespace (`"user.name"`). |
+| **Updates** | Re-created upon loop/conditional re-render. | Fine-grained notifications to existing subscribers. |
+
+### 11.3 Isolated Scope for Partials & Slot Scope Preservation
+
+`<partial>` templates run in an **isolated scope** created via `createIsolatedScope()` (null prototype). They do **not** inherit caller or parent loop variables, ensuring encapsulation while still sharing the mount-level reactive Store.
+
+When caller children are projected into `<slot>` (either default or named):
+- **Projected slot content retains caller lexical scope** (mapped to elements via `setElementScope`). Any `${...}` interpolation, directives (`data-text`, `data-if`, `data-for`), or event handlers (`data-on-*`) inside projected slot elements evaluate strictly against the caller scope.
+- **Partial template's own nodes use the isolated partial scope.** Variables defined in the partial's `data` or attributes do not leak into the caller's projected slot content, and caller variables do not leak into the partial template.
+
+---
+
+## 12. Reactive Store
+
+### 12.1 Path-Based Reactivity
+
+The store is a path-based reactive state container. Paths are dot-separated strings (e.g. `"cart.items.0.price"`):
+
+- **Upward Notifications:** Changing `"user.profile.name"` notifies subscribers for `"user.profile.name"`, `"user.profile"`, and `"user"`.
+- **Downward Notifications:** Setting an object at `"user"` notifies subscribers for `"user.profile.name"`. Lookups are accelerated by an internal prefix index.
+- **Reference Equality:** Uses `Object.is()`. Setting the same value produces no subscriber notifications.
+
+### 12.2 Store API Reference
+
+```js
+const store = createStore({ count: 0, user: { name: 'Alice' } });
+```
+
+- **`store.get(path?)`**:
+  Returns the value at path. If path is omitted or empty, returns the entire state tree.
+- **`store.set(path, value)`**:
+  Writes value to path. Returns `true` if a change occurred; `false` if rejected or equal.
+- **`store.update(path, updaterFn)`**:
+  Passes the current value at path to `updaterFn(currentValue)` and sets the returned value.
+- **`store.subscribe(path, callback)`**:
+  Subscribes to path changes: `callback(newValue, previousValue, changedPath)`. Returns an unsubscribe function.
+- **`store.computed(path, deps, fn)`**:
+  Registers a derived value that automatically recomputes whenever any dependency changes.
+- **`store.batch(fn)`**:
+  Coalesces all `store.set()` calls inside `fn()` into a single flush wave.
+
+### 12.3 Computed Properties
+
+```js
+store.computed('totalPrice', ['items', 'taxRate'], (items, taxRate) => {
+  const subtotal = (items || []).reduce((sum, item) => sum + item.price, 0);
+  return subtotal * (1 + (taxRate || 0));
+});
+```
+
+- Automatically executes initially to set the derived path.
+- Returns a `dispose()` function.
+- Setting a computed path manually emits `COMPUTED_MANUAL_SET`.
+
+### 12.4 Batch Updates
+
+```js
+store.batch(() => {
+  store.set('firstName', 'Bob');
+  store.set('lastName', 'Smith');
+  store.set('age', 42);
+}); // Subscribers are notified once here in a deduplicated flush wave
+```
+
+- Nested batches are supported; notifications flush when the outermost batch exits.
+- Even if `fn()` throws an error, pending updates flush safely before propagating the error.
+
+### 12.5 Prototype Pollution Prevention
+
+`store.set()`, `store.update()`, and `getByPath()` reject any path segment named `__proto__`, `constructor`, or `prototype`. Such mutations are silently blocked without corrupting `Object.prototype`.
+
+---
+
+## 13. Standard Modules Reference
+
+Lime provides 7 standard unprivileged modules.
+
+---
+
+### 13.1 Built-in Partials & Slot Composition (`partials`)
+
+- **Purpose:** Composes reusable sub-templates with isolated lexical scopes and projection into named and default slots. Template composition is a built-in core capability of Lime CSR v0.3.0.
+- **Triggers:** Tag trigger `PARTIAL` (`<partial name="..." [data="..."] [props...]>`).
+- **Phase:** `transform` (Fixed-point macro expansion).
+- **Input:** `name` (template ID suffix or template name), `data` (optional base path), custom HTML attributes (passed as props to partial scope).
+- **Slot Projection Capabilities:**
+  - **Default Slot:** Template `<slot></slot>` receives caller children without a `slot` attribute in document order.
+  - **Named Slots:** Template `<slot name="slotName"></slot>` receives caller elements with matching `slot="slotName"`.
+  - **Projection Metadata Stripping:** The `slot="..."` attribute is automatically stripped from projected elements in the output DOM.
+  - **Order Preservation:** Multiple elements targeting the same slot preserve caller DOM order.
+  - **Fallback Content:** If the caller provides no children (or only whitespace text nodes) for a slot, the slot's fallback children are rendered. If no fallback content exists, `<slot>` is removed.
+  - **Multiple Target Slots:** If a template contains multiple `<slot name="slotName">` elements, each receives a projected clone.
+- **Scope Semantics:**
+  - **Partial Template Nodes:** Run in an isolated scope (`createIsolatedScope`) with a null prototype, populated with `data` and explicit props.
+  - **Projected Slot Nodes:** Retain caller lexical scope (mapped via `setElementScope`). Any `${...}` interpolation, directives, or event listeners on slot content evaluate against caller scope.
+- **Store Behavior:** Shares the mount-level Store across both partial and slot nodes.
+- **Diagnostics:**
+  - `PARTIAL_MISSING_NAME`: If `<partial>` lacks the `name` attribute.
+  - `PARTIAL_NOT_FOUND`: If template is not found in `options.templates` or `<template id="tpl-{name}">`.
+  - `SLOT_NOT_FOUND`: Emitted when caller provides an element targeting a slot name that does not exist in the template; unknown slot content is discarded and not rendered.
+- **Example:**
+  ```html
+  <template id="tpl-modal">
+    <div class="modal-dialog">
+      <header class="modal-header">
+        <slot name="header"><h3>Default Header</h3></slot>
+      </header>
+      <main class="modal-body">
+        <slot><p>Default modal body</p></slot>
+      </main>
+      <footer class="modal-footer">
+        <slot name="footer"></slot>
+      </footer>
     </div>
-    
-    <button>Send</button>
-  </form>
-</template>
-```
-```js
-const store = createStore({ email: '', name: '' });
-mount('contact-form', { target, store, handlers: { submitForm() { /* ... */ } } });
-```
+  </template>
 
-**⚠ Common mistakes**
-```
-WRONG:  <div data-lime-ignore="${shouldIgnore}">
-        -- Conditional ignore via ${...} — not supported. The attribute
-           either exists (always ignored) or doesn't (always processed).
-           Use static `data-lime-ignore` or put the widget conditionally
-           with <if> (still static) instead.
-
-RIGHT:  <!-- Conditional widget rendering -->
-        <if is-truthy="showWidget">
-          <div data-lime-ignore>
-            <!-- widget HTML here -->
-          </div>
-        </if>
-        -- The <if> is lime-csr's responsibility; the <div> inside it is
-           ignored. When the condition changes, the entire block is rebuilt.
-```
-```
-WRONG:  <span title="{lime-ignore}" data-lime-ignore="msg"></span>
-        -- "lime-ignore" is RESERVED → RESERVED_ATTR_NAME warning, this
-           placeholder binding is rejected.
-
-RIGHT:  <span title="{msg}" data-msg="msg"></span>
-        -- Don't use "lime-ignore" as a placeholder name. Use a different
-           name or omit the reactive binding if the attribute is outside the
-           ignored block.
-```
-```
-WRONG:  <button data-on-click="save">
-          Save <span data-lime-ignore>third-party content</span>
-        </button>
-        -- Expecting a click on the ignored child to suppress "save". The
-           handler element is the outer, non-ignored button, so it still runs.
-
-RIGHT:  <div data-lime-ignore>
-          <button data-on-click="save">third-party button</button>
-        </div>
-        -- The handler element itself is inside the ignored region, so Lime
-           suppresses it.
-```
+  <!-- Caller composition -->
+  <partial name="modal">
+    <h3 slot="header">Confirm Deletion</h3>
+    <p>Are you sure you want to delete <strong data-text="selectedItem.name"></strong>?</p>
+    <button slot="footer" data-on-click="confirmDelete">Delete</button>
+  </partial>
+  ```
 
 ---
 
-## 4. Store API
+### 13.2 Conditionals Module (`conditionals`)
 
-`import { createStore } from './src/index.js';` (or directly from `./src/store.js`).
-
-### 4.1 `createStore(initialState)` → `Store`
-
-```js
-const store = createStore({ count: 0, user: { name: 'Ada' } });
-```
-`initialState` (object, optional, default `{}`) is held **by reference**,
-not copied. Returns a `Store` object with
-`get`/`set`/`update`/`subscribe`/`computed`/`batch`.
-
-### 4.2 `store.get(path)` → value
-
-```js
-store.get('user.name'); // → 'Ada'
-store.get();             // no path → the ENTIRE state object
-```
-Reads via a dotted path (`getByPath` under the hood); any missing segment
-resolves to `undefined`, never throws.
-
-### 4.3 `store.set(path, value)` → boolean
-
-```js
-store.set('count', 5); // → true (changed)
-store.set('count', 5); // → false (same value — Object.is comparison, no notify)
-```
-Writes `value` at `path`, creating intermediate objects as needed. Compares
-via `Object.is`: setting the exact same value again is a no-op — no
-subscriber fires, and `false` is returned. Notification is both **upward**
-(changing `"a.b.c"` also notifies subscribers of `"a"` and `"a.b"`) and
-**downward** (changing `"user"` also notifies subscribers of
-`"user.name"`) — so `store.set('user', {...})` correctly updates a
-`data-text="user.name"` binding elsewhere on the page.
-
-**Prototype pollution guard**: if any path segment is `__proto__`,
-`constructor`, or `prototype`, the write is silently rejected (`{ changed: false }`)
-— relevant if a path is ever built from user input (e.g. a dynamic
-`data-model` target).
-
-**⚠ Common mistakes**
-```
-WRONG:  const arr = store.get('items');
-        arr.push(newItem);
-        store.set('items', arr);  // SAME reference as before
-        -- IN_PLACE_MUTATION warning. Object.is(existing, value) is true
-           (it's literally the same array object) → store.set() returns
-           false immediately, WITHOUT writing or notifying anything. Every
-           data-text/data-model/<for data-live> bound to "items" is now
-           silently out of sync with what you think you just did.
-
-RIGHT:  store.set('items', [...store.get('items'), newItem]);
-        -- Always construct a NEW object/array reference when "mutating."
-           This is the single most common lime-csr footgun — Object.is is
-           reference equality, not deep equality, by design (deep-diffing
-           would be slow and un-KISS).
-```
-
-### 4.4 `store.update(path, fn)` → boolean
-
-```js
-store.update('count', (v) => v + 1);
-```
-Shorthand for `store.set(path, fn(store.get(path)))`. Same `Object.is`
-semantics as `set` — `fn` must return a NEW reference if `path` holds an
-object/array you're "modifying."
-
-### 4.5 `store.subscribe(path, callback)` → unsubscribe function
-
-```js
-const unsubscribe = store.subscribe('count', (newVal, oldVal, changedPath) => {
-  console.log(newVal, oldVal, changedPath);
-});
-unsubscribe(); // cancels; once the last subscriber on a path is gone, that
-                // path's internal bookkeeping is deleted too — no leak.
-```
-`callback(currentValue, previousValue, changedPath)`. Fires on both upward
-and downward notification (see §4.3) — `changedPath` tells you exactly
-which `store.set()` call triggered this particular invocation, which may
-differ from the `path` you subscribed to. `previousValue` is only passed
-when `changedPath` equals the path you subscribed to (an exact-path
-notification); on ancestor/descendant notifications it is `undefined` —
-the changed path's old value would be misleading as "your" previous value,
-and the store doesn't snapshot every subscriber's path before a write.
-
-### 4.6 `store.computed(path, deps, fn)` → dispose function
-
-```js
-const dispose = store.computed('fullName', ['firstName', 'lastName'],
-  () => store.get('firstName') + ' ' + store.get('lastName'));
-// later:
-dispose();
-```
-Registers a derived value that lives at an ordinary store `path` — read it
-with `store.get('fullName')` or bind `data-text="fullName"` exactly like
-any other value. Computed immediately on registration, then automatically
-recomputed whenever any path in `deps` changes. **Chainable**: a computed
-path can itself be a dep of another computed. **Loop-guarded**: if `fn`'s
-own execution ends up (directly or indirectly) triggering a recompute of
-the SAME path while it's already running, the reentrant call is swallowed
-— no stack overflow. Calling `store.set()` directly on a computed path
-still works (isn't blocked) but issues a `COMPUTED_MANUAL_SET` warning —
-the manually-set value is silently overwritten the next time any dep changes.
-
-**`dispose()`** cancels every dep subscription AND deletes the computed
-value from state — `store.get(path)` returns `undefined` afterwards, no
-ghost value remains. The deletion emits no notification (disposal is
-teardown, not a state change). Tip: computeds that should live exactly as
-long as a mounted component are better declared via `mount()`'s `computed`
-option ([§5.1](#51-mounttemplatename-options--cleanup-function)), which
-calls `dispose()` for you on `cleanup()`/`unmount()`.
-
-**⚠ Common mistakes**
-```
-WRONG:  // Recomputing "remaining" by hand, in every place "todos" changes
-        function addTodo(t) {
-          store.set('todos', [...store.get('todos'), t]);
-          store.set('remaining', store.get('todos').filter(x => !x.done).length);
-        }
-        function toggleTodo(id) {
-          store.set('todos', /* ... */);
-          store.set('remaining', store.get('todos').filter(x => !x.done).length);
-        }
-        -- Duplicated, easy to forget in a THIRD place that touches todos
-           later, and now "remaining" is quietly stale.
-
-RIGHT:  store.computed('remaining', ['todos'],
-          () => store.get('todos').filter(x => !x.done).length);
-        // every future store.set('todos', ...) anywhere keeps "remaining"
-        // correct automatically — one definition, no duplication.
-```
-
-### 4.7 `store.batch(fn)` → void
-
-```js
-store.batch(() => {
-  store.set('firstName', 'Ada');
-  store.set('lastName', 'Lovelace');
-  store.set('firstName', 'Grace'); // same path again — still ONE notify
-});
-// ← the coalesced flush happens HERE, when fn returns
-```
-Runs `fn` synchronously; every `store.set()` inside it queues its
-notification instead of firing immediately, and when `fn` returns the queue
-is flushed as **one wave, deduplicated by path** — each changed path
-notifies its subscribers exactly once, no matter how many times it was set.
-Within a wave each subscriber callback also runs at most once, even if it
-listens to several of the changed paths — a `computed` whose deps ALL
-changed in the batch recomputes a single time.
-Repeated sets to the same path keep the FIRST `previousValue`, so from a
-subscriber's point of view the whole batch is a single before→after
-transition. The state itself is written immediately as usual — `store.get()`
-inside the batch always sees the latest value; only *notification* is
-deferred. **Nested** `batch()` calls are safe: only the outermost exit
-flushes. `fn` **throwing** still flushes (the error propagates afterwards).
-Notifications triggered *during* the flush (e.g. a `computed` recomputing
-because its dep was in the batch) are collected into a next wave; after 100
-waves a `BATCH_FLUSH_LIMIT` warning fires and the queue is dropped —
-usually two subscribers setting each other's paths.
-
-The payoff is with expensive subscribers — a keyed `<for data-live>`
-reconcile, an `<if data-live>` teardown/rebuild, a chain of computeds:
-
-```js
-store.computed('summary', ['todos', 'filter'],
-  () => summarize(store.get('todos'), store.get('filter')));
-
-store.batch(() => {
-  store.set('todos', nextTodos);
-  store.set('filter', 'active');
-});
-// "summary" recomputes ONCE (and any <for data-live each="todos">
-// reconciles once) — without batch() it would run once per set.
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  store.batch(async () => {
-          store.set('status', 'loading');
-          const data = await fetch('/api').then(r => r.json());
-          store.set('items', data);      // NOT batched!
-        });
-        -- batch() is SYNCHRONOUS. It flushes when fn returns, and an async
-           fn "returns" (its promise) at the first await — everything after
-           the await runs later, outside the batch, notifying per-set as
-           usual. batch() doesn't await anything (it returns void).
-
-RIGHT:  store.set('status', 'loading');
-        const data = await fetch('/api').then(r => r.json());
-        store.batch(() => {              // batch only the sync burst of sets
-          store.set('items', data);
-          store.set('status', 'ready');
-        });
-```
+- **Purpose:** Conditional branch rendering and reactive condition toggling.
+- **Triggers:**
+  - Tag triggers: `<if>`, `<else>`.
+  - Attribute triggers: `template[data-if]`, `template[data-else]`.
+- **Phase:** `transform` (static branch pruning) + `link` (for `data-live` reactive updates).
+- **Supported Operators:**
+  | Operator | Evaluation Logic | Example |
+  |---|---|---|
+  | `is-gt` | `Number(left) > Number(right)` | `<if is-gt="count" than="0">` |
+  | `is-lt` | `Number(left) < Number(right)` | `<if is-lt="count" than="10">` |
+  | `is-gte` | `Number(left) >= Number(right)` | `<if is-gte="age" than="18">` |
+  | `is-lte` | `Number(left) <= Number(right)` | `<if is-lte="price" than="100">` |
+  | `is-eq` | `String(left) === String(right)` | `<if is-eq="status" to="active">` |
+  | `is-neq` | `String(left) !== String(right)` | `<if is-neq="status" to="draft">` |
+  | `is-truthy`| `Boolean(left)` | `<if is-truthy="user.isLoggedIn">` |
+- **Reactive Behavior (`data-live`):**
+  - Places comment anchors: `<!-- lif1 -->` and `<!-- /lif1 -->`.
+  - When the evaluated path changes, cleans up the previous branch and renders the new branch using `ctx.link()`.
+- **Errors:**
+  - `MISSING_OPERATOR`: `<if>` has no condition operator attribute.
+  - `UNKNOWN_OPERATOR`: Condition attribute starts with `is-` but is unrecognized.
+  - `ELSE_AFTER_CONTENT`: Sibling elements found after `<else>`.
+- **Example:**
+  ```html
+  <if is-truthy="user.authenticated" data-live>
+    <p>Welcome, <span data-text="user.name"></span>!</p>
+    <else>
+      <a href="/login">Please sign in</a>
+    </else>
+  </if>
+  ```
 
 ---
 
-## 5. Mount API
+### 13.3 Loops Module (`loops`)
 
-`import { mount, unmount, render } from './src/index.js';`
-
-### 5.1 `mount(templateName, options)` → cleanup function
-
-```js
-const cleanup = mount('page', {
-  target: document.getElementById('app'),  // required — also selects this signature
-  context: { pageTitle: 'Hi' },            // optional, default {}
-  store,                                    // optional
-  handlers: { deleteItem(e, el) { /* ... */ } },
-  computed: {                               // optional — mount-scoped computeds
-    remaining: { deps: ['todos'], fn: () => store.get('todos').filter(t => !t.done).length },
-  },
-  plugins: [focusPlugin],                    // optional — Plugin API v1
-  beforeRender(context, store) { /* ... */ },
-  afterRender(rootEl, store) { /* ... */ },
-});
-```
-
-| Option | Type | Notes |
-|---|---|---|
-| `templateName` (1st arg) | string | Looked up as `<template id="tpl-{templateName}">`. Not found → `MOUNT_TEMPLATE_NOT_FOUND` warning, mount is a no-op (returns a no-op cleanup). |
-| `target` | Element, **required** | Where the rendered content is appended. The presence of this key on the 2nd argument is what selects the options-object signature. |
-| `context` | object, optional (`{}`) | Static data for `${path}`. |
-| `store` | `Store`, optional | `createStore(...)`. Omitted → all reactive features (`data-text`, `data-model`, `<if data-live>`, ...) are simply skipped — only static content renders. |
-| `handlers` | object, optional | See [§3.11](#311-data-on---event-handling) and [§6](#6-lifecycle-hooks) — also used for block-level `data-after`/`data-before`. |
-| `computed` | object, optional | Mount-scoped computeds — see below. Requires `store`; given without one → `COMPUTED_WITHOUT_STORE` warning, skipped. |
-| `plugins` | array, optional | Frozen values returned by `definePlugin()`; each gets isolated state and cleanup for this mount only. See [§7](#7-plugin-api-v1). |
-| `signal` | `AbortSignal`, optional | Automatically unmounts when aborted. If already aborted before mount, the mount is skipped immediately. |
-| `beforeRender` | `(context, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
-| `afterRender` | `(rootEl, store) => void`, optional | See [§6](#6-lifecycle-hooks). |
-
-Calling `mount()` again on a `target` that's already mounted automatically
-runs the previous mount's cleanup and clears `target` first — this is how
-you switch pages/components on the same root element.
-
-**Mount-scoped computeds** — the `computed` option maps
-`path → { deps, fn }`; each entry is registered via
-[`store.computed()`](#46-storecomputedpath-deps-fn--dispose-function) when the
-mount happens, and — the point of the option — its dispose is tied to the
-mount's lifecycle: `cleanup()`/`unmount()` automatically stops the recomputes
-AND removes the computed values from state (see §4.6 dispose semantics). No
-manual dispose bookkeeping, no leaked subscriptions, no ghost values:
-
-```js
-const cleanup = mount('todo-page', {
-  target, store,
-  computed: {
-    remaining: { deps: ['todos'], fn: () => store.get('todos').filter(t => !t.done).length },
-  },
-});
-// <span data-text="remaining"> updates on every todos change...
-cleanup(); // ...and "remaining" stops recomputing AND is deleted from state
-```
-
-**⚠ Common mistakes**
-```
-WRONG:  mount('page', { target, context: ctx, store }, undefined, undefined, {
-          handlers: { save() { /* ... */ } },
-        });
-        -- Mixing the styles. With the options-object signature EVERYTHING
-           lives in the 2nd argument; the positional 5th argument is part of
-           the legacy signature and is ignored here — these handlers are
-           never registered.
-
-RIGHT:  mount('page', { target, context: ctx, store, handlers: { save() { /* ... */ } } });
-```
-
-#### Legacy signature (deprecated)
-
-```js
-mount(templateName, context, target, store, options?) // context/target/store positional
-```
-The original positional form. Still fully supported — every existing call
-keeps working identically — but it emits a one-time (per page load)
-`MOUNT_LEGACY_SIGNATURE` dev-mode notice pointing at the options-object
-signature. The two styles are distinguished by the 2nd argument: a plain
-object carrying a `target` key is the options object; anything else is a
-legacy `context`. New code should use the options-object signature.
-
-### 5.2 `unmount(target)`
-
-```js
-unmount(document.getElementById('app'));
-```
-Equivalent to calling the `cleanup()` function `mount()` returned, but
-useful when you don't have that reference handy — looked up internally by
-`target`. Cancels every reactive subscription tied to that mount and clears
-`target`'s content. Plugin directive and hook cleanups run before the content
-is cleared.
-
-### 5.3 `render(fragment, context, store, handlers?)` → cleanup function
-
-The lower-level function `mount()` calls internally — exported for cases
-where you already have a `DocumentFragment` (e.g. from `getTemplate()`) and
-want to process it without the template-lookup/DOM-append/event-delegation
-parts of `mount()`. `handlers` here is only used for block-level
-`data-after`/`data-before` lookups (§6) — `data-on-*` delegation itself is
-set up only by `mount()`, since it needs a stable `target` to delegate
-from.
-
-### 5.4 Pipeline order
-
-```
-partial → for → if   (looped until none remain)
-  → resolveStatic (top-level ${path})
-  → data-model → data-text/{x} → data-show
-  → plugin directives
-  → <for data-live>  → <if data-live>
-```
-Full rationale for this exact order (and the invariants it depends on) is
-in [§10](#10-architecture-reference).
+- **Purpose:** Renders lists of array items with prototypal child scopes and reactive reconciliation.
+- **Triggers:**
+  - Tag trigger: `<for each="..." as="..." [index="..."] [key="..."]>`.
+  - Attribute trigger: `template[data-for]`.
+- **Phase:** `transform` (static loop unrolling) + `link` (for `data-live` reconciliation).
+- **Diff Strategies (`data-diff`):**
+  1. `simple`: Key-based map lookup, reorders modified items.
+  2. `lcs`: Longest Increasing Subsequence algorithm. Minimizes DOM node moves and preserves active focus.
+  3. `replace`: Clears and re-renders entire list from scratch.
+- **Reactive Behavior (`data-live`):**
+  - Requires `key="item.id"` attribute.
+  - Efficiently reuses existing DOM elements when items are reordered or updated in-place.
+- **Errors:**
+  - `FOR_MISSING_ATTR`: Missing `each` or `as` attribute.
+  - `FOR_NOT_ARRAY`: Target path is not an array.
+  - `FOR_MISSING_KEY`: `data-live` loop missing the `key` attribute.
+  - `FOR_DUPLICATE_KEY`: Duplicate key detected in the array.
+  - `UNKNOWN_DIFF_STRATEGY`: Unrecognized `data-diff` value.
+- **Example:**
+  ```html
+  <for each="items" as="item" index="idx" key="item.id" data-live data-diff="lcs">
+    <li class="item-row">
+      <span data-text="idx"></span>: <span data-text="item.name"></span>
+    </li>
+  </for>
+  ```
 
 ---
 
-## 6. Lifecycle hooks
+### 13.4 Text & Attribute Bindings Module (`text`)
 
-Two independent hook systems exist, at two different scopes:
-
-| | Mount-level | Block-level |
-|---|---|---|
-| Hooks | `beforeRender`, `afterRender` | `data-after`, `data-before` |
-| Declared | JS, in `mount()`'s `options` | HTML, as attributes on `<if data-live>`/`<for data-live>` |
-| Scope | The WHOLE `mount()` call | One reactive branch (`<if>`) or one list item (`<for>`) |
-| Fires | Once, when `mount()` runs | Every time a branch switches / an item is added or removed — potentially many times over a component's life |
-| Typical use | Measuring/logging around a full page render, seeding derived state before the pipeline runs | Initializing/destroying a per-branch or per-item widget (chart, editor, map) as it enters/leaves the DOM |
-
-### 6.1 Mount-level: `beforeRender` / `afterRender`
-
-```js
-mount('page', {
-  target, store, context: ctx,
-  beforeRender(context, store) {
-    context.injected = 'value';       // mutating context here is visible
-                                        // to the pipeline that runs next
-  },
-  afterRender(rootEl, store) {
-    rootEl.querySelector('.chart');    // content is already in the DOM here
-  },
-});
-```
-`beforeRender(context, store)` runs BEFORE the render pipeline — mutations
-to `context` are picked up by the same render (useful for injecting
-computed/derived fields). `afterRender(rootEl, store)` runs AFTER content
-is appended to `target` — safe to do real DOM measurements/third-party
-widget setup for the WHOLE mounted tree here. Both optional; omitting
-either is a complete no-op (no warning, no cost).
-
-### 6.2 Block-level: `data-after` / `data-before`
-
-```html
-<if is-truthy="showChart" data-live el="div" data-after="initChart" data-before="destroyChart">
-  <canvas></canvas>
-</if>
-
-<for each="rows" as="row" key="row.id" data-live data-after="initRow" data-before="destroyRow">
-  <li>${row.label}</li>
-</for>
-```
-```js
-mount('page', {
-  target, store, context: ctx,
-  handlers: {
-    initChart(rootEl, store) { /* rootEl is the el="div" container */ },
-    destroyChart(rootEl, store) { /* rootEl still in the DOM here */ },
-    initRow(rootEl, store) { /* rootEl is this <li> */ },
-    destroyRow(rootEl, store) { /* rootEl is the <li> being removed */ },
-  },
-});
-```
-Handler signature for both: `(rootElement, store)` — no `event` object (these
-aren't DOM events). Looked up in the SAME `handlers` dictionary as
-`data-on-*`, by name.
-
-**`<if data-live>`**: `data-after` fires once the winning branch's nodes
-are in the DOM — both on the initial render AND every later switch.
-`data-before` fires on the OLD branch, synchronously, right before its
-`cleanup()` and DOM removal (the element is still attached at call time).
-Re-evaluating to the SAME truthiness fires neither.
-
-**`<for data-live>`**: `data-after` fires once per NEW item's nodes being
-placed (initial render, every later addition, and every item under
-`data-diff="replace"`, since that strategy treats every item as new on every
-reconcile). `data-before` fires once per REMOVED item, before its
-`cleanup()`/DOM removal. **Moved/reordered survivors never trigger either
-hook** — their DOM node was never destroyed, so there's nothing to
-(re)initialize or tear down.
-
-`rootElement` is the `el="tag"` container if configured (`<if>`'s whole
-branch, or `<for>`'s whole list — NOT per-item for `<for>`); otherwise it's
-the branch's/item's own first top-level **element** node (template
-whitespace around it is skipped automatically). A handler name that isn't
-found in `handlers` → `BLOCK_AFTER_NOT_FOUND`/`BLOCK_BEFORE_NOT_FOUND`
-warning, no crash — rendering itself is unaffected.
-
-**Known limitation**: `data-before` is always awaited **synchronously** —
-there's no way to `await` an exit animation or other async cleanup before
-the DOM node is actually removed. See [§9](#9-known-limitations).
+- **Purpose:** Reactively binds store values to text content and HTML attributes.
+- **Triggers:**
+  - `attr('data-text')`
+  - `pattern(/^(?!data-).+/)` for `{x}` attribute templates.
+- **Phase:** `link`.
+- **Text Binding:**
+  - `data-text="path"` assigns `el.textContent = val ?? ''`.
+  - Text assignment does not parse HTML entities, preventing HTML injection.
+- **Attribute Templates:**
+  - Attribute contains `{placeholder}` and element defines `data-{placeholder}="path"`.
+  - Example: `<a href="/users/{id}" data-id="user.id"></a>`.
+  - Sanitizes URL attributes (`href`, `src`, etc.) via `isSafeUrlProtocol()`.
+- **Errors:**
+  - `BINDING_MISSING_PATH`: Empty `data-text` attribute.
+  - `BINDING_MISSING_DATA_ATTR`: Missing matching `data-{x}` for `{x}` placeholder.
+  - `UNSAFE_EVENT_ATTR`: Attribute begins with `on` (e.g. `onclick`).
+  - `UNSAFE_URL_ATTR`: URL contains dangerous protocol (`javascript:`, `data:`).
+  - `RESERVED_ATTR_NAME`: Using a reserved name (`text`, `model`, `show`, `live`, `ref`, `diff`, `on-*`) as a placeholder.
 
 ---
 
-## 7. Plugin API v1
+### 13.5 Visibility Module (`show`)
 
+- **Purpose:** Toggles element visibility via the native `hidden` property.
+- **Trigger:** `attr('data-show')`.
+- **Phase:** `link`.
+- **Behavior:**
+  - Sets `el.hidden = !val`.
+  - **Does not touch inline `style.display`.** This allows application CSS classes (e.g. `flex`, `grid`) to maintain their layout when visible.
+  - Injects a single scoped style rule once into the document:
+    ```css
+    [data-show][hidden] { display: none !important; }
+    ```
+- **Errors:**
+  - `SHOW_MISSING_PATH`: Empty `data-show` attribute.
+- **Example:**
+  ```html
+  <div class="modal-dialog" data-show="isModalOpen">
+    <h3>Modal Content</h3>
+  </div>
+  ```
+
+---
+
+### 13.6 Two-Way Form Binding Module (`model`)
+
+- **Purpose:** Synchronizes form inputs bidirectionally with the reactive store.
+- **Trigger:** `attr('data-model')`.
+- **Phase:** `link`.
+- **Form Control Support Matrix:**
+
+| Control / Type | Event | Store Value | DOM $\to$ Store | Store $\to$ DOM |
+|---|---|---|---|---|
+| `<input type="text">`, email, password | `input` | `string` | `el.value` | `el.value = String(val)` (skips if equal) |
+| `<textarea>` | `input` | `string` | `el.value` | `el.value = String(val)` (skips if equal) |
+| `<input type="number">`, `range` | `input` | `number \| null` | `Number(el.value)` or `null` if empty | `el.value = String(val)` |
+| `<input type="checkbox">` | `change` | `boolean` | `el.checked` | `el.checked = Boolean(val)` |
+| `<input type="radio">` | `change` | `string` | If checked, `el.value` | `el.checked = (String(val) === el.value)` |
+| `<select>` (single) | `change` | `string` | `el.value` | `el.value = String(val)` |
+| `<select multiple>` | `change` | `string[]` | Array of selected option values | `opt.selected = val.includes(opt.value)` |
+
+- **Cursor Jump & Feedback Prevention:** `Store -> DOM` assignment is skipped if `el.value === String(val)`, preventing text cursor resets while typing.
+- **Errors:**
+  - `MODEL_MISSING_PATH`: Empty `data-model` attribute.
+  - `INDEXED_MODEL_PATH`: Path contains numeric indices (e.g. `items.0.name`). Recommends binding to keyed loop variables instead.
+
+---
+
+### 13.7 Event Delegation Module (`events`)
+
+- **Purpose:** Dispatches user interactions to declared handlers via delegated event listeners.
+- **Trigger:** `pattern('data-on-')` (ignoring companion `-data` attributes).
+- **Phase:** `link`.
+- **Supported Events:**
+  `click`, `dblclick`, `input`, `change`, `submit`, `keydown`, `keyup`, `focus` (delegated via `focusin`), `blur` (delegated via `focusout`), `focusin`, `focusout`.
+- **Key Modifiers:**
+  Supports key filtering for `keydown` and `keyup`:
+  `data-on-keydown-enter`, `data-on-keydown-escape`, `data-on-keydown-space`, `data-on-keydown-tab`, `data-on-keydown-up`, `data-on-keydown-down`, `data-on-keydown-left`, `data-on-keydown-right`, `data-on-keydown-delete`, `data-on-keydown-backspace`.
+- **Submit Prevention:**
+  `data-on-submit` calls `event.preventDefault()` automatically.
+- **Handler Execution:**
+  Invoked with a single structured object payload:
+  ```js
+  handler({ event, element, scope, store, data });
+  ```
+  - `event`: The native DOM Event object (or `null` when triggered outside an event).
+  - `element`: The target element possessing the `data-on-*` attribute.
+  - `scope`: The lexical scope of the element (including loop item scope).
+  - `store`: The mount reactive store instance.
+  - `data`: Resolved data value from companion attribute (`data-on-*-data`), or `null` if omitted or unresolved.
+  - **Return values are strictly ignored:** Return values such as `false` or objects do not trigger `preventDefault()`.
+  - **Fault Isolation:** Sync throws and async Promise rejections are caught and reported via `MODULE_HANDLER_FAILED` without crashing other handlers or breaking runtime responsiveness.
+- **Explicit Data Passing (`data-on-*-data`):**
+  Companion data attribute matching the event attribute:
+  - String literals: `'hello'` or `"world"` -> `"hello"` / `"world"`
+  - Primitives: `true`, `false`, `null`, `undefined`
+  - Numbers: `42`, `-10`, `3.14`, `0`
+  - Paths: `user.id`, `item.name`, `app.theme` (resolved first against lexical scope, then reactive store).
+- **Prototype Protection:**
+  Prohibits dangerous prototype properties (`__proto__`, `constructor`, `prototype`, `toString`, `valueOf`, etc.), emitting `HANDLER_NOT_FOUND`.
+- **Errors:**
+  - `UNKNOWN_EVENT`: Unrecognized event name.
+  - `UNKNOWN_KEY_MODIFIER`: Invalid key modifier suffix.
+  - `HANDLER_NOT_FOUND`: Handler name is not defined in options or scope.
+  - `MODULE_HANDLER_FAILED`: Handler threw an error or rejected a promise.
+- **Example:**
+  ```html
+  <input type="text"
+    data-on-keydown-enter="saveTodo"
+    data-on-keydown-enter-data="todo.id"
+    data-on-keydown-escape="cancelEdit">
+  ```
+
+---
+
+## 14. Security Model
+
+Lime is engineered from the ground up for zero-trust environments:
+
+1. **No Expression Evaluation:**
+   Lime contains zero occurrences of `eval()`, `new Function()`, or dynamic code evaluation.
+2. **CSP Compatibility:**
+   Runs under the strictest Content Security Policy:
+   ```http
+   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self';
+   ```
+3. **Prototype Pollution Protection:**
+   The store rejects path segments matching `__proto__`, `constructor`, or `prototype`.
+4. **XSS Protection:**
+   Text bindings use `textContent`. URL attributes are protocol-checked via `isSafeUrlProtocol()`. Event attributes (`onclick`) cannot be bound reactively.
+
+---
+
+## 15. Diagnostics & Complete Error Catalog
+
+Lime never throws runtime exceptions that crash user pages. All issues are dispatched as structured diagnostics.
+
+### Diagnostic Codes Table
+
+| Code | Level | Source | Meaning | Typical Cause |
+|---|---|---|---|---|
+| `MOUNT_TEMPLATE_NOT_FOUND` | Error | Facade | `<template id="tpl-{name}">` was not found in document. | Typo in template name passed to `mount()`. |
+| `MOUNT_INVALID_TARGET` | Error | Facade | Target argument is not a valid DOM element or valid selector. | Passing `null`, `undefined`, number, or malformed selector to `mount()`. |
+| `MOUNT_TARGET_NOT_FOUND` | Error | Facade | Selector matched zero elements in document. | Selector typo or mounting before DOM element is rendered. |
+| `MOUNT_HOOK_FAILED` | Error | Facade | `beforeRender` or `afterRender` mount lifecycle hook threw. | Unhandled exception in user-provided lifecycle hook. |
+| `MOUNT_ALREADY_MOUNTED` | Warn | Facade | Duplicate mount on an already mounted target element. | Attempting to mount onto an already mounted element. |
+| `PIPELINE_DEPTH_LIMIT` | Error | Transform | Transform reached iteration limit (100). | Circular `<partial>` or `<if>` macro expansion. |
+| `TABLE_FOSTER_PARENTING` | Warn | Template | HTML parser moved special tags out of `<table>`. | Placing `<if>` or `<for>` directly inside `<table>`; use `<template data-if>`. |
+| `TEMPLATE_NOT_FOUND` | Error | Template | `getTemplate()` could not locate target template. | Missing `<template>` element. |
+| `PARTIAL_NOT_FOUND` | Error | Partials | `<partial name="...">` template not found. | Missing `<template id="tpl-{name}">`. |
+| `PARTIAL_MISSING_NAME` | Error | Partials | `<partial>` tag missing `name` attribute. | `<partial data="foo"></partial>` without `name`. |
+| `PARTIAL_DEPTH_LIMIT` | Error | Partials | Partial recursion depth exceeded. | Partial template referencing itself recursively. |
+| `MISSING_OPERATOR` | Error | Conditionals | `<if>` tag missing condition operator attribute. | `<if is="true">` instead of `<if is-truthy="flag">`. |
+| `UNKNOWN_OPERATOR` | Error | Conditionals | `<if>` operator starting with `is-` is unrecognized. | Typo like `is-equal` instead of `is-eq`. |
+| `ELSE_AFTER_CONTENT` | Error | Conditionals | Sibling elements found after `<else>`. | Placing content after `<else>` inside `<if>`. |
+| `LIVE_IF_MISSING_OP` | Error | Conditionals | `<if data-live>` missing valid operator attribute. | Missing condition operator on reactive if. |
+| `FOR_MISSING_ATTR` | Error | Loops | `<for>` missing `each` or `as` attribute. | `<for each="list">` without `as="item"`. |
+| `FOR_NOT_ARRAY` | Error | Loops | Loop target is not an array. | Path resolves to an object, string, or undefined. |
+| `FOR_MISSING_KEY` | Warn | Loops | `<for data-live>` missing `key` attribute. | Omitting `key="item.id"` on reactive list. |
+| `FOR_DUPLICATE_KEY` | Error | Loops | Duplicate key found in array. | Array contains two items with identical key values. |
+| `UNKNOWN_DIFF_STRATEGY` | Warn | Loops | `data-diff` attribute value is invalid. | Typo like `data-diff="fast"`; fallback to `simple`. |
+| `BINDING_MISSING_PATH` | Error | Text | `data-text` attribute is empty. | `<span data-text=""></span>`. |
+| `BINDING_MISSING_DATA_ATTR` | Warn | Text | `{x}` placeholder has no matching `data-x`. | `<a href="/{id}">` without `data-id="user.id"`. |
+| `UNSAFE_EVENT_ATTR` | Error | Text | Reactive binding attempted on `on*` attribute. | `<button onclick="{fn}">`. Use `data-on-click`. |
+| `UNSAFE_URL_ATTR` | Warn | Text | Unsafe URL protocol sanitized. | URL resolved to `javascript:...` or `data:...`. |
+| `RESERVED_ATTR_NAME` | Error | Text | Attribute placeholder uses reserved name. | Using `{model}` or `{show}` as placeholder. |
+| `SHOW_MISSING_PATH` | Error | Show | `data-show` attribute is empty. | `<div data-show=""></div>`. |
+| `MODEL_MISSING_PATH` | Error | Model | `data-model` attribute is empty. | `<input data-model="">`. |
+| `INDEXED_MODEL_PATH` | Warn | Model | `data-model` path contains numeric index. | `data-model="items.0.name"`. Bind to loop variable. |
+| `UNKNOWN_EVENT` | Error | Events | `data-on-{event}` is not a supported event. | Typo like `data-on-hover`. Use `mouseenter`. |
+| `UNKNOWN_KEY_MODIFIER` | Error | Events | Unsupported key modifier suffix. | Typo like `data-on-keydown-return`. Use `-enter`. |
+| `HANDLER_NOT_FOUND` | Error | Events | Handler name not found in options or scope. | Handler not passed to `handlers: { ... }`. |
+| `COMPUTED_MANUAL_SET` | Warn | Store | Manual `store.set()` to computed path. | Writing to a path managed by `store.computed()`. |
+| `COMPUTED_WITHOUT_STORE` | Warn | Store | `computed` option passed to mount without store. | Passing computed object without passing store. |
+| `IN_PLACE_MUTATION` | Warn | Store | Setting identical reference to store. | Mutating array in-place and passing same reference. |
+| `PATH_CLOBBER` | Warn | Store | Intermediate non-object segment overwritten. | Setting `user.name` when `user` was a string. |
+| `BATCH_FLUSH_LIMIT` | Error | Store | Batch flush wave limit (100) exceeded. | Cyclic computed properties or mutual set loops. |
+| `MODULE_READ_FAILED` | Error | Kernel | Module `read()` hook threw an exception. | Bug in custom module `read()` function. |
+| `MODULE_SETUP_FAILED` | Error | Kernel | Module `setup()` hook threw an exception. | Bug in custom module `setup()` function. |
+| `MODULE_UPDATE_FAILED` | Error | Kernel | Module `update()` hook threw an exception. | Bug in custom module `update()` function. |
+| `MODULE_CLEANUP_FAILED` | Error | Kernel | Module cleanup hook threw an exception. | Bug in custom module cleanup function. |
+| `MODULE_TRIGGER_OVERRIDDEN`| Warn | Kernel | Trigger overridden by higher-priority module. | Two modules registered for the same attribute/tag. |
+| `MODULE_WATCH_FAILED` | Error | Kernel | Module `ctx.watch()` callback threw an error. | Exception in reactive watch callback. |
+| `MODULE_STORE_REQUIRED` | Warn | Kernel | Module called `ctx.watch()` without a store. | Component mounted without a store. |
+| `MODULE_AFTER_CONNECT_FAILED`| Error | Kernel | `ctx.afterConnect()` callback threw an error. | Exception in post-connection microtask. |
+| `MODULE_HANDLER_FAILED`      | Error | Events | Event handler threw an error or rejected.      | Exception in user handler callback. |
+
+---
+
+## 16. Migration Guide (v0.2.x → v0.3.0)
+
+Version `0.3.0` transitions Lime from an ad-hoc monolithic rendering engine to an unprivileged Micro-Kernel architecture.
+
+### Removed Legacy APIs
+
+- `definePlugin()` $\to$ Replaced by `defineModule()`.
+- `PLUGIN_API_VERSION` $\to$ Removed. Modules are versioned independently.
+- `plugins: [...]` in `mount()` $\to$ Replaced by composing custom engines via `createEngine({ modules })`.
+- Legacy internal helpers removed from root exports: `evalCondition`, `processAllIfs`, `OPERATORS`, `expandLoops`, `expandPartials`, `setupBindings`, `setupModelBindings`, `setupShowBindings`, `setupEventBindings`, `setupLiveIfs`, `setupLiveFors`.
+
+### Migration Examples
+
+#### 1. Custom Directives (Legacy Plugin vs Modern Module)
+
+**Old v0.2.x (Deprecated Plugin):**
 ```js
-import { definePlugin, mount, PLUGIN_API_VERSION } from 'lime-csr-js';
+// OLD
+const myPlugin = definePlugin({
+  name: 'autofocus',
+  setup(ctx) {
+    // Ad-hoc querySelectorAll across document
+  },
+});
+mount('app', { target, store, plugins: [myPlugin] });
 ```
 
-Plugin API v1 adds normal-element attribute directives at one fixed render
-stage. Plugins are explicitly passed in `mount(..., { plugins })`; Lime has no
-global plugin registry, dependency graph, priorities, remote loader, or
-pipeline monkey-patching. A definition can be reused, but every successful
-mount creates a fresh `Object.create(null)` state object and private cleanup
-bookkeeping. Cleaning or replacing one mount never affects another.
-
-### 7.1 Defining and mounting a plugin
-
+**New v0.3.0 (Unprivileged Module):**
 ```js
-const focusPlugin = definePlugin({
-  name: 'focus',                       // ^[a-z][a-z0-9-]*$
-  apiVersion: PLUGIN_API_VERSION,      // currently 1
-  version: '1.0.0',                    // optional plugin version
+// NEW
+import { defineModule, attr, createEngine } from 'lime-csr-js';
+import { text, show, events } from 'lime-csr-js/modules';
 
-  beforeMount(api) { /* optional */ },
-  afterMount(api) { /* optional */ },
-
-  directives: {
-    'data-lime-focus': {
-      setup({ element, value, afterConnect }) {
-        if (value === 'false') return;
-        afterConnect(() => element.focus());
+const autoFocusModule = defineModule({
+  name: 'autofocus',
+  triggers: [
+    attr('data-autofocus', {
+      phase: 'link',
+      setup(el) {
+        el.focus();
       },
-    },
-    // Short form is equivalent:
-    'data-lime-marker'(api) { /* ... */ },
-  },
+    }),
+  ],
 });
 
-mount('page', { target, store, plugins: [focusPlugin] });
-```
-
-`definePlugin()` validates the definition and freezes the returned plugin,
-its directive map, and every directive definition. Plugin names use the
-lowercase/hyphen pattern shown above. Directive attributes must match
-`data-lime-name` or hyphenated forms such as `data-lime-scene-observer`;
-`data-lime-ignore` is permanently reserved by the framework. Invalid direct
-calls throw a clear `TypeError`. Per-mount mutable data belongs in `api.state`,
-not on the frozen definition or in shared module-level variables.
-
-Directive definitions support exactly two forms: a short setup function, or
-an object whose `setup(api)` property is a **required function**. Empty objects,
-misspellings such as `setUp`, and non-function `setup` values throw `TypeError`
-instead of creating a directive that silently does nothing.
-
-Plugins install in array order. Duplicate names are skipped; if two plugins
-claim the same directive, the first plugin wins. Hook/directive failures are
-diagnosed and isolated so later plugins and Lime rendering continue. Cleanup
-runs once in reverse registration/plugin order.
-
-### 7.2 Directive API
-
-`setup(api)` receives:
-
-| Field/helper | Meaning |
-|---|---|
-| `plugin`, `directive` | Frozen plugin definition and current attribute name. |
-| `element`, `value` | Actual attribute-bearing element and its raw string value. |
-| `state` | State shared only by this plugin's hooks/directives in this mount. |
-| `store`, `context` | Mount store and the current render context (including a live-list item context). |
-| `document`, `window` | The target's owner document and its window. |
-| `get(path)` | Read the mount store. Without a store, returns `undefined` and emits `PLUGIN_STORE_REQUIRED`. |
-| `set(path, value)` | Write the mount store. Without a store, returns `false` and emits `PLUGIN_STORE_REQUIRED`. |
-| `watch(path, callback, options?)` | Subscribe to a non-empty store path. `{ immediate: true }` calls back immediately; the returned unwatch is also attached to directive cleanup automatically. Without a store, returns a no-op unsubscribe function and emits `PLUGIN_STORE_REQUIRED`. |
-| `afterConnect(callback)` | Run in a microtask only if the directive is still active and its element is connected. Use for focus, measurements, observers, canvas, or widget setup. |
-| `onCleanup(callback)` | Register teardown; callbacks run once in reverse registration order. |
-| `diagnostic(code, message, context)` | Emit a structured, non-throwing diagnostic through Lime's normal subscriber/dev-mode channel. |
-
-`setup` may return an additional cleanup function. Both that function and all
-`onCleanup`/`watch` cleanups run. A throwing watch callback becomes
-`PLUGIN_WATCH_FAILED`; a throwing `afterConnect` callback becomes
-`PLUGIN_AFTER_CONNECT_FAILED`; neither escapes into the store or stops other
-plugins.
-
-```js
-const mirrorPlugin = definePlugin({
-  name: 'mirror',
-  apiVersion: 1,
-  directives: {
-    'data-lime-mirror': {
-      setup({ element, value: path, get, set, watch, onCleanup }) {
-        element.textContent = String(get(path) ?? '');
-        watch(path, (value) => { element.textContent = String(value ?? ''); });
-
-        const reset = () => set(path, '');
-        element.addEventListener('dblclick', reset);
-        onCleanup(() => element.removeEventListener('dblclick', reset));
-      },
-    },
-  },
+const engine = createEngine({
+  modules: [autoFocusModule, text(), show(), events()],
 });
+
+engine.mount(target, 'app', store);
 ```
 
-Only registered attributes are queried. Registered directive attributes are
-collected in a single consolidated `querySelectorAll` query per render pass
-rather than scanning repeatedly. Furthermore, a defensive detached node guard
-(`!root.contains(element)`) ensures elements detached or altered by prior
-directives are safely skipped. Directive setup occurs after `data-show` and
-before live `<for>`/`<if>` setup. Normal elements inside an unexpanded live
-block are deferred; the same mount runtime installs them later through the
-recursive render with the correct branch/item context. When a live branch
-closes, a list item is deleted, or `data-diff="replace"` recreates an item,
-directive cleanup runs while its DOM node is still present, before removal.
-`data-lime-ignore` regions remain completely untouched.
+#### 2. Root Package Cleanliness
 
-`IF`, `ELSE`, `FOR`, `PARTIAL`, and `TEMPLATE` are structural elements and
-cannot directly host plugin directives; such targets are skipped with
-`PLUGIN_DIRECTIVE_STRUCTURAL_TARGET`. Put the directive on a normal element
-inside the block. Plugin-defined structural expansion is not supported in v1.
-
-### 7.3 Mount hook API
-
-`beforeMount(api)` runs after template validation and mount-scoped computed
-registration, before rendering. The existing `beforeRender` hook retains its
-legacy earlier position. `afterMount(api)` runs after the fragment is
-appended and before the existing `afterRender` hook and event delegation.
-Both receive:
+In `v0.2.x`, internal monolithic helpers were inadvertently exported. In `v0.3.0`, only clean, intended public utilities are exported:
 
 ```js
-{
-  plugin, state, target, store, context, document, window,
-  onCleanup(callback),
-  diagnostic(code, message, context),
-}
-```
-
-A hook can return cleanup and/or call `onCleanup`. Hook exceptions report
-`PLUGIN_HOOK_FAILED` and do not prevent the next plugin from installing.
-Mount teardown order is reactive/directive cleanup, delegated-event cleanup,
-plugin hook cleanup, then computed disposal. `cleanup()`, `unmount(target)`,
-and replacement mounting are idempotent with respect to plugin teardown.
-
-### 7.4 Trust and integration boundary
-
-Plugins are ordinary JavaScript with the same DOM/store access as the host
-application; they are **not a sandbox**. Load only trusted plugin code. The API
-does not use `eval`, `new Function`, or dynamic script injection. Canvas,
-WebGL, or Three.js-style integrations can be built as plugins, but those
-libraries remain application/plugin dependencies—Lime does not depend on or
-load them.
-
-### 7.5 Publishing plugin packages
-
-Official and third-party plugin packages should declare Lime as a peer
-dependency instead of bundling their own runtime copy:
-
-```json
-{
-  "peerDependencies": {
-    "lime-csr-js": "^0.2.0"
-  }
-}
-```
-
-This avoids unnecessary duplicate runtimes, reduces bundle size, lets the host
-application choose its Lime version, and states Plugin API compatibility through
-the peer dependency range. Plugin definitions now use an API-versioned global
-symbol so separate source/dist module instances can recognize each other, but
-that compatibility guard does not replace the peer dependency recommendation.
-
----
-
-## 8. Error codes
-
-Diagnostics are structured and non-throwing. Every diagnostic is dispatched through
-`reportError(code, context)` or `warn(code, message, context)` and can be observed with
-the public `subscribeDiagnostics(listener)` API. Each listener receives a stable
-`{ code, message, context }` object; `context` is the original optional value and DOM
-nodes are not serialized.
-
-### Dev vs. Prod Presentation (Single Bundle Architecture)
-
-Lime-CSR ships a single lightweight bundle (`dist/index.min.js`) alongside an on-demand error message catalog (`dist/errors-messages.js`). No double-bundle or build flag switching is required.
-
-- **Development Mode (`setDevMode(true)` or `'dev'` — Default):**
-  Lime dynamically loads the error catalog (`errors-messages.js`) on startup and logs `console.warn('[lime-csr] CODE: message', context?)` with full actionable explanations, rendering a visual toast overlay in the bottom-right corner. Repeated identical errors are automatically deduplicated with a badge count (`x2`, `x3`) to prevent viewport overflow, and the container has scroll protection (`max-height: 85vh`).
-- **Production Mode (`setDevMode('prod')`):**
-  Lime does not load the error catalog and renders no overlay. The console logs concise `console.warn('[lime-error] CODE', context?)`. Logic, diagnostics delivery, and control flow remain 100% identical.
-- **Silent Mode (`setDevMode(false)`):**
-  Suppresses all Lime console output and overlay completely. Subscribed applications still receive all diagnostic events via `subscribeDiagnostics`. Consumers decide which codes map to their own loading or error UI; diagnostics are not exceptions and never crash the page.
-
-```js
+// Still available and recommended:
 import {
-  mount,
-  reportError,
-  setDevMode,
-  subscribeDiagnostics,
+  mount, unmount, render,
+  createStore, getByPath, setByPath,
+  createEngine, defineModule,
+  attr, attrs, tag, pattern, createScope,
 } from 'lime-csr-js';
-
-setDevMode(false);
-
-const unsubscribe = subscribeDiagnostics(({ code, message }) => {
-  if (code === 'MOUNT_TEMPLATE_NOT_FOUND') {
-    showApplicationStartupError(code, message);
-  }
-});
-
-const cleanup = mount('app', { target, store });
-
-// Later:
-unsubscribe();
-cleanup();
 ```
-
-| Code | When it fires | Suggested fix |
-|---|---|---|
-| `UNKNOWN_OPERATOR` | `<if>` has an `is-*` attribute that isn't in the operator table | Use one of `is-gt`/`is-lt`/`is-gte`/`is-lte`/`is-eq`/`is-neq`/`is-truthy` |
-| `MISSING_OPERATOR` | `<if>` has no operator attribute at all | Add one of the operators above |
-| `ELSE_AFTER_CONTENT` | An element follows `<else>` as a direct child of `<if>` | Move that content before `<else>`, or into it — it's still treated as "then" either way |
-| `PARTIAL_NOT_FOUND` | `<partial name="x">` — no `tpl-x` exists | Define `<template id="tpl-x">`, or check for a typo in `name` |
-| `PARTIAL_MISSING_NAME` | `<partial>` has no `name` attribute | Add `name="..."` |
-| `PARTIAL_DEPTH_LIMIT` | Recursive partial expansion hit `MAX_DEPTH` (50) | Check for a partial that (in)directly calls itself with no base case |
-| `TEMPLATE_NOT_FOUND` | `getTemplate`/`renderTemplate` couldn't find `tpl-x` | Define the `<template id="tpl-x">` |
-| `FOR_MISSING_ATTR` | `<for>` is missing `each` and/or `as` | Add both: `<for each="..." as="...">` |
-| `FOR_NOT_ARRAY` | `<for each="x">` resolved to a non-array | Check that `x` is really an array in context (static `<for>`) or store (`<for data-live>`) |
-| `BINDING_MISSING_PATH` | `data-text=""` (empty) | Give it a store path |
-| `BINDING_MISSING_DATA_ATTR` | An `{x}` placeholder has no matching `data-x` | Add `data-x="store.path"`, or remove the `{x}` placeholder |
-| `UNSAFE_EVENT_ATTR` | A reactive `{x}`/`data-x` targets an `on*` attribute | Never bind reactive data to event-handler attributes; use `data-on-*` (§3.11) for events |
-| `UNSAFE_URL_ATTR` | A URL attribute (`href`, `src`, etc.) resolved with an unsafe scheme (e.g. `javascript:`, `data:`, `vbscript:`, `//`) | Use safe protocols: `http:`, `https:`, root-relative (`/`), or `#anchor`. Unsafe URLs resolve to `""`. |
-| `LIVE_IF_MISSING_OP` | `<if data-live>` has no valid operator | Add one (same table as `UNKNOWN_OPERATOR`) |
-| `PIPELINE_DEPTH_LIMIT` | `render()`'s structural pipeline hit `MAX_PIPELINE_ITERATIONS` (100) | Look for runaway nested `<partial>`/`<for>`/`<if>` structures, often a self-referencing partial |
-| `MOUNT_TEMPLATE_NOT_FOUND` | `mount()`'s `templateName` has no matching `tpl-*` | Check the name passed to `mount()` against your `<template id>`s |
-| `FOR_MISSING_KEY` | `<for data-live>` has no `key` | Add `key="item.idPath"` |
-| `FOR_DUPLICATE_KEY` | Two items resolved to the same `key` | Use a genuinely unique field, usually an id |
-| `MODEL_MISSING_PATH` | `data-model=""` (empty) | Give it a store path |
-| `TABLE_FOSTER_PARENTING` | A custom tag (`<if>`, `<for>`, `<partial>`) inside `<table>` or `<select>` was relocated by the browser HTML parser | Use `<template data-if>` or `<template data-for>` (§3.6, §3.8) for valid in-table/select conditionals and loops, or move the tag outside |
-| `SHOW_MISSING_PATH` | `data-show=""` (empty) | Give it a store path |
-| `UNKNOWN_EVENT` | `data-on-{event}` uses an unsupported event type | Use one of `click`/`dblclick`/`input`/`change`/`submit`/`keydown`/`keyup`/`focus`/`blur`/`focusin`/`focusout` (§3.11) |
-| `UNKNOWN_KEY_MODIFIER` | `data-on-keydown-{key}`/`data-on-keyup-{key}` uses an unsupported key modifier | Use one of `enter`/`escape`/`space`/`tab`/`up`/`down`/`left`/`right`/`delete`/`backspace` (§3.11) |
-| `HANDLER_NOT_FOUND` | `data-on-*`'s handler name isn't in `handlers` | Define it in the `handlers` object passed to `mount()` |
-| `RESERVED_ATTR_NAME` | A `{x}`/`data-x` placeholder used a reserved name | Rename it — reserved: `text`, `model`, `show`, `live`, `ref`, `diff`, anything starting with `on-` |
-| `INDEXED_MODEL_PATH` | `data-model` contains a numeric path segment (e.g. `items.0.name`) | Use `<for data-live key>` + bind to a per-item-addressable store location instead of an array index |
-| `COMPUTED_MANUAL_SET` | `store.set()` called directly on a `store.computed()` path | Don't; update one of its `deps` instead, or use a different path |
-| `IN_PLACE_MUTATION` | `store.set()` got the SAME object/array reference already stored | Pass a new reference: `store.set(path, [...arr])` / `{...obj}` |
-| `UNKNOWN_DIFF_STRATEGY` | `data-diff` has a value other than `simple`/`lcs`/`replace` | Use one of those three, or omit the attribute for the default |
-| `BLOCK_AFTER_NOT_FOUND` | `data-after`'s handler name isn't in `handlers` | Define it in the `handlers` object passed to `mount()` |
-| `BLOCK_BEFORE_NOT_FOUND` | `data-before`'s handler name isn't in `handlers` | Define it in the `handlers` object passed to `mount()` |
-| `BATCH_FLUSH_LIMIT` | `store.batch()`'s flush hit the 100-wave limit; pending notifications were dropped | Two subscribers are probably setting each other's paths — break the cycle (often with a `store.computed()` instead of mutual `set`s) |
-| `MOUNT_LEGACY_SIGNATURE` | `mount()` was called with the legacy positional signature (one-time notice per page load) | Migrate to `mount(name, { target, context, store, handlers, computed })` (§5.1) — the legacy form keeps working |
-| `COMPUTED_WITHOUT_STORE` | `mount()`'s `computed` option was given without a `store` | Pass a `store` in the same options object; without one there is nothing to register the computeds on |
-| `PLUGIN_LIST_INVALID` | `plugins` is not an array | Pass an array (or omit the option). |
-| `PLUGIN_INVALID` | An array entry was not returned by `definePlugin()` | Validate/freeze it with `definePlugin()` first. |
-| `PLUGIN_API_VERSION_UNSUPPORTED` | A plugin targets a different API version | Use a plugin whose `apiVersion` matches `PLUGIN_API_VERSION`. |
-| `PLUGIN_DUPLICATE_NAME` | Two plugins in one mount have the same name | Keep one definition or give them unique names. |
-| `PLUGIN_DIRECTIVE_CONFLICT` | Two plugins claim the same directive | The first wins; remove or rename the later directive. |
-| `PLUGIN_DIRECTIVE_STRUCTURAL_TARGET` | A plugin directive targets `if`/`else`/`for`/`partial`/`template` | Move it to a normal element inside the structural block. |
-| `PLUGIN_STORE_REQUIRED` | A directive calls a store helper without a mount store | Pass `store` to the mount or avoid that helper. |
-| `PLUGIN_HOOK_FAILED` | `beforeMount`/`afterMount` or its cleanup registration throws | Fix the hook; remaining plugins still install. |
-| `PLUGIN_SETUP_FAILED` | Directive setup throws or returns invalid cleanup | Fix setup/cleanup; rendering and later directives continue. |
-| `PLUGIN_WATCH_FAILED` | A plugin watch callback throws | Handle the callback failure; other subscribers continue. |
-| `PLUGIN_AFTER_CONNECT_FAILED` | An `afterConnect` callback throws | Fix DOM-connected initialization; runtime continues. |
-| `PLUGIN_CLEANUP_FAILED` | A plugin cleanup throws | Fix teardown; Lime still runs all remaining cleanups. |
-| `PATH_CLOBBER` | `store.set()`/`setByPath` replaced a non-object intermediate segment (e.g. `user` was a string when setting `user.name`) with `{}` | Check the path for a typo, or store that segment as an object from the start |
 
 ---
 
-## 9. Known limitations
+## 17. Troubleshooting & FAQ
 
-- **`<table>` and `<select>` foster-parenting is avoided with `<template data-if>` / `<template data-for>`.**
-  The HTML parser itself moves custom element tags like `<if>`/`<for>`/`<else>` written directly inside
-  `<table>` (outside a `<tr>`/`<td>`) or `<select>` to BEFORE the container, before lime-csr
-  ever runs — this is standard browser HTML-parsing behavior, outside any framework's control.
-  Detected in dev-mode on first template read (`TABLE_FOSTER_PARENTING`, §8).
-  **Solution**: use standard `<template data-if>` or `<template data-for>` (§3.6, §3.8), which are
-  valid HTML5 children inside table and select content models, or move the condition/loop outside `<table>`.
-
-- **`than`/`to` is never reactive.** `<if data-live>` only tracks the
-  operator's LEFT side; the right-hand comparison value is always
-  static/literal, even if it happens to look like a path. If the
-  comparison itself needs to be reactive on both sides, precompute it with
-  `store.computed()` (§4.6) into a single trackable boolean path.
-
-- **`data-diff="lcs"` is opt-in, not the default.** `simple` (§3.9) is the
-  default reconcile strategy for `<for data-live>` — it's correct and cheap
-  to compute, just not globally-minimal on non-trivial reorders. Turn on
-  `lcs` explicitly for lists with frequent, large reorders.
-
-- **Block-level hooks (`data-after`/`data-before`) are always synchronous.**
-  `data-before` cannot `await` a Promise before the DOM node is actually
-  torn down — there's no built-in way to wait for an exit animation to
-  finish first. A future extension could support an async before-hook
-  (await if a Promise is returned); not implemented today.
-
-- **No rich-HTML rendering path.** `data-text` (§3.2) always uses
-  `textContent` — this is exactly what makes it XSS-safe with zero
-  escaping, but it also means it can never render markup from the store
-  (bold text, links, etc. coming from data). There is no reactive
-  equivalent of `innerHTML` anywhere in the engine; any HTML-shaped content
-  has to come from the template itself (`${...}`/static markup), never from
-  reactive store data.
-
-- **Indexed `data-model` paths are warned about, not blocked.**
-  `data-model="items.2.name"` (§3.4) still WORKS today and is not
-  prevented — it just emits `INDEXED_MODEL_PATH` in dev-mode, because the
-  underlying path-drift risk (index 2 silently pointing at the wrong item
-  after a reorder/removal) is real but considered the caller's
-  responsibility to avoid, per the project's KISS stance against building
-  an automatic path-remapping mechanism.
-
----
-
-## 10. Architecture (reference)
-
-This section is for people reading or extending the source — everyday
-usage doesn't require it.
-
-### 10.1 Module map
-
-Orchestration and pipeline order live in `src/index.js`. Feature modules may
-import leaf helpers (`errors.js` and `shared.js`), but do not control or mutate
-the render pipeline.
-
-| Module | Responsibility | Exports |
-|---|---|---|
-| `store.js` | Path-based reactive state: get/set/subscribe/computed, prototype-pollution rejection | `getByPath`, `setByPath`, `createStore` |
-| `utils.js` | Security helpers — XSS/URL sanitization | `escapeHtml`, `safeAttr`, `isSafeUrlProtocol`, `safeUrl`, `safeStyleUrl` |
-| `template.js` | `<template>` reading + cache, static `${path}` interpolation, `<table>` foster-parenting detection | `getTemplate`, `resolveStatic`, `renderTemplate` |
-| `conditionals.js` | Static `<if>`/`<else>` processing, operator table | `OPERATORS`, `evalCondition`, `processIf`, `processAllIfs` |
-| `partials.js` | `<partial>` expansion (isolated context, multi-prop, recursive, depth limit) | `expandPartials` |
-| `loops.js` | Static `<for each as index>` list rendering (inherited context) | `expandLoops` |
-| `bindings.js` | Reactive `data-text` + `{x}`/`data-x` attribute binding | `setupBindings` |
-| `bindings-model.js` | Two-way form binding (`data-model`) | `setupModelBindings` |
-| `bindings-show.js` | Reactive visibility (`data-show`) | `setupShowBindings` |
-| `bindings-events.js` | Event delegation (`data-on-*`) | `setupEventBindings` |
-| `bindings-blocks.js` | Reactive `<if data-live>` (tear-down/rebuild, `el=`, hooks) | `setupLiveIfs` |
-| `bindings-loops.js` | Reactive `<for data-live key>` (key-based diff, `data-diff`, `el=`, hooks) | `setupLiveFors` |
-| `plugins.js` | Plugin definition validation and private mount-scoped runtime | `definePlugin`, `PLUGIN_API_VERSION`; internal `createPluginRuntime` |
-| `errors.js` | Structured diagnostic dispatch and dev-mode presentation — the bottom-most layer | `setDevMode`, `isDevMode`, `subscribeDiagnostics`, `warn`, `errors` (namespace) |
-| `shared.js` | Pure boundary/math helpers: ignored/live/static-for ancestry and LIS indices | `inIgnoredBlock`, `inLiveBlock`, `inUnexpandedFor`, `longestIncreasingSubsequenceIndices` |
-| `index.js` | Orchestration: `render`/`mount`/`unmount` + re-exports of everything above | `render`, `mount`, `unmount`, ... |
-
-### 10.2 Pipeline order and why
-
-```
-mount(templateName, { target, context, store, ... })   // or the legacy positional form
-  1. options.beforeRender(context, store)  (existing lifecycle order)
-  2. getTemplate(templateName) → fragment (cloneNode(true) from cache)
-  3. options.computed: store.computed(path, deps, fn) per entry
-     (registered BEFORE render so bindings see initial values; disposed by cleanup)
-  4. create mount-scoped plugin runtime; plugin beforeMount hooks
-  5. render(fragment, context, store, options.handlers):
-       a. loop until stable: expandPartials → expandLoops → processAllIfs
-       b. resolveStatic            (remaining top-level ${path})
-       c. setupModelBindings       (data-model)
-       d. setupBindings            (data-text + {x}/data-x)
-       e. setupShowBindings        (data-show)
-       f. pluginRuntime.setupDirectives (registered data-lime-* only)
-       g. setupLiveFors            (<for data-live>)
-       h. setupLiveIfs             (<if data-live>)
-  6. target.appendChild(fragment)
-  7. plugin afterMount hooks
-  8. options.afterRender(target, store)
-  9. if options.handlers: setupEventBindings(target, store, handlers)
+### Q: Why isn't my `<for>` loop updating when I push an item to an array?
+**A:** JavaScript array methods like `push()` mutate arrays in-place. Because Lime uses `Object.is()` reference equality checking, setting the same array reference will not trigger reactivity. Always pass a new array reference:
+```js
+// Correct:
+store.update('todos', (list) => [...list, newTodo]);
 ```
 
-- **5a is a LOOP**, not one pass: a `<partial>`'s own template can contain
-  a new `<for>`/`<if>`, a `<for>`'s content can contain a new `<partial>`,
-  and so on. Bounded by `MAX_PIPELINE_ITERATIONS = 100`
-  (`PIPELINE_DEPTH_LIMIT` if exceeded). `expandPartials` runs BEFORE
-  `expandLoops` every pass; a `<partial data="item">` inside a not-yet-expanded
-  `<for as="item">` would see `item` unbound if resolved too early — an
-  `inUnexpandedFor()` check defers such partials to the SAME pass's
-  `expandLoops` call, which resolves them immediately afterward with the
-  correct item context (the pipeline's call ORDER never changes — only
-  which `<partial>`s get touched narrows).
-- **5b runs AFTER structural expansion**: resolving `${item.x}` before a
-  `<for>` expands would see the wrong (top-level) context and produce an
-  empty string. `expandLoops` already calls `resolveStatic` itself per
-  item; 3b only handles what's left at the top level.
-- **5c/5d/5e/5f run AFTER structural expansion**, so bindings/directives never attach to
-  a node that's about to be deleted (memory leak). Their own relative order
-  doesn't matter for correctness EXCEPT that `data-model` (3c) is
-  guaranteed to run before `data-on-*` event delegation (step 9) is even
-  set up — so if the same element has both `data-model` and `data-on-input`,
-  the store is already updated by the time the app-level handler runs.
-- **5g runs before 5h**: an `<if data-live>` nested inside a
-  `<for data-live>` is handled by the RECURSIVE `render()` call each item
-  gets (via `renderFn`); by the time 3g runs at the outer level, those
-  inner `<if data-live>`s have already become their own anchors and are no
-  longer matched by 5h's top-level query.
-- **Step 9 (event delegation) is OUTSIDE `render()` entirely**: it's a
-  single delegation listener on `target`, not a per-element subscription —
-  there's no "binding too early" risk to guard against, so it doesn't need
-  to participate in the render pipeline's ordering at all, and needs no
-  `inLiveBlock` filter.
+### Q: Why does my `<if>` tag disappear inside a `<table>`?
+**A:** Standard browser HTML parsers apply "foster parenting" to custom tags inside `<table>` elements and move them outside the table before JavaScript runs. Use standard template syntax inside tables:
+```html
+<table>
+  <tbody>
+    <template data-if is-truthy="hasData">
+      <tr><td>Data available</td></tr>
+    </template>
+  </tbody>
+</table>
+```
 
-`render()` itself is passed as the `renderFn` callback into `setupLiveIfs`/
-`setupLiveFors`, so a branch switch or a new list item runs this ENTIRE
-pipeline again, recursively, for just that subtree.
-
-### 10.3 Centralized Utility Helpers (shared.js)
-
-To keep the codebase DRY (Don't Repeat Yourself) and highly maintainable, shared utility functions such as `inLiveBlock(node)`, `inUnexpandedFor(node)`, and `longestIncreasingSubsequenceIndices(seq)` are centralized in `src/shared.js`. 
-
-- **Leaf Dependency**: `shared.js` does not import any other modules. This allows it to be imported by any other module in the codebase without introducing circular dependency risks.
-- **`inLiveBlock(node)` and `inUnexpandedFor(node)`**: Content inside a not-yet-expanded `<if data-live>`/`<for data-live>` (or static `<for>`) block must be skipped during the main pipeline passes, as its correct context is only known inside the ancestor's recursive `render()` call. A nested live root is deferred too; only a live root with no live ancestor is processed in the current pass. If bound too early, subscriptions would leak or resolve against the wrong context.
-- **`longestIncreasingSubsequenceIndices(seq)`**: The math utility used by the `"lcs"` loop diffing strategy is placed here to keep `bindings-loops.js` focused entirely on DOM reconciliation.
-
-### 10.4 Security model
-
-- **`data-text`/`${...}`**: written via `textContent`/`nodeValue`/`attr.value`
-  — none of these parse HTML, so there is nothing to escape and no XSS
-  surface, by construction (not by sanitization).
-- **`{x}`/`data-x` on `on*` attributes**: rejected outright
-  (`UNSAFE_EVENT_ATTR`) — browsers actually EXECUTE `onclick`/`onerror`/etc.
-  when set via `setAttribute`, which would let reactive data run as code.
-- **URL attributes** (`href`, `src`, `action`, `formaction`, `data`, `cite`,
-  `poster`, `ping`): checked against a protocol whitelist
-  (`isSafeUrlProtocol` in `utils.js`) before `setAttribute` —
-  `javascript:`/`data:`/other dangerous schemes resolve to `""`.
-- **`store.js` prototype-pollution guard**: `__proto__`/`constructor`/`prototype`
-  are rejected as path segments in `setByPath`, silently.
-- **No `eval`/`new Function` anywhere in the codebase.** `data-on-*` and
-  `data-after`/`data-before` handlers are always resolved by NAME LOOKUP in
-  a plain object, never by evaluating a string as code — the engine works
-  under a strict Content-Security-Policy with no `unsafe-eval` in
-  `script-src`.
-
----
-
-*See also: [README.md](README.md) for the philosophy and a quick feature
-tour; [llms.txt](llms.txt) for a short machine-readable index of this repo's
-documentation.*
+### Q: How do I access loop variables in an event handler?
+**A:** Event handlers receive `(event, el, ctx)` as arguments. The item data is accessible on `ctx.scope`:
+```js
+handlers: {
+  deleteItem(event, el, ctx) {
+    const item = ctx.scope.todo;
+    console.log('Deleting:', item.id);
+  },
+}
+```

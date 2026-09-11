@@ -118,8 +118,8 @@
     const target = document.createElement('div');
     const keys = [];
 
-    const cleanup = mount('mod-keyup', {}, target, store, {
-      handlers: { handleKeyup(e) { keys.push(e.key); } },
+    const cleanup = mount(target, 'mod-keyup', store, {
+      handlers: { handleKeyup({ event }) { keys.push(event.key); } },
     });
 
     const input = target.querySelector('input');
@@ -139,9 +139,9 @@
     const target = document.createElement('div');
     let calledWith = null;
 
-    const cleanup = mount('mod-dblclick', {}, target, store, {
+    const cleanup = mount(target, 'mod-dblclick', store, {
       handlers: {
-        handleDblclick(e, el) { calledWith = { type: e.type, tag: el.tagName }; },
+        handleDblclick({ event, element }) { calledWith = { type: event.type, tag: element.tagName }; },
       },
     });
 
@@ -162,7 +162,7 @@
     const target = document.createElement('div');
     let saves = 0;
 
-    const cleanup = mount('mod-enter', {}, target, store, {
+    const cleanup = mount(target, 'mod-enter', store, {
       handlers: { save() { saves++; } },
     });
 
@@ -186,7 +186,7 @@
     const target = document.createElement('div');
     let cancels = 0;
 
-    const cleanup = mount('mod-escape', {}, target, store, {
+    const cleanup = mount(target, 'mod-escape', store, {
       handlers: { cancel() { cancels++; } },
     });
 
@@ -209,7 +209,7 @@
     const target = document.createElement('div');
     let drafts = 0, saves = 0;
 
-    const cleanup = mount('mod-coexist', {}, target, store, {
+    const cleanup = mount(target, 'mod-coexist', store, {
       handlers: {
         draft() { drafts++; },
         save()  { saves++; },
@@ -236,7 +236,7 @@
     const target = document.createElement('div');
     let calls = 0;
 
-    const cleanup = mount('mod-ignored', {}, target, store, {
+    const cleanup = mount(target, 'mod-ignored', store, {
       handlers: {
         handleKeyup()    { calls++; },
         handleDblclick() { calls++; },
@@ -258,9 +258,6 @@
   // ── 7. unknown modifier: UNKNOWN_KEY_MODIFIER fires exactly once ──────────
   group('unknown modifier: data-on-keydown-foo → UNKNOWN_KEY_MODIFIER warning, attribute inert');
   {
-    // The bogus template is added to the document ONLY for this test —
-    // collectUsedEventTypes scans ALL templates on every mount, so leaving
-    // it in from the start would emit the warning once per mount above.
     const badTpl = document.createElement('template');
     badTpl.id = 'tpl-mod-bad';
     badTpl.innerHTML = '<div><input data-on-keydown-foo="whatever"></div>';
@@ -273,7 +270,7 @@
 
     let cleanup = () => {};
     try {
-      cleanup = mount('mod-bad', {}, target, store, { handlers: { whatever() { bogusCalls++; } } });
+      cleanup = mount(target, 'mod-bad', store, { handlers: { whatever() { bogusCalls++; } } });
       key(target.querySelector('input'), 'keydown', 'f');
       key(target.querySelector('input'), 'keydown', 'Enter');
     } catch { threw = true; }
@@ -289,13 +286,10 @@
   // ── 8. zero unexpected warnings across the whole run ──────────────────────
   group('warning hygiene: zero unexpected warnings across the whole run');
   {
-    // MOUNT_LEGACY_SIGNATURE is expected exactly once: this file's mounts use
-    // the legacy positional signature, which emits a one-time deprecation
-    // notice on the FIRST mount (see index.js / mount-options-test.html).
     const unexpected = Object.entries(warnCounts)
-      .filter(([code]) => code !== 'UNKNOWN_KEY_MODIFIER' && code !== 'MOUNT_LEGACY_SIGNATURE');
+      .filter(([code]) => code !== 'UNKNOWN_KEY_MODIFIER');
     assert('no unexpected [lime-csr] warning was emitted', unexpected, []);
-    assert('legacy-signature notice fired exactly once', warnCounts.MOUNT_LEGACY_SIGNATURE, 1);
+    assert('UNKNOWN_KEY_MODIFIER notice fired exactly once', warnCounts.UNKNOWN_KEY_MODIFIER, 1);
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────

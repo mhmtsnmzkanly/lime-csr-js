@@ -28,9 +28,7 @@ test('AbortSignal abort cancels store subscriptions, event listeners, and clears
   const controller = new AbortController();
 
   let clicked = 0;
-  mount('abort-test', {
-    target,
-    store,
+  mount(target, 'abort-test', store, {
     signal: controller.signal,
     handlers: {
       inc() {
@@ -80,8 +78,7 @@ test('pre-aborted AbortSignal prevents mount from executing', () => {
   const controller = new AbortController();
   controller.abort(); // already aborted
 
-  const cleanup = mount('abort-test-2', {
-    target,
+  const cleanup = mount(target, 'abort-test-2', null, {
     signal: controller.signal,
   });
 

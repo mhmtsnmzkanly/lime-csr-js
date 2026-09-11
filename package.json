@@ -1,14 +1,26 @@
 {
   "name": "lime-csr-js",
-  "version": "0.2.10",
+  "version": "0.3.0",
   "description": "An HTML-first client-side rendering engine built with standard browser APIs.",
   "type": "module",
   "main": "src/index.js",
+  "unpkg": "dist/index.min.js",
+  "jsdelivr": "dist/index.min.js",
   "exports": {
     ".": {
       "default": "./src/index.js"
     },
-    "./dist": "./dist/index.min.js"
+    "./core": {
+      "default": "./src/core/index.js"
+    },
+    "./modules": {
+      "default": "./src/modules/index.js"
+    },
+    "./modules/*": {
+      "default": "./src/modules/*.js"
+    },
+    "./dist": "./dist/index.min.js",
+    "./dist/*": "./dist/*"
   },
   "files": [
     "src/",
@@ -36,7 +48,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "build": "esbuild src/index.js --bundle --minify --format=esm --platform=browser --external:./errors-messages.js --outfile=dist/index.min.js && esbuild src/errors-messages.js --bundle --minify --format=esm --platform=browser --outfile=dist/errors-messages.js",
+    "build": "node scripts/build.js",
     "prepack": "npm run build",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",

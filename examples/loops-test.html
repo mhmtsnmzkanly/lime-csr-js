@@ -16,12 +16,12 @@
   </style>
 </head>
 <body>
-<h1>src/loops.js — verification tests</h1>
+<h1>loops module — verification tests</h1>
 <pre id="log"></pre>
 <div id="renders"></div>
 
 <script type="module">
-  import { expandLoops } from '../src/loops.js';
+  import { render } from '../src/index.js';
 
   const log  = document.getElementById('log');
   const area = document.getElementById('renders');
@@ -46,7 +46,7 @@
   function run(html, context = {}) {
     const host = document.createElement('div');
     host.innerHTML = html;
-    expandLoops(host, context);
+    render(host, { context });
     return host;
   }
 

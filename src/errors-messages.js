@@ -15,6 +15,10 @@ export default {
     const list = available && available.length ? available.join(', ') : '(no registered partials)';
     return `Partial not found: "${name}". Registered partials: ${list}. Is <template id="tpl-${name}"> defined?`;
   },
+  SLOT_NOT_FOUND: ({ slot, partial, available }) => {
+    const list = available && available.length ? available.join(', ') : '(no named slots defined)';
+    return `Slot "${slot}" not found in partial "${partial}". Available slots: ${list}. Content for this slot was ignored.`;
+  },
   PARTIAL_MISSING_NAME: () =>
     `<partial> element is missing the "name" attribute. Use <partial name="..."></partial>.`,
   PARTIAL_DEPTH_LIMIT: ({ depth }) =>
@@ -41,6 +45,14 @@ export default {
     const list = available && available.length ? available.join(', ') : '(no registered templates)';
     return `mount(): template "${name}" not found. Registered templates: ${list}. Is <template id="tpl-${name}"> defined?`;
   },
+  MOUNT_INVALID_TARGET: ({ target }) =>
+    `mount(): invalid target "${String(target)}". Target must be a valid DOM Element or CSS selector string.`,
+  MOUNT_TARGET_NOT_FOUND: ({ selector }) =>
+    `mount(): target element matching selector "${selector}" was not found.`,
+  MOUNT_HOOK_FAILED: ({ hook, error }) =>
+    `mount(): "${hook}" lifecycle hook failed: ${error?.message || error || 'unknown error'}.`,
+  MOUNT_ALREADY_MOUNTED: () =>
+    `mount(): target element is already mounted. Duplicate mounts on the same target are rejected. Unmount first.`,
   FOR_MISSING_KEY: ({ templateName }) =>
     `Reactive <for data-live>: missing "key" attribute. Add a key for efficient DOM updates. (template: ${templateName ?? '?'})`,
   FOR_DUPLICATE_KEY: ({ keyVal, templateName }) =>
@@ -69,20 +81,28 @@ export default {
     `store.set("${path}", value): value is the SAME reference as the stored object/array. In-place mutation detected — subscribers will NOT fire. Pass a new reference, e.g. store.set("${path}", [...arr]) or {...obj}.`,
   UNKNOWN_DIFF_STRATEGY: ({ value, templateName }) =>
     `<for data-live>: unknown data-diff value "${value}". Valid values: simple, lcs, replace (or omit the attribute). Falling back to "simple". (template: ${templateName ?? '?'})`,
-  MOUNT_LEGACY_SIGNATURE: () =>
-    `mount(templateName, context, target, store, options) positional signature is deprecated. Prefer mount(templateName, { context, target, store, handlers, computed, ... }). The legacy form keeps working; this notice is shown once.`,
   COMPUTED_WITHOUT_STORE: ({ paths }) =>
     `mount(): the "computed" option (${paths?.join(', ')}) requires a store; registration skipped. Pass a store in the same mount() options object.`,
-  BLOCK_AFTER_NOT_FOUND: ({ name, available }) => {
-    const list = available && available.length ? available.join(', ') : '(no registered handlers)';
-    return `data-after handler not found: "${name}". Registered handlers: ${list}. Is "${name}" defined in the handlers object passed to mount()?`;
-  },
-  BLOCK_BEFORE_NOT_FOUND: ({ name, available }) => {
-    const list = available && available.length ? available.join(', ') : '(no registered handlers)';
-    return `data-before handler not found: "${name}". Registered handlers: ${list}. Is "${name}" defined in the handlers object passed to mount()?`;
-  },
   BATCH_FLUSH_LIMIT: ({ maxWaves }) =>
     `store.batch(): flush reached the ${maxWaves || 100} wave limit (possible infinite loop). Dropping remaining notifications. Break the cycle (e.g. use store.computed instead of mutual sets).`,
   PATH_CLOBBER: ({ key, path, type }) =>
     `store.set("${path}", ...): segment "${key}" was a ${type}, not an object. Replacing with {}.`,
+  MODULE_READ_FAILED: ({ module, error }) =>
+    `Module "${module ?? 'unknown'}" read failed: ${error?.message || error || 'unknown error'}.`,
+  MODULE_SETUP_FAILED: ({ module, error }) =>
+    `Module "${module ?? 'unknown'}" setup failed: ${error?.message || error || 'unknown error'}.`,
+  MODULE_UPDATE_FAILED: ({ module, error }) =>
+    `Module "${module ?? 'unknown'}" update failed: ${error?.message || error || 'unknown error'}.`,
+  MODULE_CLEANUP_FAILED: ({ module, error }) =>
+    `Module "${module ?? 'unknown'}" cleanup failed: ${error?.message || error || 'unknown error'}.`,
+  MODULE_TRIGGER_OVERRIDDEN: ({ module, overriddenBy, trigger }) =>
+    `Module "${module}" trigger "${trigger}" was overridden by higher-priority module "${overriddenBy}".`,
+  MODULE_WATCH_FAILED: ({ module, path, error }) =>
+    `Module "${module ?? 'unknown'}" watch callback for "${path}" failed: ${error?.message || error || 'unknown error'}.`,
+  MODULE_STORE_REQUIRED: ({ module, path }) =>
+    `Module "${module ?? 'unknown'}" watch("${path}") called without a store.`,
+  MODULE_AFTER_CONNECT_FAILED: ({ module, error }) =>
+    `Module "${module ?? 'unknown'}" afterConnect callback failed: ${error?.message || error || 'unknown error'}.`,
+  MODULE_HANDLER_FAILED: ({ handler, error }) =>
+    `Handler "${handler ?? 'unknown'}" execution failed: ${error?.message || error || 'unknown error'}.`,
 };

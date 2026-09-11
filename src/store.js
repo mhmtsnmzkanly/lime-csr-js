@@ -48,8 +48,12 @@ export function getByPath(source, path) {
   if (keys.some((key) => UNSAFE_PATH_SEGMENTS.has(key))) return undefined;
 
   return keys.reduce((value, key) => {
-    if (value == null || !Object.hasOwn(value, key)) return undefined;
-    return value[key];
+    if (value == null) return undefined;
+    if (Object.hasOwn(value, key)) return value[key];
+    if (key in value && !Object.prototype.hasOwnProperty.call(Object.prototype, key)) {
+      return value[key];
+    }
+    return undefined;
   }, source);
 }
 
@@ -460,4 +464,6 @@ export function createStore(initialState = {}) {
     },
   };
 }
+
+export default createStore;
 

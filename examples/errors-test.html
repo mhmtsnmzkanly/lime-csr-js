@@ -22,7 +22,7 @@
 </template>
 
 <script type="module">
-  import { setDevMode, isDevMode, warn, errors } from '../src/errors.js';
+  import { setDevMode, isDevMode, warn, error } from '../src/errors.js';
   import { mount } from '../src/index.js';
   import { createStore } from '../src/store.js';
 
@@ -101,28 +101,28 @@
     setDevMode(true);
 
     const cases = [
-      ['unknownOperator',       () => errors.unknownOperator('is-magic', ['is-gt','is-lt'], null),      'UNKNOWN_OPERATOR'],
-      ['missingOperator',       () => errors.missingOperator(null),                                      'MISSING_OPERATOR'],
-      ['elseAfterContent',      () => errors.elseAfterContent(null),                                     'ELSE_AFTER_CONTENT'],
-      ['partialNotFound',       () => errors.partialNotFound('missing', ['valid'], null),                'PARTIAL_NOT_FOUND'],
-      ['partialMissingName',    () => errors.partialMissingName(null),                                   'PARTIAL_MISSING_NAME'],
-      ['partialDepthLimit',     () => errors.partialDepthLimit(50, null),                                'PARTIAL_DEPTH_LIMIT'],
-      ['templateNotFound',      () => errors.templateNotFound('ghost'),                                  'TEMPLATE_NOT_FOUND'],
-      ['forMissingAttr',        () => errors.forMissingAttr(null),                                      'FOR_MISSING_ATTR'],
-      ['forNotArray',           () => errors.forNotArray('items', 'string', null),                       'FOR_NOT_ARRAY'],
-      ['bindingMissingPath',    () => errors.bindingMissingPath(null),                                   'BINDING_MISSING_PATH'],
-      ['bindingMissingDataAttr',() => errors.bindingMissingDataAttr('href', 'url', null),               'BINDING_MISSING_DATA_ATTR'],
-      ['liveIfMissingOperator', () => errors.liveIfMissingOperator(null),                               'LIVE_IF_MISSING_OP'],
-      ['pipelineDepthLimit',    () => errors.pipelineDepthLimit(100, null),                             'PIPELINE_DEPTH_LIMIT'],
-      ['mountTemplateNotFound', () => errors.mountTemplateNotFound('x', ['y'], null),                   'MOUNT_TEMPLATE_NOT_FOUND'],
-      ['missingKey',            () => errors.missingKey('tpl-list'),                                     'FOR_MISSING_KEY'],
-      ['duplicateKey',          () => errors.duplicateKey('abc', 'tpl-list'),                           'FOR_DUPLICATE_KEY'],
+      ['unknownOperator',       () => error('UNKNOWN_OPERATOR', { op: 'is-magic', validOps: ['is-gt','is-lt'] }, null),      'UNKNOWN_OPERATOR'],
+      ['missingOperator',       () => error('MISSING_OPERATOR', {}, null),                                      'MISSING_OPERATOR'],
+      ['elseAfterContent',      () => error('ELSE_AFTER_CONTENT', {}, null),                                     'ELSE_AFTER_CONTENT'],
+      ['partialNotFound',       () => error('PARTIAL_NOT_FOUND', { name: 'missing', available: ['valid'] }, null),                'PARTIAL_NOT_FOUND'],
+      ['partialMissingName',    () => error('PARTIAL_MISSING_NAME', {}, null),                                   'PARTIAL_MISSING_NAME'],
+      ['partialDepthLimit',     () => error('PARTIAL_DEPTH_LIMIT', { depth: 50 }, null),                                'PARTIAL_DEPTH_LIMIT'],
+      ['templateNotFound',      () => error('TEMPLATE_NOT_FOUND', { name: 'ghost' }),                                  'TEMPLATE_NOT_FOUND'],
+      ['forMissingAttr',        () => error('FOR_MISSING_ATTR', {}, null),                                      'FOR_MISSING_ATTR'],
+      ['forNotArray',           () => error('FOR_NOT_ARRAY', { path: 'items', type: 'string' }, null),                       'FOR_NOT_ARRAY'],
+      ['bindingMissingPath',    () => error('BINDING_MISSING_PATH', {}, null),                                   'BINDING_MISSING_PATH'],
+      ['bindingMissingDataAttr',() => error('BINDING_MISSING_DATA_ATTR', { attrName: 'href', key: 'url' }, null),               'BINDING_MISSING_DATA_ATTR'],
+      ['liveIfMissingOperator', () => error('LIVE_IF_MISSING_OP', {}, null),                               'LIVE_IF_MISSING_OP'],
+      ['pipelineDepthLimit',    () => error('PIPELINE_DEPTH_LIMIT', { maxIter: 100 }, null),                             'PIPELINE_DEPTH_LIMIT'],
+      ['mountTemplateNotFound', () => error('MOUNT_TEMPLATE_NOT_FOUND', { name: 'x', available: ['y'] }, null),                   'MOUNT_TEMPLATE_NOT_FOUND'],
+      ['missingKey',            () => error('FOR_MISSING_KEY', { templateName: 'tpl-list' }),                                     'FOR_MISSING_KEY'],
+      ['duplicateKey',          () => error('FOR_DUPLICATE_KEY', { keyVal: 'abc', templateName: 'tpl-list' }),                           'FOR_DUPLICATE_KEY'],
     ];
 
     for (const [name, fn, code] of cases) {
       const caught = captureWarns(fn);
-      assert(`errors.${name}: 1 warning printed`,  caught.length >= 1, true);
-      assert(`errors.${name}: has code "${code}"`, caught[0]?.includes(code), true);
+      assert(`error(${name}): 1 warning printed`,  caught.length >= 1, true);
+      assert(`error(${name}): has code "${code}"`, caught[0]?.includes(code), true);
     }
   }
 
@@ -132,16 +132,16 @@
     setDevMode(false);
 
     const allFns = [
-      () => errors.unknownOperator('x', [], null),
-      () => errors.missingOperator(null),
-      () => errors.partialNotFound('x', [], null),
-      () => errors.templateNotFound('x'),
-      () => errors.forMissingAttr(null),
-      () => errors.forNotArray('p', 'string', null),
-      () => errors.bindingMissingPath(null),
-      () => errors.liveIfMissingOperator(null),
-      () => errors.pipelineDepthLimit(100, null),
-      () => errors.mountTemplateNotFound('x', [], null),
+      () => error('UNKNOWN_OPERATOR', { op: 'x', validOps: [] }, null),
+      () => error('MISSING_OPERATOR', {}, null),
+      () => error('PARTIAL_NOT_FOUND', { name: 'x', available: [] }, null),
+      () => error('TEMPLATE_NOT_FOUND', { name: 'x' }),
+      () => error('FOR_MISSING_ATTR', {}, null),
+      () => error('FOR_NOT_ARRAY', { path: 'p', type: 'string' }, null),
+      () => error('BINDING_MISSING_PATH', {}, null),
+      () => error('LIVE_IF_MISSING_OP', {}, null),
+      () => error('PIPELINE_DEPTH_LIMIT', { maxIter: 100 }, null),
+      () => error('MOUNT_TEMPLATE_NOT_FOUND', { name: 'x', available: [] }, null),
     ];
 
     let totalCaught = 0;
@@ -170,7 +170,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtMsgs.push(args.join(' ')); origWarn.apply(console, args); };
 
-    mount('partial-test', {}, target, store);
+    mount(target, 'partial-test', store);
     console.warn = origWarn;
 
     const hasPartialError = caughtMsgs.some((m) => m.includes('PARTIAL_NOT_FOUND'));
@@ -197,7 +197,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtMsgs.push(args.join(' ')); origWarn.apply(console, args); };
 
-    const cleanup = mount('totally-missing', {}, target, store);
+    const cleanup = mount(target, 'totally-missing', store);
     console.warn = origWarn;
 
     const hasMountError = caughtMsgs.some((m) => m.includes('MOUNT_TEMPLATE_NOT_FOUND'));
@@ -221,7 +221,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtCount++; origWarn.apply(console, args); };
 
-    mount('also-missing', {}, target, store);
+    mount(target, 'also-missing', store);
     console.warn = origWarn;
 
     assert('devMode=false: mount error silent (0 warn)', caughtCount, 0);
@@ -241,7 +241,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtCount++; origWarn.apply(console, args); };
 
-    mount('valid', {}, target, store);
+    mount(target, 'valid', store);
     console.warn = origWarn;
 
     assert('valid mount: no warn issued', caughtCount, 0);

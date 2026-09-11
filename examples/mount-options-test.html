@@ -85,16 +85,14 @@
     realWarn(...args);
   };
 
-  // ── 1. new style: mounts, binds, delegates — and does NOT warn ────────────
-  group('new style: mount(name, { target, store, handlers }) mounts and binds correctly');
+  // ── 1. mount(target, template, store, options) ──────────────────────────
+  group('1. mount(target, template, store, options) mounts and binds correctly');
   {
     const store = createStore({ msg: 'hello' });
     const target = document.createElement('div');
     let clicks = 0;
 
-    const cleanup = mount('opt-basic', {
-      target,
-      store,
+    const cleanup = mount(target, 'opt-basic', store, {
       handlers: { bump() { clicks++; } },
     });
 
@@ -107,45 +105,30 @@
     target.querySelector('button').click();
     assert('handlers option wired up (delegation works)', clicks, 1);
 
-    assert('new style did NOT trigger the legacy notice',
-      warnCounts.MOUNT_LEGACY_SIGNATURE ?? 0, 0);
-
     cleanup();
-    show('1. new-style mount', target.cloneNode(true));
+    show('1. mount with options', target.cloneNode(true));
   }
 
-  // ── 2. old style: still works, warns exactly once across multiple calls ───
-  group('old style: works unchanged, MOUNT_LEGACY_SIGNATURE fires exactly once');
+  // ── 2. in-place options object: mount(target, { template, store }) ───────
+  group('2. in-place options: mount(target, { template, store })');
   {
-    const store = createStore({ msg: 'legacy' });
-    const t1 = document.createElement('div');
-    const t2 = document.createElement('div');
+    const store = createStore({ msg: 'options-obj' });
+    const target = document.createElement('div');
 
-    const cleanup1 = mount('opt-basic', {}, t1, store);       // old style, 1st call
-    assert('old-style mount rendered', t1.querySelector('p').textContent, 'legacy');
-    assert('deprecation notice fired on the first legacy call',
-      warnCounts.MOUNT_LEGACY_SIGNATURE, 1);
+    const cleanup = mount(target, { template: 'opt-basic', store });
+    assert('options-object mount rendered', target.querySelector('p').textContent, 'options-obj');
 
-    const cleanup2 = mount('opt-basic', {}, t2, store);       // old style, 2nd call
-    assert('second legacy call did NOT warn again (one-time flag)',
-      warnCounts.MOUNT_LEGACY_SIGNATURE, 1);
-    assert('second legacy mount also rendered', t2.querySelector('p').textContent, 'legacy');
-
-    cleanup1();
-    cleanup2();
-    note('the notice is per page load, not per call — a module-level flag in index.js');
+    cleanup();
   }
 
   // ── 3. computed option: registered via mount, updates reactively ──────────
-  group('computed option: mount-registered computed updates reactively');
+  group('3. computed option: mount-registered computed updates reactively');
   {
     const store = createStore({ first: 'Ada', last: 'Lovelace' });
     const target = document.createElement('div');
     let calls = 0;
 
-    const cleanup = mount('opt-computed', {
-      target,
-      store,
+    const cleanup = mount(target, 'opt-computed', store, {
       computed: {
         fullName: {
           deps: ['first', 'last'],
@@ -162,7 +145,7 @@
     assert('dep change recomputes and updates the DOM', p.textContent, 'Grace Lovelace');
 
     // ── 4. cleanup() disposes the computed ──────────────────────────────────
-    group('cleanup(): disposes the mount-registered computed');
+    group('4. cleanup(): disposes the mount-registered computed');
 
     const callsBeforeCleanup = calls;
     cleanup();
@@ -179,40 +162,30 @@
     note('no manual dispose() bookkeeping — the computed lives and dies with the mount');
   }
 
-  // ── 5. computed without store: warned and skipped ─────────────────────────
-  group('computed without store: COMPUTED_WITHOUT_STORE warning, registration skipped');
+  // ── 5. mount with store omitted: auto-creates store and binds context ────
+  group('5. store omitted: mount(target, template, options) auto-creates store');
   {
     const target = document.createElement('div');
-    let calls = 0;
     let threw = false;
 
     try {
-      const cleanup = mount('opt-static', {
-        target,
+      const cleanup = mount(target, 'opt-static', {
         context: { title: 'Static Title' },
-        computed: {
-          anything: { deps: ['x'], fn: () => { calls++; return 1; } },
-        },
       });
       cleanup();
     } catch { threw = true; }
 
     assert('no crash', threw, false);
-    assert('COMPUTED_WITHOUT_STORE warned exactly once',
-      warnCounts.COMPUTED_WITHOUT_STORE, 1);
-    assert('computed fn never ran (skipped)', calls, 0);
-    assert('static content still rendered', target.textContent.trim(), 'Static Title');
+    assert('static content rendered', target.textContent.trim(), 'Static Title');
   }
 
   // ── 6. unmount() also disposes mount-scoped computeds ─────────────────────
-  group('unmount(): disposes mount-scoped computeds too');
+  group('6. unmount(): disposes mount-scoped computeds too');
   {
     const store = createStore({ a: 2 });
     const target = document.createElement('div');
 
-    mount('opt-computed', {
-      target,
-      store,
+    mount(target, 'opt-computed', store, {
       computed: {
         fullName: { deps: ['a'], fn: () => 'a=' + store.get('a') },
       },
@@ -225,10 +198,9 @@
   }
 
   // ── 7. zero unexpected warnings across the whole run ──────────────────────
-  group('warning hygiene: zero unexpected warnings across the whole run');
+  group('7. warning hygiene: zero unexpected warnings across the whole run');
   {
-    const expected = new Set(['MOUNT_LEGACY_SIGNATURE', 'COMPUTED_WITHOUT_STORE']);
-    const unexpected = Object.entries(warnCounts).filter(([code]) => !expected.has(code));
+    const unexpected = Object.entries(warnCounts);
     assert('no unexpected [lime-csr] warning was emitted', unexpected, []);
   }
 

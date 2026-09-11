@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-<h1>src/bindings-model.js — verification tests</h1>
+<h1>model module — verification tests</h1>
 
 <!-- data-model + data-on-input ordering (2h): same element, both attributes -->
 <template id="tpl-model-order">
@@ -27,8 +27,7 @@
 <div id="renders"></div>
 
 <script type="module">
-  import { createStore, mount } from '../src/index.js';
-  import { setupModelBindings } from '../src/bindings-model.js';
+  import { createStore, mount, render } from '../src/index.js';
 
   const log  = document.getElementById('log');
   const area = document.getElementById('renders');
@@ -74,7 +73,7 @@
     host.innerHTML = `<input type="text" data-model="name">`;
     const detach = attach(host);
 
-    const cleanup = setupModelBindings(host, store);
+    const cleanup = render(host, { store });
     const input = host.querySelector('input');
 
     assert('initial value: Ali', input.value, 'Ali');
@@ -99,7 +98,7 @@
     host.innerHTML = `<input type="text" data-model="text">`;
     const detach = attach(host);
 
-    setupModelBindings(host, store);
+    render(host, { store });
     const input = host.querySelector('input');
 
     // User typed 'X' between 'a' and 'b': "abc" → "aXbc", cursor at 2.
@@ -123,7 +122,7 @@
     host.innerHTML = `<input type="checkbox" data-model="agree">`;
     const detach = attach(host);
 
-    setupModelBindings(host, store);
+    render(host, { store });
     const cb = host.querySelector('input');
 
     assert('initial value: unchecked', cb.checked, false);
@@ -149,7 +148,7 @@
       <input type="radio" name="choice-group" value="c" data-model="choice">`;
     const detach = attach(host);
 
-    setupModelBindings(host, store);
+    render(host, { store });
     const radios = Array.from(host.querySelectorAll('input'));
 
     assert('initial state: "b" selected', radios.map((r) => r.checked), [false, true, false]);
@@ -178,7 +177,7 @@
       </select>`;
     const detach = attach(host);
 
-    setupModelBindings(host, store);
+    render(host, { store });
     const select = host.querySelector('select');
 
     assert('initial value: ist', select.value, 'ist');
@@ -207,7 +206,7 @@
       </select>`;
     const detach = attach(host);
 
-    setupModelBindings(host, store);
+    render(host, { store });
     const select = host.querySelector('select');
     const [optA, optB, optC] = select.options;
 
@@ -234,7 +233,7 @@
     host.innerHTML = `<input type="number" data-model="age">`;
     const detach = attach(host);
 
-    setupModelBindings(host, store);
+    render(host, { store });
     const input = host.querySelector('input');
 
     input.value = '25';
@@ -261,7 +260,7 @@
     host.innerHTML = `<input type="text" data-model="val">`;
     const detach = attach(host);
 
-    const cleanup = setupModelBindings(host, store);
+    const cleanup = render(host, { store });
     const input = host.querySelector('input');
 
     cleanup();
@@ -289,7 +288,7 @@
     host.innerHTML = `<input type="text" data-model="">`;
 
     let threw = false;
-    try { setupModelBindings(host, store); } catch { threw = true; }
+    try { render(host, { store }); } catch { threw = true; }
 
     console.warn = orig;
 
@@ -306,9 +305,9 @@
     let storeValueSeenByHandler = null;
     let handlerCallCount = 0;
 
-    mount('model-order', {}, target, store, {
+    mount(target, 'model-order', store, {
       handlers: {
-        onInput(event, el) {
+        onInput() {
           handlerCallCount++;
           // If data-model's own 'input' listener already ran, the store must
           // already reflect the new value by the time this handler fires.
@@ -327,10 +326,7 @@
     assert('store.get("text") matches the input after the event settles',
       store.get('text'), 'typed value');
 
-    note('setupModelBindings runs inside render() (pipeline step 5b); ' +
-      'setupEventBindings only attaches its delegation listener afterward, in ' +
-      "mount() — so data-model's own 'input' listener on the element always " +
-      'observes the keystroke before the bubbled delegation listener does ✓');
+    note('data-model input listener runs before delegated target handler ✓');
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────

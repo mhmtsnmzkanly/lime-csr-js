@@ -1,0 +1,359 @@
+# lime-csr-js — Comprehensive LLM Reference Manual
+
+Version: 0.3.0
+Architecture: Unprivileged Micro-Kernel + Discrete Modules
+Package: lime-csr-js
+Platform: Browser-First Client-Side Rendering (ESM)
+Security: CSP script-src 'self' Compatible (Eval-Free)
+
+================================================================================
+1. ARCHITECTURAL CONTRACT
+================================================================================
+
+Lime adheres to a strict three-tier architecture:
+  Mount = Runtime Boundary
+  Kernel = Generic Mechanisms (Zero domain features)
+  Built-in Composition = Partial + Slot (Built-in template composition primitives)
+  Modules = Domain Behavior (Conditionals, Loops, Forms, Events, Visibility)
+
+Execution Pipeline:
+1. Transform Phase (Structural Compilation):
+   - Fixed-point macro expansion loop (max 100 iterations).
+   - DOM mutations allowed (replaceWith, appendChild, remove).
+   - Modules: partials, conditionals, loops, resolveStatic.
+2. Link Phase (Behavioral Attachment):
+   - Single-pass tree traversal. DOM structure is strictly frozen.
+   - Zero structural mutations allowed.
+   - Modules: model, text, show, events, live anchors.
+
+Precedence vs Execution Order:
+- Module Precedence: Defined by engine array order (`modules[0] > modules[1]`). Conflicting routes shadow lower-priority modules with dev diagnostic `MODULE_TRIGGER_OVERRIDDEN`.
+- Execution Order: Within an element, tag triggers execute first, followed by attribute triggers in exact DOM declaration order.
+
+================================================================================
+2. COMPLETE PUBLIC API SURFACE (34 ROOT EXPORTS)
+================================================================================
+
+Subpath Exports:
+  "lime-csr-js"          -> Public facade, store, diagnostics, kernel primitives, modules
+  "lime-csr-js/core"     -> Kernel primitives only
+  "lime-csr-js/modules"  -> 7 standard unprivileged modules
+  "lime-csr-js/modules/*"-> Granular single module import (e.g. lime-csr-js/modules/text)
+  "lime-csr-js/dist"     -> Minified ESM production bundle (47.0 kB)
+
+Exact Export Inventory (34 symbols):
+  Facade (3):
+    mount(target, template?, store?, options?) -> Function { unmount, cleanup, target, scope, store, active }
+    unmount(targetOrInstance) -> void
+    render(nodeOrFragment, options) -> Function { element, scope, store, cleanup }
+
+  Store & Utilities (3):
+    createStore(initialState) -> Store
+    getByPath(source, path) -> *
+    setByPath(source, path, newValue) -> { changed: boolean, previousValue: * }
+
+  Template & Security (7):
+    getTemplate(name, document?) -> DocumentFragment
+    resolveStatic(fragment, context, store?) -> void
+    renderTemplate(name, context?, store?, document?) -> DocumentFragment
+    escapeHtml(value) -> string
+    safeAttr(value) -> string
+    safeUrl(value) -> string
+    safeStyleUrl(value) -> string
+
+  Diagnostics (7):
+    setDevMode(mode: boolean | 'prod' | 'dev') -> Promise
+    isDevMode() -> boolean
+    subscribeDiagnostics(listener: (diagnostic) => void) -> () => void
+    warn(code: string, message?: string, context?: *) -> void
+    reportError(code: string, details?: *, context?: *) -> void
+    error -> Alias for reportError
+    loadDevMessages() -> Promise
+
+  Kernel Primitives (7):
+    createEngine({ modules: ModuleDefinition[] }) -> Engine
+    defineModule(definition: ModuleDefinitionOptions) -> ModuleDefinition
+    attr(name: string, hooks: TriggerHooks | Function) -> TriggerDefinition
+    attrs(options: AttrsOptions, hooks?: TriggerHooks | Function) -> TriggerDefinition
+    tag(tagName: string, hooks: TriggerHooks | Function) -> TriggerDefinition
+    pattern(prefixOrRegex: string | RegExp, hooks: TriggerHooks | Function) -> TriggerDefinition
+    createScope(parentScope?: Object, localData?: Object) -> Object
+
+  Standard Modules (7):
+    partials() -> ModuleDefinition
+    conditionals() -> ModuleDefinition
+    loops() -> ModuleDefinition
+    text() -> ModuleDefinition
+    show() -> ModuleDefinition
+    model() -> ModuleDefinition
+    events(options?: { handlers?: Object }) -> ModuleDefinition
+
+  Distribution & CDN Files (jsdelivr / unpkg):
+    dist/index.min.js: Full bundle (all 7 modules + engine + store + router)
+    dist/core.min.js: Standalone Micro-Kernel (createEngine, defineModule, triggers, scope)
+    dist/store.min.js: Standalone reactive Store (createStore)
+    dist/router.min.js: Standalone trigger router (createRouter)
+    dist/modules/index.min.js: All 7 standard modules bundled together
+    dist/modules/<name>.min.js: Discrete modules (text, show, events, model, conditionals, loops, partials)
+
+================================================================================
+3. MODULE AUTHORING & CONTEXT REFERENCE
+================================================================================
+
+Module Definition Schema (`defineModule`):
+```js
+const myModule = defineModule({
+  name: 'module-name', // Regex: /^[a-z][a-z0-9-]*$/
+  version: '1.0.0',    // Optional
+  triggers: [          // Non-empty array of triggers
+    attr('data-attr', {
+      phase: 'link',   // 'transform' | 'link'
+      match(el) { return true; }, // Optional predicate
+      read(el, ctx) { return { config: el.getAttribute('data-attr') }; }, // Pure read
+      setup(el, data, ctx) {
+        // Returns cleanup function or uses ctx.onCleanup()
+        return () => {};
+      },
+      update(el, arg, ctx) {}, // Explicit update hook
+      cleanup(el, ctx) {},     // Explicit teardown
+    }),
+  ],
+  beforeMount(ctx) {}, // Optional mount hook
+  afterMount(ctx) {},  // Optional mount hook
+});
+```
+
+ModuleContext (`ctx`) Specification:
+- `ctx.scope`: Prototypally inherited lexical scope.
+- `ctx.store`: Reactive Store instance (or null).
+- `ctx.element`: Current DOM element.
+- `ctx.trigger`: The matching TriggerDefinition.
+- `ctx.moduleName`: Name of the owning module.
+- `ctx.document`: Owner DOM Document.
+- `ctx.window`: Owner DOM Window.
+- `ctx.matchedAttribute`: String name of matched attribute.
+- `ctx.handlers`: Handlers dictionary passed to mount/render.
+- `ctx.options`: Full options object passed to mount/render.
+- `ctx.target`: Mount target container.
+- `ctx.onCleanup(fn: () => void)`: Registers cleanup callback on unified LIFO stack.
+- `ctx.watch(path: string, cb: (val, prev, path) => void, opts?: { immediate?: boolean })`: Subscribes to store path. Auto-registers cleanup on unmount.
+- `ctx.afterConnect(fn: () => void)`: Enqueues microtask executed after element connects to DOM.
+- `ctx.update(fnOrArg)`: Safely invokes update callback with MODULE_UPDATE_FAILED error isolation.
+- `ctx.transform(node, subScope?)`: Recursively runs Transform phase on subtree.
+- `ctx.link(node, subScope?)`: Recursively runs Link phase on subtree.
+- `ctx.error(code, details?, ctx?)`: Dispatches structured diagnostic error.
+- `ctx.warn(code, message?, ctx?)`: Dispatches structured diagnostic warning.
+
+================================================================================
+4. STANDARD MODULES DETAILED SPECIFICATION
+================================================================================
+
+1. partials:
+   - Tag: `<partial name="template-name" [data="scope.path"] [prop="value"]>`
+   - Phase: Transform (built-in composition primitive)
+   - Slots: Default (`<slot>`) and Named (`<slot name="...">`) slot projection.
+     - Fallback content rendered if caller provides no matching children.
+     - Projection metadata stripped: `slot` attribute removed from output DOM elements.
+     - Multiple nodes targeting same slot preserve caller order.
+   - Scope:
+     - Partial template nodes run in isolated scope via `createIsolatedScope()`. Parent lexical scope is NOT inherited.
+     - Projected slot children retain caller lexical scope (mapped via `setElementScope`). Directives/events inside slots resolve caller scope.
+     - Mount-level Store is shared across both.
+   - Errors: PARTIAL_MISSING_NAME, PARTIAL_NOT_FOUND, SLOT_NOT_FOUND, PARTIAL_DEPTH_LIMIT.
+
+2. conditionals:
+   - Tags: `<if>`, `<else>`, `<template data-if>`, `<template data-else>`
+   - Phase: Transform (static) + Link (data-live)
+   - Operators:
+     `is-gt`     : Number(left) > Number(right) (uses 'than' or 'to' attribute)
+     `is-lt`     : Number(left) < Number(right)
+     `is-gte`    : Number(left) >= Number(right)
+     `is-lte`    : Number(left) <= Number(right)
+     `is-eq`     : String(left) === String(right)
+     `is-neq`    : String(left) !== String(right)
+     `is-truthy` : Boolean(left)
+   - Anchors: `<!-- lif{n} -->` ... `<!-- /lif{n} -->`
+   - Errors: MISSING_OPERATOR, UNKNOWN_OPERATOR, ELSE_AFTER_CONTENT, LIVE_IF_MISSING_OP.
+
+3. loops:
+   - Tags: `<for each="path" as="item" [index="i"] [key="item.id"] [data-live] [data-diff="simple|lcs|replace"]>`
+   - Phase: Transform (static) + Link (data-live)
+   - Scope: Prototypal child scope per item. Shadows parent variables natively.
+   - Anchors: `<!-- lf{n} -->` ... `<!-- /lf{n} -->`
+   - Diff Strategies:
+     - 'simple': Key map lookup, moves mutated items.
+     - 'lcs': Longest Increasing Subsequence, minimizes DOM moves, preserves focus.
+     - 'replace': Rebuilds subtree from scratch.
+   - Errors: FOR_MISSING_ATTR, FOR_NOT_ARRAY, FOR_MISSING_KEY, FOR_DUPLICATE_KEY, UNKNOWN_DIFF_STRATEGY.
+
+4. text:
+   - Triggers: `attr('data-text')`, `pattern(/^(?!data-).+/)`
+   - Phase: Link
+   - Syntax:
+     `<span data-text="user.name"></span>`
+     `<a href="/users/{id}" data-id="user.id"></a>`
+   - Security: Uses `textContent` (no HTML entity parsing). URL attributes validated via `isSafeUrlProtocol()`. Event handler attributes (onclick, etc.) rejected.
+   - Errors: BINDING_MISSING_PATH, BINDING_MISSING_DATA_ATTR, UNSAFE_EVENT_ATTR, UNSAFE_URL_ATTR, RESERVED_ATTR_NAME.
+
+5. show:
+   - Trigger: `attr('data-show')`
+   - Phase: Link
+   - Syntax: `<div data-show="isReady"></div>`
+   - Behavior: Sets native `el.hidden = !val`. NEVER mutates inline `style.display`. Injects scoped CSS rule once: `[data-show][hidden] { display: none !important; }`.
+   - Errors: SHOW_MISSING_PATH.
+
+6. model:
+   - Trigger: `attr('data-model')`
+   - Phase: Link
+   - Control Matrix:
+     - text, textarea, email, password: event 'input', reads `el.value`, writes `el.value = String(val)` (skips if equal).
+     - number, range: event 'input', reads `Number(el.value)` or null, writes `el.value = String(val)`.
+     - checkbox: event 'change', reads `el.checked`, writes `el.checked = Boolean(val)`.
+     - radio: event 'change', reads `el.value` if checked, writes `el.checked = (String(val) === el.value)`.
+     - select (single): event 'change', reads `el.value`, writes `el.value = String(val)`.
+     - select (multiple): event 'change', reads array of selected values, writes option selection.
+   - Errors: MODEL_MISSING_PATH, INDEXED_MODEL_PATH.
+
+7. events:
+   - Trigger: `pattern('data-on-')`
+   - Phase: Link
+   - Syntax: `<button data-on-click="save">Save</button>`
+   - Key Modifiers: `data-on-keydown-enter`, `data-on-keydown-escape`, `space`, `tab`, `up`, `down`, `left`, `right`, `delete`, `backspace`.
+   - Behavior: Delegated on mount target. `data-on-submit` calls `event.preventDefault()`. Handler called with `(event, element, ctx)`. Prototype method access blocked via `Object.hasOwn`.
+   - Errors: UNKNOWN_EVENT, UNKNOWN_KEY_MODIFIER, HANDLER_NOT_FOUND.
+
+================================================================================
+5. COMPLETE DIAGNOSTICS & ERROR CATALOG (43 CODES)
+================================================================================
+
+1. BATCH_FLUSH_LIMIT (Error): store.batch() flush reached 100 waves (infinite cycle).
+2. BINDING_MISSING_DATA_ATTR (Warn): {x} placeholder missing matching data-x attribute.
+3. BINDING_MISSING_PATH (Error): data-text attribute is empty.
+4. BLOCK_AFTER_NOT_FOUND (Warn): data-after hook handler not found in handlers dictionary.
+5. BLOCK_BEFORE_NOT_FOUND (Warn): data-before hook handler not found in handlers dictionary.
+6. COMPUTED_MANUAL_SET (Warn): Manual store.set() to a path managed by store.computed().
+7. COMPUTED_WITHOUT_STORE (Warn): Computed options passed to mount() without a store.
+8. ELSE_AFTER_CONTENT (Error): Elements found after <else> inside <if>.
+9. FOR_DUPLICATE_KEY (Error): Duplicate key value found in reactive <for data-live>.
+10. FOR_MISSING_ATTR (Error): <for> tag missing each or as attribute.
+11. FOR_MISSING_KEY (Warn): <for data-live> missing key attribute.
+12. FOR_NOT_ARRAY (Error): Loop target path is not an array.
+13. HANDLER_NOT_FOUND (Error): Handler function name not defined in handlers dictionary.
+14. INDEXED_MODEL_PATH (Warn): data-model contains numeric index (e.g. items.0.name).
+15. IN_PLACE_MUTATION (Warn): store.set() received identical object reference.
+16. LIVE_IF_MISSING_OP (Error): <if data-live> missing valid condition operator.
+17. MISSING_OPERATOR (Error): <if> tag missing condition operator attribute.
+18. MODEL_MISSING_PATH (Error): data-model attribute is empty.
+19. MODULE_AFTER_CONNECT_FAILED (Error): Exception in ctx.afterConnect() microtask.
+20. MODULE_CLEANUP_FAILED (Error): Exception in module cleanup callback.
+21. MODULE_READ_FAILED (Error): Exception in module read() hook.
+22. MODULE_SETUP_FAILED (Error): Exception in module setup() hook.
+23. MODULE_STORE_REQUIRED (Warn): Module ctx.watch() called without a store.
+24. MODULE_TRIGGER_OVERRIDDEN (Warn): Lower-priority module trigger shadowed.
+25. MODULE_UPDATE_FAILED (Error): Exception in module update() hook.
+26. MODULE_WATCH_FAILED (Error): Exception in reactive watch callback.
+27. MODULE_HANDLER_FAILED (Error): Exception or promise rejection in user handler callback.
+27. MOUNT_INVALID_TARGET (Error): Invalid target element or selector passed to mount().
+28. MOUNT_TARGET_NOT_FOUND (Error): CSS selector in mount() matched zero elements.
+29. MOUNT_HOOK_FAILED (Error): beforeRender or afterRender mount lifecycle hook threw.
+30. MOUNT_ALREADY_MOUNTED (Warn): Duplicate mount on an already mounted target.
+31. MOUNT_TEMPLATE_NOT_FOUND (Error): Template id="tpl-{name}" not found in document.
+29. PARTIAL_DEPTH_LIMIT (Error): Partial recursion depth limit exceeded.
+30. PARTIAL_MISSING_NAME (Error): <partial> tag missing name attribute.
+31. PARTIAL_NOT_FOUND (Error): Partial template id="tpl-{name}" not found.
+32. SLOT_NOT_FOUND (Error): Slot name targeted by caller child not found in partial template; content discarded.
+33. PATH_CLOBBER (Warn): Intermediate non-object segment overwritten in store.set().
+33. PIPELINE_DEPTH_LIMIT (Error): Transform phase reached 100 iterations limit.
+34. RESERVED_ATTR_NAME (Error): Reserved name used as {x} attribute placeholder.
+35. SHOW_MISSING_PATH (Error): data-show attribute is empty.
+36. TABLE_FOSTER_PARENTING (Warn): HTML parser foster-parented special tags outside <table>.
+37. TEMPLATE_NOT_FOUND (Error): Template element not found.
+38. UNKNOWN_DIFF_STRATEGY (Warn): Unrecognized data-diff value on <for data-live>.
+39. UNKNOWN_EVENT (Error): Unsupported event name in data-on-{event}.
+40. UNKNOWN_KEY_MODIFIER (Error): Unsupported key modifier in data-on-keydown-{key}.
+41. UNKNOWN_OPERATOR (Error): Unrecognized condition operator starting with is-.
+42. UNSAFE_EVENT_ATTR (Error): Reactive binding attempted on on* event attribute.
+43. UNSAFE_URL_ATTR (Warn): Unsafe URL protocol sanitized to empty string.
+
+================================================================================
+6. COMPLETE WORKING PATTERNS
+================================================================================
+
+Pattern 1: Custom Tooltip Module with Auto-Cleanup
+```js
+import { defineModule, attr } from 'lime-csr-js';
+
+export const tooltipModule = defineModule({
+  name: 'tooltip',
+  triggers: [
+    attr('data-tooltip', {
+      phase: 'link',
+      read(el) {
+        return { text: el.getAttribute('data-tooltip') };
+      },
+      setup(el, data, ctx) {
+        if (!data?.text) return;
+        const tip = ctx.document.createElement('div');
+        tip.className = 'tooltip-bubble';
+        tip.textContent = data.text;
+
+        const onEnter = () => ctx.document.body.appendChild(tip);
+        const onLeave = () => tip.remove();
+
+        el.addEventListener('mouseenter', onEnter);
+        el.addEventListener('mouseleave', onLeave);
+
+        ctx.onCleanup(() => {
+          el.removeEventListener('mouseenter', onEnter);
+          el.removeEventListener('mouseleave', onLeave);
+          tip.remove();
+        });
+      },
+    }),
+  ],
+});
+```
+
+Pattern 2: Custom Engine Composition
+```js
+import { createEngine, createStore } from 'lime-csr-js';
+import { text, show, events, conditionals, loops } from 'lime-csr-js/modules';
+import { tooltipModule } from './tooltip.js';
+
+const engine = createEngine({
+  modules: [
+    tooltipModule,
+    conditionals(),
+    loops(),
+    text(),
+    show(),
+    events(),
+  ],
+});
+
+const store = createStore({ items: [{ id: 1, name: 'Item 1' }] });
+const instance = engine.mount(document.getElementById('app'), 'main-view', store);
+```
+
+Pattern 3: Table and Select Templates (Avoiding Foster-Parenting)
+```html
+<!-- Table condition and loop using template attributes -->
+<table>
+  <thead>
+    <tr><th>ID</th><th>Name</th></tr>
+  </thead>
+  <tbody>
+    <template data-if is-truthy="hasItems">
+      <template data-for each="items" as="item" key="item.id" data-live>
+        <tr>
+          <td data-text="item.id"></td>
+          <td data-text="item.name"></td>
+        </tr>
+      </template>
+      <template data-else>
+        <tr><td colspan="2">No items found</td></tr>
+      </template>
+    </template>
+  </tbody>
+</table>
+```

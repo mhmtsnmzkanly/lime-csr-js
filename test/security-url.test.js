@@ -33,8 +33,7 @@ test('static interpolation sanitizes unsafe url schemes in url attributes', () =
 
   try {
     const target = document.getElementById('app');
-    mount('url-test', {
-      target,
+    mount(target, 'url-test', null, {
       context: {
         evilJs: 'javascript:alert(1)',
         evilData: 'data:text/html,<script>alert(1)</script>',

@@ -271,11 +271,11 @@
     const store = createStore({});
     const host = document.createElement('div');
     const handlers = {
-      handler(e, el) { clickLog.push(el.id); }
+      handler({ element }) { clickLog.push(element.id); }
     };
 
     const frag = document.importNode(template.content, true);
-    const cleanup = mount('event-ignore', {}, host, store, { handlers });
+    const cleanup = mount(host, 'event-ignore', store, { handlers });
 
     // Simulate clicks
     host.querySelector('#before').click();
@@ -312,10 +312,8 @@
 
     let cleanup;
     try {
-      cleanup = mount('ignore-pipeline', {
-        target: host,
+      cleanup = mount(host, 'ignore-pipeline', createStore({}), {
         context: { show: true, items: ['A', 'B'] },
-        store: createStore({}),
       });
     } finally {
       console.warn = originalWarn;

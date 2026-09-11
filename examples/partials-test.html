@@ -66,12 +66,20 @@
   <span class="custom-field">${custom}</span>
 </template>
 
+<!-- Slot-enabled card: header slot + default slot -->
+<template id="tpl-card">
+  <div class="card">
+    <header class="card-header"><slot name="header">Default Header</slot></header>
+    <div class="card-body"><slot></slot></div>
+  </div>
+</template>
+
 <!-- ═══════════════════════ Test output ══════════════════════════════════ -->
 <pre id="log"></pre>
 <div id="renders"></div>
 
 <script type="module">
-  import { expandPartials } from '../src/partials.js';
+  import { render } from '../src/index.js';
 
   const log  = document.getElementById('log');
   const area = document.getElementById('renders');
@@ -93,11 +101,11 @@
     log.innerHTML += `<span class="note">   ↳ ${msg}</span>\n`;
   }
 
-  /** Test helper: writes innerHTML into a host, runs expandPartials. */
+  /** Test helper: writes innerHTML into a host, runs render. */
   function run(html, context = {}) {
     const host = document.createElement('div');
     host.innerHTML = html;
-    expandPartials(host, context);
+    render(host, { context });
     return host;
   }
 
@@ -228,7 +236,7 @@
 
     // A depth limit warning should have been issued
     const depthWarn = warnings.find((w) =>
-      typeof w === 'string' && w.includes('depth limit'),
+      typeof w === 'string' && (w.includes('depth limit') || w.includes('PIPELINE_DEPTH_LIMIT')),
     );
     assert('depth limit warning issued', !!depthWarn, true);
     // Page did not crash; something is in the DOM (partially expanded)
@@ -323,6 +331,21 @@
     note('attr.name.startsWith("data-") is skipped entirely in expandPartials — ' +
       'data-* is reserved for engine attributes (data-model, data-text, ...) ✓');
     show('12. data-* excluded from props', host);
+  }
+
+  // ── 13. Built-in Partial + Slot Composition ────────────────────────────────
+  group('13. Built-in Slots: default and named slots project caller content');
+  {
+    const host = run(`
+      <partial name="card">
+        <h3 slot="header">Custom Title</h3>
+        <p>Projected body paragraph</p>
+      </partial>
+    `, {});
+    assert('named slot projected', host.querySelector('.card-header h3')?.textContent, 'Custom Title');
+    assert('default slot projected', host.querySelector('.card-body p')?.textContent, 'Projected body paragraph');
+    assert('slot attribute stripped', host.querySelector('h3')?.hasAttribute('slot'), false);
+    show('13. Built-in Partial + Slots', host);
   }
 
   // ── Summary ────────────────────────────────────────────────────────────────

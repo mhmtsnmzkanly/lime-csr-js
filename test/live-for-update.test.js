@@ -38,7 +38,7 @@ test('live for updates item content in-place when item properties change', () =>
   });
 
   const target = document.getElementById('app');
-  mount('todo-list', { target, store });
+  mount(target, 'todo-list', store);
 
   const initialLi1 = target.querySelector('#todo-1');
   const initialLi2 = target.querySelector('#todo-2');
@@ -94,7 +94,7 @@ test('live for preserves DOM identity and active focus during sort/reorder', () 
   });
 
   const target = document.getElementById('app');
-  mount('focus-list', { target, store });
+  mount(target, 'focus-list', store);
 
   const inputB = target.querySelector('#input-b');
   const rowB = target.querySelector('#item-b');
@@ -152,7 +152,7 @@ test('live for with lcs preserves activeElement focus on stay-put items during r
   });
 
   const target = document.getElementById('app');
-  mount('focus-stayput', { target, store });
+  mount(target, 'focus-stayput', store);
 
   const inputB = target.querySelector('#input-b');
   inputB.focus();
@@ -200,7 +200,7 @@ test('live for with lcs strategy updates item in-place and preserves unmutated i
   });
 
   const target = document.getElementById('app');
-  mount('lcs-list', { target, store });
+  mount(target, 'lcs-list', store);
 
   const initialItem2 = target.querySelector('#item-2');
   const initialItem3 = target.querySelector('#item-3');
@@ -253,7 +253,7 @@ test('template[data-for][data-live] works inside tables and updates in-place', (
   });
 
   const target = document.getElementById('app');
-  mount('table-live', { target, store });
+  mount(target, 'table-live', store);
 
   let trs = target.querySelectorAll('tr');
   assert.equal(trs.length, 2);

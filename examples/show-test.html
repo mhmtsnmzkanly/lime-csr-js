@@ -17,13 +17,12 @@
   </style>
 </head>
 <body>
-<h1>src/bindings-show.js — verification tests</h1>
+<h1>show module — verification tests</h1>
 <pre id="log"></pre>
 <div id="renders"></div>
 
 <script type="module">
-  import { createStore } from '../src/store.js';
-  import { setupShowBindings } from '../src/bindings-show.js';
+  import { createStore, render } from '../src/index.js';
 
   const log  = document.getElementById('log');
   const area = document.getElementById('renders');
@@ -62,7 +61,7 @@
     const host  = document.createElement('div');
     host.innerHTML = `<div class="panel" data-show="open">content</div>`;
 
-    setupShowBindings(host, store);
+    render(host, { store });
     const panel = host.querySelector('.panel');
 
     assert('initial state: hidden is absent', panel.hidden, false);
@@ -86,7 +85,7 @@
     const host  = document.createElement('div');
     host.innerHTML = `<div class="flex-box" data-show="show" style="display:flex">a<span>b</span></div>`;
 
-    setupShowBindings(host, store);
+    render(host, { store });
     const box = host.querySelector('.flex-box');
 
     assert('initial state: flex preserved', box.style.display, 'flex');
@@ -110,7 +109,7 @@
     const host  = document.createElement('div'); // not yet added to the document
 
     host.innerHTML = `<div class="modal" data-show="open">modal content</div>`;
-    setupShowBindings(host, store); // runs BEFORE the fragment is added to the DOM
+    render(host, { store }); // runs BEFORE the fragment is added to the DOM
 
     const modal = host.querySelector('.modal');
     assert('already hidden at setup time (before ever visible)', modal.hidden, true);
@@ -122,7 +121,7 @@
     assert('still hidden AFTER being added to the DOM (no late paint)', modal.hidden, true);
     host.remove();
 
-    note('setupShowBindings applied the initial state before the fragment was added to the DOM');
+    note('render applied the initial state before the fragment was added to the DOM');
   }
 
   // ── 4. Identity proof: input value must survive hide/show ────────────────
@@ -132,7 +131,7 @@
     const host  = document.createElement('div');
     host.innerHTML = `<div data-show="visible"><input type="text" value="do-not-touch"></div>`;
 
-    setupShowBindings(host, store);
+    render(host, { store });
     const input = host.querySelector('input');
     input.value = 'user typed this';
 
@@ -155,7 +154,7 @@
     const host  = document.createElement('div');
     host.innerHTML = `<div class="panel" data-show="open">x</div>`;
 
-    const cleanup = setupShowBindings(host, store);
+    const cleanup = render(host, { store });
     const panel = host.querySelector('.panel');
 
     cleanup();
@@ -179,7 +178,7 @@
     host.innerHTML = `<div data-show="">x</div>`;
 
     let threw = false;
-    try { setupShowBindings(host, store); } catch { threw = true; }
+    try { render(host, { store }); } catch { threw = true; }
 
     console.warn = orig;
 

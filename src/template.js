@@ -11,7 +11,7 @@
  *     decoding), so escapeHtml/safeAttr is unnecessary here — and if used,
  *     characters like "&" would show up literally as "&amp;" on screen
  *     (double-encoding). Security already comes from the DOM APIs themselves;
- *     see the same rationale in bindings.js (the raw-value rule for setAttribute).
+ *     the same raw-value rule applies as in attribute mutations.
  *   - The cache holds the original; every render takes its own cloneNode(true).
  *   - <if>, <for>, <partial>, and reactive data-* are NOT processed in this module.
  *   - resolveStatic does not touch content inside a not-yet-expanded <if
@@ -28,6 +28,7 @@ import { getByPath } from "./store.js";
 import { error, isDevMode } from "./errors.js";
 import { inLiveBlock, inUnexpandedFor, inIgnoredBlock } from "./shared.js";
 import { isSafeUrlProtocol } from "./utils.js";
+import { getElementScope } from "./core/scope.js";
 
 // URL attributes that require protocol safety validation
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'cite', 'poster', 'ping']);
@@ -37,9 +38,7 @@ const templateCache = new Map();
 
 // Special tags written inside a <table> but moved out by the HTML parser's
 // "foster parenting" algorithm (see detectTableFosterParenting).
-// NOTE: <partial> is DELIBERATELY left out — <partial> is ALWAYS childless BY
-// DESIGN (it's just a reference), so the "is it empty?" signal carries no
-// discriminating power for it (see the function's JSDoc).
+// NOTE: <partial> expansion runs during the Transform phase and replaces itself before this check.
 const SPECIAL_TAGS = new Set(['IF', 'FOR', 'ELSE']);
 const TABLE_CHILD_SELECTOR = 'tr, td, th, tbody, thead, tfoot, caption, col, colgroup';
 
@@ -84,48 +83,6 @@ function resolveString(str, context, store = null) {
 }
 
 /**
- * Is the node INSIDE the content of a not-yet-expanded <if data-live> or
- * <for data-live> block? (Consistent with the same pattern in bindings.js.)
- *
- * IMPORTANT DISTINCTION: if an element IS ITSELF a live-root
- * (if[data-live]/for[data-live]) — even if one of ITS ANCESTORS is ALSO a
- * live-root — its own attributes like is-.../than/each/as/data-live may
- * carry a dynamic path via ${...} (e.g. `is-truthy="${likedPath}"`, or
- * `each="${repliesPath}"` on a nested <for data-live>) and MUST be resolved
- * this pass: all live-roots within the same partial/render call share the
- * SAME (correct) context. Only descendants that are NOT themselves a
- * live-root (text/element CONTENT) are deferred.
- *
- * @param {Node} node
- * @returns {boolean}
- */
-
-
-/**
- * Is the node INSIDE the content of a not-yet-expanded ordinary
- * (non-data-live) <for> block? (Same pattern as inUnexpandedFor in partials.js.)
- *
- * WHY THIS IS NEEDED: loops.js calls resolveStatic(frag, itemContext) for the
- * outer item BEFORE expanding an inner (not-yet-expanded) <for>. A bare
- * interpolation like ${p.label} inside the inner <for>'s body, if resolved
- * this pass against the outer context (since p isn't bound yet), would
- * become an empty/wrong string — AND since the placeholder would be gone,
- * the inner loop's own (correct-context) pass would have nothing left to
- * resolve. So such a node is SKIPPED here; the inner <for>'s own
- * resolveStatic call (via loops.js's recursion in the same pass) resolves it
- * with the correct itemContext.
- *
- * SAME DISTINCTION (consistent with inLiveBlock): if an element IS ITSELF a
- * not-yet-expanded <for>, its own attributes like each/as/index (e.g.
- * `each="${x}"`) can still be resolved this pass — only descendants INSIDE
- * the <for> (text/element content) are deferred.
- *
- * @param {Node} node
- * @returns {boolean}
- */
-
-
-/**
  * Are the <table>s in the fragment victims of a special tag that got moved
  * out by the HTML parser's "foster parenting" algorithm?
  *
@@ -152,11 +109,7 @@ function resolveString(str, context, store = null) {
  * table (satisfies condition 2 but not condition 1) — never produces a false positive.
  *
  * OUT OF SCOPE (deliberate limits):
- *   - <partial>: not included in SPECIAL_TAGS — <partial> is ALWAYS childless
- *     by design, so the "is it empty?" signal carries no discriminating power
- *     for it (looks the same whether fostered or not). Since there's no
- *     reliable discriminating signal, it's not checked at all, to avoid
- *     raising false-positive risk.
+ *   - <partial>: replaced during Transform phase prior to static interpolation.
  *   - Not detected if the special tag is NOT the <table>'s immediate previous
  *     sibling (e.g. nested inside a <div>) — a false negative, acceptable per
  *     KISS (this is only a dev-mode warning anyway, it doesn't fix the behavior).
@@ -205,27 +158,42 @@ export function getTemplate(name) {
 /**
  * Updates every text node and element attribute inside a DocumentFragment via
  * ${path} resolution. Static (one-time) interpolation only — reactive
- * updates are bindings.js's responsibility.
+ * updates are managed by reactive modules (text, model, show) in the Link phase.
  *
- * Does NOT touch nodes inside a not-yet-expanded <if data-live>/<for
- * data-live> — that content is only resolved via setupLiveIfs/setupLiveFors's
- * renderFn call, with the correct branch/item context (see inLiveBlock). For
- * the same reason, also does NOT touch nodes INSIDE a not-yet-expanded
+ * Does NOT touch nodes inside a not-yet-expanded <if data-live>/<for data-live> —
+ * that content is resolved during dynamic item rendering with the correct item scope
+ * (see inLiveBlock). For the same reason, also does NOT touch nodes INSIDE a not-yet-expanded
  * ordinary (non-data-live) <for> — in nested static <for>s, the inner loop's
  * own variable isn't bound yet, so early resolution would be wrong/empty
- * (see inUnexpandedFor). That content is resolved with the correct
- * itemContext by loops.js's own recursive resolveStatic call in the same pass.
+ * (see inUnexpandedFor). That content is resolved with the correct itemScope by
+ * modules/loops.js's own resolveStatic call in the same pass.
  *
  * @param {DocumentFragment|Element} root - Root node to traverse
  * @param {Object} context                - Object used for path resolution
  * @param {import('./store.js').Store|null} [store=null] - Optional store fallback
  * @returns {void}
  */
+function getNodeScope(node, fallbackContext) {
+  let curr = node;
+  while (curr) {
+    const s = getElementScope(curr);
+    if (s) return s;
+    curr = curr.parentNode;
+  }
+  return fallbackContext;
+}
+
 export function resolveStatic(root, context, store = null) {
+  if (!root) return;
+  const doc = root.ownerDocument || globalThis.document;
+  if (!doc || typeof doc.createTreeWalker !== 'function') return;
+  const filter = doc.defaultView?.NodeFilter || globalThis.NodeFilter;
+  const showFlags = (filter?.SHOW_TEXT ?? 4) | (filter?.SHOW_ELEMENT ?? 1);
+
   // TreeWalker: traverses both text nodes (SHOW_TEXT) and elements (SHOW_ELEMENT)
-  const walker = document.createTreeWalker(
+  const walker = doc.createTreeWalker(
     root,
-    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+    showFlags,
   );
 
   let node = walker.nextNode();
@@ -234,20 +202,20 @@ export function resolveStatic(root, context, store = null) {
       node = walker.nextNode();
       continue;
     }
-    if (node.nodeType === Node.TEXT_NODE) {
+    const nodeScope = getNodeScope(node, context);
+    if (node.nodeType === 3) {
       // ${} in the middle of a text node: "Hello ${user.name}, welcome" is a single node.
-      // A one-time replacement is sufficient here; splitting for reactivity, if
-      // needed, is done by bindings.js.
+      // A one-time replacement is sufficient here; dynamic reactivity is handled during Link phase.
       if (PLACEHOLDER.test(node.nodeValue)) {
         PLACEHOLDER.lastIndex = 0; // reset the stateful regex
-        node.nodeValue = resolveString(node.nodeValue, context, store);
+        node.nodeValue = resolveString(node.nodeValue, nodeScope, store);
       }
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
+    } else if (node.nodeType === 1) {
       // ${} in element attributes
       for (const attr of Array.from(node.attributes)) {
         if (PLACEHOLDER.test(attr.value)) {
           PLACEHOLDER.lastIndex = 0;
-          let resolved = resolveString(attr.value, context, store);
+          let resolved = resolveString(attr.value, nodeScope, store);
           if (URL_ATTRS.has(attr.name.toLowerCase())) {
             if (!isSafeUrlProtocol(resolved)) {
               if (isDevMode()) error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
@@ -266,9 +234,9 @@ export function resolveStatic(root, context, store = null) {
  * Reads the template, clones it, resolves ${path} placeholders with the
  * context (and optional store fallback), and returns a ready DocumentFragment.
  *
- * Why it returns a fragment (not a string): reactive handles (bindings.js)
- * will later bind directly to DOM nodes; that binding couldn't be
- * established if a string were returned.
+ * Why it returns a fragment (not a string): reactive handles
+ * will later bind directly to DOM nodes during the Link phase; that binding
+ * couldn't be established if a string were returned.
  *
  * @param {string} name    - Template name
  * @param {Object} [context={}] - Value object for ${path} resolution

@@ -19,13 +19,12 @@
   </style>
 </head>
 <body>
-<h1>src/bindings.js — verification tests</h1>
+<h1>bindings (text module) — verification tests</h1>
 <pre id="log"></pre>
 <div id="renders"></div>
 
 <script type="module">
-  import { createStore } from '../src/store.js';
-  import { setupBindings } from '../src/bindings.js';
+  import { createStore, render } from '../src/index.js';
 
   const log  = document.getElementById('log');
   const area = document.getElementById('renders');
@@ -64,7 +63,7 @@
     const host = document.createElement('div');
     host.innerHTML = `<span data-text="count"></span>`;
 
-    const cleanup = setupBindings(host, store);
+    const cleanup = render(host, { store });
 
     const span = host.querySelector('span');
     assert('initial value: 0',        span.textContent, '0');
@@ -92,7 +91,7 @@
       <span id="a" data-text="score"></span>
       <span id="b" data-text="score"></span>`;
 
-    setupBindings(host, store);
+    render(host, { store });
 
     const a = host.querySelector('#a');
     const b = host.querySelector('#b');
@@ -111,7 +110,7 @@
     const host = document.createElement('div');
     host.innerHTML = `<a href="/u/{h}" data-h="user.handle">profile</a>`;
 
-    setupBindings(host, store);
+    render(host, { store });
 
     const a = host.querySelector('a');
     assert('initial href: /u/ali',    a.getAttribute('href'), '/u/ali');
@@ -135,7 +134,7 @@
     host.innerHTML =
       `<a href="/user/{a}/post/{b}" data-a="user.handle" data-b="post.id">show</a>`;
 
-    setupBindings(host, store);
+    render(host, { store });
 
     const a = host.querySelector('a');
     assert('initial href',            a.getAttribute('href'), '/user/ali/post/7');
@@ -159,7 +158,7 @@
     const host = document.createElement('div');
     host.innerHTML = `<span data-text="val"></span>`;
 
-    const cleanup = setupBindings(host, store);
+    const cleanup = render(host, { store });
     const span = host.querySelector('span');
 
     assert('initial: before',      span.textContent, 'before');
@@ -183,7 +182,7 @@
     const store = createStore({ x: 1 });
     const host = document.createElement('div');
     host.innerHTML = `<span data-text="x"></span>`;
-    const cleanup = setupBindings(host, store);
+    const cleanup = render(host, { store });
 
     cleanup();
     let threw = false;
@@ -205,7 +204,7 @@
       <span data-text=""></span>
       <a href="/u/{z}">link</a>`;
 
-    setupBindings(host, store);
+    render(host, { store });
 
     console.warn = orig;
 
@@ -221,7 +220,7 @@
     const host  = document.createElement('div');
     host.innerHTML = `<a href="{h}" data-h="link">click</a>`;
 
-    setupBindings(host, store);
+    render(host, { store });
 
     const a = host.querySelector('a');
     assert('javascript: blocked → empty href', a.getAttribute('href'), '');
@@ -239,7 +238,7 @@
     const host  = document.createElement('div');
     host.innerHTML = `<span data-text="name"></span>`;
 
-    setupBindings(host, store);
+    render(host, { store });
 
     const span = host.querySelector('span');
     assert('null → ""', span.textContent, '');
@@ -266,7 +265,7 @@
     const warns1 = [];
     const orig1  = console.warn;
     console.warn = (...args) => { warns1.push(args[0]); };
-    setupBindings(host, store);
+    render(host, { store });
     console.warn = orig1;
 
     const reservedWarns = warns1.filter((w) => typeof w === 'string' && w.includes('RESERVED_ATTR_NAME'));
@@ -286,7 +285,7 @@
     const warns2 = [];
     const orig2  = console.warn;
     console.warn = (...args) => { warns2.push(args[0]); };
-    setupBindings(host2, store);
+    render(host2, { store });
     console.warn = orig2;
 
     assert('valid name ({username}): no warning', warns2.length, 0);

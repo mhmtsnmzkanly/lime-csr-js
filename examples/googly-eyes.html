@@ -737,8 +737,7 @@
     let stopEyes = () => {};
     let blinkEye = () => {};
 
-    const mountCleanup = mount("googly-eyes", {
-      target,
+    const mountCleanup = mount(target, "googly-eyes", null, {
       context: {
         eyebrow: "lime-csr.js example",
         title: "Googly Eyes",
@@ -758,7 +757,7 @@
           "https://i.ibb.co/2YjZYj7n/pupil-highlight.png",
       },
       handlers: {
-        blink(_event, element) {
+        blink({ element }) {
           const eye = element.matches("[data-eye]")
             ? element
             : element.closest("[data-eye]");

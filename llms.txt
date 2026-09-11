@@ -1,40 +1,222 @@
-# lime-csr.js
+# lime-csr-js
 
-> An eval-free, build-less, HTML-first reactive render engine; works under a strict CSP.
+Version: 0.3.0  
+Architecture: Unprivileged Micro-Kernel + Discrete Modules  
+Type: Browser-First Client-Side Rendering Engine  
+CSP: Compatible with script-src 'self' (Eval-Free)
 
-Core rule: if an element carries no `data-*` (or a special tag like `<if>`/`<for>`/`<partial>`), the engine never touches it — it stays plain, static HTML. Once `data-*` is added, that element binds to the store and becomes reactive. It is close in spirit to Alpine.js, but unlike directives such as `x-on`/`x-show`/`x-model` that EXECUTE a JS expression, lime-csr only does name/path MATCHING (`data-on-click="deleteItem"` is a dictionary key, not an expression) — no `eval`/`new Function` is ever used.
+---
 
-## Directory Structure & Modules
-- `src/index.js`: Main entry point. Orchestrates `mount()`, `unmount()`, and `render()`.
-- `src/store.js`: Path-based reactive state (`createStore`, `getByPath`, `setByPath`). Supports upward/downward notifications, computed values, and prototype pollution guards.
-- `src/template.js`: Template cache and static `${path}` interpolation. Detects table foster parenting.
-- `src/conditionals.js`: Statically evaluates `<if>`/`<else>` conditions against the context.
-- `src/partials.js`: Expands `<partial>` tags recursively with isolated contexts and custom props.
-- `src/loops.js`: Expands static `<for>` loops with inherited contexts.
-- `src/bindings.js`: Reactive bindings for `data-text` and `{x}`/`data-x` attributes.
-- `src/bindings-model.js`: Two-way form binding for `data-model` (inputs, textareas, selects, checkboxes, radios).
-- `src/bindings-show.js`: Reactive visibility using `data-show` (CSS display toggle).
-- `src/bindings-events.js`: Event delegation with `data-on-*`.
-- `src/bindings-blocks.js`: Reactive `<if data-live>` blocks with lifecycle hooks and container element wrapper (`el="..."`).
-- `src/bindings-loops.js`: Reactive `<for data-live key="...">` loops with diffing strategies (`simple`, `lcs`, `replace`), lifecycle hooks, and container element wrapper (`el="..."`).
-- `src/errors.js`: Developer mode warnings (via `console.warn`).
-- `src/utils.js`: XSS escaping and URL sanitization.
-- `src/shared.js`: Pure utility helper functions (inLiveBlock, inUnexpandedFor, longestIncreasingSubsequenceIndices).
+## 1. Executive Summary
 
-## Core APIs
-- `createStore(initialState)`: Returns a new reactive store.
-  - `store.get(path?)`: Gets value at path or entire state if path is omitted.
-  - `store.set(path, value)`: Sets value at path. Notifies subscribers. Returns boolean (if changed). Compares via `Object.is`.
-  - `store.update(path, fn)`: Updates value at path via a function.
-  - `store.subscribe(path, callback)`: Listens for changes. Returns unsubscribe function.
-  - `store.computed(path, deps, fn)`: Registers a derived value that automatically recomputes when dependencies change.
-- `mount(templateName, context, target, store, options?)`: Mounts a template. Returns a cleanup function.
-  - `options.handlers`: Dictionary of event and lifecycle hook callbacks.
-  - `options.beforeRender(context, store)`: Lifecycle hook before render.
-  - `options.afterRender(target, store)`: Lifecycle hook after target is populated.
-- `unmount(target)`: Cleans up all bindings on the target element and empties it.
-- `setDevMode(boolean)`: Toggles developer mode warnings on or off.
+lime-csr-js is an eval-free, client-side rendering engine built on standard browser APIs. Templates remain native HTML `<template>` elements. An unprivileged Micro-Kernel handles generic routing, lifecycle execution, prototypal scoping, and unified LIFO cleanups. Template composition (`<partial>` and `<slot>`) is built into the runtime, while behavioral features (conditionals, loops, text, visibility, form binding, and event delegation) are discrete extensible modules.
 
-## Documentation
-- [README.md](README.md): High-level overview, philosophy, quick start, and feature guide.
-- [DOCS.md](DOCS.md): Full technical reference detailing syntax, behavior, common mistakes, APIs, lifecycle hooks, error codes, limitations, and architecture.
+---
+
+## 2. Package Exports & Subpaths
+
+```js
+// Root: Facade, Store, Diagnostics, Kernel Primitives, Standard Modules
+import { mount, unmount, render, createStore, createEngine, defineModule } from 'lime-csr-js';
+
+// Core: Kernel Primitives only (alternative direct subpath import)
+// import { createEngine, defineModule, attr, attrs, tag, pattern, createScope } from 'lime-csr-js/core';
+
+// Modules: 7 Standard Modules
+import { partials, conditionals, loops, text, show, model, events } from 'lime-csr-js/modules';
+
+// Single Module import (alternative granular import)
+// import show from 'lime-csr-js/modules/show';
+
+// Browser / CDN distribution (jsDelivr / unpkg)
+// Full bundle: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/index.min.js'
+// Micro-Kernel: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/core.min.js'
+// Standalone Store: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/store.min.js'
+// Discrete Modules: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/{text,show,events,model,conditionals,loops,partials}.min.js'
+```
+
+---
+
+## 3. Core Facade API
+
+```js
+// Mount template into DOM container (CSS selector or Element)
+const instance = mount('#app', 'templateName', reactiveStore, {
+  context: { staticKey: 'value' },  // Read once during transform (${staticKey})
+  handlers: {                        // Event handlers for data-on-*
+    handleClick({ event, element, scope, store, data }) { /* application logic */ },
+  },
+  computed: {                        // Registered automatically on store
+    isReady: { deps: ['items'], fn: (items) => items.length > 0 },
+  },
+});
+
+// Teardown
+unmount(instance); // or unmount('#app');
+
+// In-place rendering of arbitrary fragments
+const renderCleanup = render(fragment, { store, context, handlers });
+```
+
+---
+
+## 4. Reactive Store API
+
+State paths are dot-separated strings (e.g. `"user.name"`). Upward and downward path changes trigger automatically. Subscriptions are garbage-collected upon unmount.
+
+```js
+import { createStore } from 'lime-csr-js';
+
+const store = createStore({ count: 0, user: { name: 'Alice' } });
+
+store.get('user.name');                   // "Alice"
+store.set('user.name', 'Bob');            // Notifies subscribers
+store.update('count', (n) => n + 1);      // Functional update
+store.subscribe('count', (newVal, old) => {}); // Returns unsubscribe function
+store.batch(() => {                       // Coalesces notifications into 1 flush wave
+  store.set('count', 10);
+  store.set('user.name', 'Charlie');
+});
+store.computed('doubled', ['count'], (c) => c * 2);
+```
+
+Security: `__proto__`, `constructor`, and `prototype` are rejected as path segments.
+
+---
+
+## 5. Micro-Kernel & Module Contract
+
+### Kernel vs Module Separation
+- **Kernel = Mechanism:** Triggers, route compilation, precedence, prototypal scope, lifecycle runner, unified cleanup stack, diagnostics. Zero feature semantics.
+- **Module = Behavior:** Conditionals, loops, partials, text, form model, events.
+
+### Defining a Custom Module (`defineModule`)
+
+```js
+import { defineModule, attr } from 'lime-csr-js';
+
+export const tooltip = defineModule({
+  name: 'tooltip', // /^[a-z][a-z0-9-]*$/
+  version: '1.0.0',
+  triggers: [
+    attr('data-tooltip', {
+      phase: 'link', // 'transform' | 'link'
+
+      read(el, ctx) {
+        // Pure extraction, executed ONCE during initial setup
+        return { text: el.getAttribute('data-tooltip') };
+      },
+
+      setup(el, data, ctx) {
+        if (!data?.text) return;
+        const handler = () => { el.title = data.text; };
+        el.addEventListener('mouseenter', handler);
+
+        // Auto-cleanup on unified LIFO stack
+        ctx.onCleanup(() => el.removeEventListener('mouseenter', handler));
+      },
+    }),
+  ],
+});
+```
+
+### Composing a Custom Engine (`createEngine`)
+
+```js
+import { createEngine } from 'lime-csr-js';
+import { text, show, events } from 'lime-csr-js/modules';
+import { tooltip } from './tooltip.js';
+
+// Precedence is determined by array order: earlier modules take precedence.
+const engine = createEngine({
+  modules: [tooltip, text(), show(), events()],
+});
+
+engine.mount(target, 'app', store);
+```
+
+---
+
+## 6. Trigger Primitives
+
+- `attr(name, hooks)`: Matches exact attribute name (e.g. `data-show`).
+- `attrs({ required: ['a', 'b'], optional: ['c'], phase }, hooks)`: Matches multi-attribute group. Anchored to first required attribute.
+- `tag(name, hooks)`: Matches exact HTML tag name (normalized to uppercase, e.g. `PARTIAL`).
+- `pattern(prefixOrRegex, hooks)`: Matches attribute name prefix (`data-on-`) or RegExp.
+
+---
+
+## 7. Execution Phases: Transform vs Link
+
+1. **Phase 1: Transform (Fixed-Point Macro Expansion):**
+   - Structural DOM mutations allowed (`replaceWith`, `appendChild`, `remove`).
+   - Runs in a loop until DOM stabilizes (max 100 passes).
+   - Modules: `partials`, `conditionals`, `loops`, `resolveStatic`.
+2. **Phase 2: Link (Single-Pass Traversal):**
+   - Zero structural mutations allowed. Topology is frozen.
+   - Visited once in tree order.
+   - Attaches event listeners, store watches (`ctx.watch`), two-way model bindings.
+   - Modules: `model`, `text`, `show`, `events`, live conditional/loop anchors.
+
+---
+
+## 8. ModuleContext (`ctx`)
+
+Available in trigger hooks:
+- `ctx.scope`: Lexical template scope with native prototypal inheritance.
+- `ctx.store`: Reactive Store instance.
+- `ctx.element`: Current DOM element.
+- `ctx.document`: Owning Document.
+- `ctx.matchedAttribute`: Matched attribute name.
+- `ctx.onCleanup(fn)`: Registers cleanup callback on unified LIFO stack.
+- `ctx.watch(path, cb, opts?)`: Watches store path; auto-registers cleanup.
+- `ctx.afterConnect(fn)`: Schedules callback after element is connected to DOM.
+- `ctx.update(fnOrArg?)`: Runs update callback with error isolation.
+- `ctx.error(code, details)` / `ctx.warn(code, msg)`: Centralized diagnostics.
+
+---
+
+## 9. The 7 Standard Modules Syntax
+
+1. **`partials`** (Transform):
+   `<partial name="user-card" data="currentUser" role="admin"><h3 slot="header">Title</h3><p>Body in default slot</p></partial>`
+   - Built-in template composition. Supports named (`<slot name="...">`) and default (`<slot>`) slots with fallback content.
+   - Partial template nodes run in isolated scope; projected slot children retain caller lexical scope.
+   - Projection metadata stripped (`slot` attribute removed from output DOM). Unknown slots emit `SLOT_NOT_FOUND`.
+2. **`conditionals`** (Transform + Link):
+   `<if is-truthy="user.loggedIn" data-live>`
+     `<p>Hello</p>`
+     `<else><p>Sign in</p></else>`
+   `</if>`
+   - Operators: `is-gt`, `is-lt`, `is-gte`, `is-lte`, `is-eq`, `is-neq`, `is-truthy`.
+   - In tables: use `<template data-if is-truthy="...">`.
+3. **`loops`** (Transform + Link):
+   `<for each="items" as="item" index="i" key="item.id" data-live data-diff="lcs">`
+     `<li>${i}: <span data-text="item.name"></span></li>`
+   `</for>`
+   - Prototypal scope per item. Diff strategies: `simple`, `lcs`, `replace`.
+4. **`text`** (Link):
+   `<span data-text="user.name"></span>`
+   `<a href="/users/{id}" data-id="user.id">Profile</a>`
+   - Sets `textContent` (HTML injection safe). URL attributes protocol sanitized.
+5. **`show`** (Link):
+   `<div data-show="isVisible"></div>`
+   - Sets native `hidden` property. Does not alter inline `style.display`.
+6. **`model`** (Link):
+   `<input type="text" data-model="query">`
+   `<input type="checkbox" data-model="agree">`
+   - Two-way binding with cursor preservation.
+7. **`events`** (Link):
+   `<button data-on-click="handleClick" data-on-click-data="item.id">Save</button>`
+   `<input data-on-keydown-enter="submit">`
+   - Delegated on mount target. Receives `{ event, element, scope, store, data }`. Prevents default on submit. Prototype-safe. Isolated async/sync error reporting.
+
+---
+
+## 10. Rules for Coding with Lime-CSR
+
+- **NEVER use `eval()` or `new Function()`:** Lime is strictly eval-free.
+- **NEVER use removed Plugin APIs:** `definePlugin`, `PLUGIN_API_VERSION`, `engine.use()`, `adaptPluginToModule` DO NOT EXIST.
+- **NEVER mutate arrays in-place without new reference:** `store.update('list', l => [...l, item])`.
+- **NEVER place `<if>` or `<for>` directly inside `<table>` or `<select>`:** Browser foster-parenting moves them. Use `<template data-if>` or `<template data-for>`.
+- **ALWAYS use `defineModule` for custom directives:** Follow the `read` + `setup` + `onCleanup` pattern.
