@@ -89,12 +89,12 @@ Exact Export Inventory (34 symbols):
     events(options?: { handlers?: Object }) -> ModuleDefinition
 
   Distribution & CDN Files (jsdelivr / unpkg):
-    dist/index.min.js: Full bundle (all 7 modules + engine + store + router)
-    dist/core.min.js: Standalone Micro-Kernel (createEngine, defineModule, triggers, scope)
-    dist/store.min.js: Standalone reactive Store (createStore)
-    dist/router.min.js: Standalone trigger router (createRouter)
-    dist/modules/index.min.js: All 7 standard modules bundled together
-    dist/modules/<name>.min.js: Discrete modules (text, show, events, model, conditionals, loops, partials)
+    dist/index.min.js: Full bundle (all 7 modules + engine + store + router) (~47.0 kB)
+    dist/core.min.js: Standalone Micro-Kernel (createEngine, defineModule, triggers, scope) (~28.7 kB)
+    dist/store.min.js: Standalone reactive Store (createStore) (~6.5 kB)
+    dist/router.min.js: Standalone trigger router (createRouter) (~6.2 kB)
+    dist/modules/index.min.js: All 7 standard modules bundled together (~28.0 kB)
+    dist/modules/<name>.min.js: Discrete modules (text: ~3.5 kB, show: ~1.6 kB, events: ~5.8 kB, model: ~2.5 kB, conditionals: ~10.8 kB, loops: ~13.1 kB, partials: ~10.5 kB)
 
 ================================================================================
 3. MODULE AUTHORING & CONTEXT REFERENCE
@@ -219,61 +219,59 @@ ModuleContext (`ctx`) Specification:
    - Phase: Link
    - Syntax: `<button data-on-click="save">Save</button>`
    - Key Modifiers: `data-on-keydown-enter`, `data-on-keydown-escape`, `space`, `tab`, `up`, `down`, `left`, `right`, `delete`, `backspace`.
-   - Behavior: Delegated on mount target. `data-on-submit` calls `event.preventDefault()`. Handler called with `(event, element, ctx)`. Prototype method access blocked via `Object.hasOwn`.
-   - Errors: UNKNOWN_EVENT, UNKNOWN_KEY_MODIFIER, HANDLER_NOT_FOUND.
+    - Behavior: Delegated on mount target. `data-on-submit` calls `event.preventDefault()`. Handler called with single payload object `{ event, element, scope, store, data }`. Prototype method access blocked via `Object.hasOwn`.
+    - Errors: UNKNOWN_EVENT, UNKNOWN_KEY_MODIFIER, HANDLER_NOT_FOUND.
 
 ================================================================================
-5. COMPLETE DIAGNOSTICS & ERROR CATALOG (43 CODES)
+5. COMPLETE DIAGNOSTICS & ERROR CATALOG (46 CODES)
 ================================================================================
 
 1. BATCH_FLUSH_LIMIT (Error): store.batch() flush reached 100 waves (infinite cycle).
 2. BINDING_MISSING_DATA_ATTR (Warn): {x} placeholder missing matching data-x attribute.
 3. BINDING_MISSING_PATH (Error): data-text attribute is empty.
-4. BLOCK_AFTER_NOT_FOUND (Warn): data-after hook handler not found in handlers dictionary.
-5. BLOCK_BEFORE_NOT_FOUND (Warn): data-before hook handler not found in handlers dictionary.
-6. COMPUTED_MANUAL_SET (Warn): Manual store.set() to a path managed by store.computed().
-7. COMPUTED_WITHOUT_STORE (Warn): Computed options passed to mount() without a store.
-8. ELSE_AFTER_CONTENT (Error): Elements found after <else> inside <if>.
-9. FOR_DUPLICATE_KEY (Error): Duplicate key value found in reactive <for data-live>.
-10. FOR_MISSING_ATTR (Error): <for> tag missing each or as attribute.
-11. FOR_MISSING_KEY (Warn): <for data-live> missing key attribute.
-12. FOR_NOT_ARRAY (Error): Loop target path is not an array.
-13. HANDLER_NOT_FOUND (Error): Handler function name not defined in handlers dictionary.
-14. INDEXED_MODEL_PATH (Warn): data-model contains numeric index (e.g. items.0.name).
-15. IN_PLACE_MUTATION (Warn): store.set() received identical object reference.
-16. LIVE_IF_MISSING_OP (Error): <if data-live> missing valid condition operator.
-17. MISSING_OPERATOR (Error): <if> tag missing condition operator attribute.
-18. MODEL_MISSING_PATH (Error): data-model attribute is empty.
-19. MODULE_AFTER_CONNECT_FAILED (Error): Exception in ctx.afterConnect() microtask.
-20. MODULE_CLEANUP_FAILED (Error): Exception in module cleanup callback.
-21. MODULE_READ_FAILED (Error): Exception in module read() hook.
-22. MODULE_SETUP_FAILED (Error): Exception in module setup() hook.
-23. MODULE_STORE_REQUIRED (Warn): Module ctx.watch() called without a store.
-24. MODULE_TRIGGER_OVERRIDDEN (Warn): Lower-priority module trigger shadowed.
-25. MODULE_UPDATE_FAILED (Error): Exception in module update() hook.
-26. MODULE_WATCH_FAILED (Error): Exception in reactive watch callback.
-27. MODULE_HANDLER_FAILED (Error): Exception or promise rejection in user handler callback.
-27. MOUNT_INVALID_TARGET (Error): Invalid target element or selector passed to mount().
-28. MOUNT_TARGET_NOT_FOUND (Error): CSS selector in mount() matched zero elements.
-29. MOUNT_HOOK_FAILED (Error): beforeRender or afterRender mount lifecycle hook threw.
-30. MOUNT_ALREADY_MOUNTED (Warn): Duplicate mount on an already mounted target.
-31. MOUNT_TEMPLATE_NOT_FOUND (Error): Template id="tpl-{name}" not found in document.
-29. PARTIAL_DEPTH_LIMIT (Error): Partial recursion depth limit exceeded.
-30. PARTIAL_MISSING_NAME (Error): <partial> tag missing name attribute.
-31. PARTIAL_NOT_FOUND (Error): Partial template id="tpl-{name}" not found.
-32. SLOT_NOT_FOUND (Error): Slot name targeted by caller child not found in partial template; content discarded.
-33. PATH_CLOBBER (Warn): Intermediate non-object segment overwritten in store.set().
-33. PIPELINE_DEPTH_LIMIT (Error): Transform phase reached 100 iterations limit.
-34. RESERVED_ATTR_NAME (Error): Reserved name used as {x} attribute placeholder.
-35. SHOW_MISSING_PATH (Error): data-show attribute is empty.
-36. TABLE_FOSTER_PARENTING (Warn): HTML parser foster-parented special tags outside <table>.
-37. TEMPLATE_NOT_FOUND (Error): Template element not found.
-38. UNKNOWN_DIFF_STRATEGY (Warn): Unrecognized data-diff value on <for data-live>.
-39. UNKNOWN_EVENT (Error): Unsupported event name in data-on-{event}.
-40. UNKNOWN_KEY_MODIFIER (Error): Unsupported key modifier in data-on-keydown-{key}.
-41. UNKNOWN_OPERATOR (Error): Unrecognized condition operator starting with is-.
-42. UNSAFE_EVENT_ATTR (Error): Reactive binding attempted on on* event attribute.
-43. UNSAFE_URL_ATTR (Warn): Unsafe URL protocol sanitized to empty string.
+4. COMPUTED_MANUAL_SET (Warn): Manual store.set() to a path managed by store.computed().
+5. COMPUTED_WITHOUT_STORE (Warn): Computed options passed to mount() without a store.
+6. ELSE_AFTER_CONTENT (Error): Elements found after <else> inside <if>.
+7. FOR_DUPLICATE_KEY (Error): Duplicate key value found in reactive <for data-live>.
+8. FOR_MISSING_ATTR (Error): <for> tag missing each or as attribute.
+9. FOR_MISSING_KEY (Warn): <for data-live> missing key attribute.
+10. FOR_NOT_ARRAY (Error): Loop target path is not an array.
+11. HANDLER_NOT_FOUND (Error): Handler function name not defined in handlers dictionary.
+12. INDEXED_MODEL_PATH (Warn): data-model contains numeric index (e.g. items.0.name).
+13. IN_PLACE_MUTATION (Warn): store.set() received identical object reference.
+14. LIVE_IF_MISSING_OP (Error): <if data-live> missing valid condition operator.
+15. MISSING_OPERATOR (Error): <if> tag missing condition operator attribute.
+16. MODEL_MISSING_PATH (Error): data-model attribute is empty.
+17. MODULE_AFTER_CONNECT_FAILED (Error): Exception in ctx.afterConnect() microtask.
+18. MODULE_CLEANUP_FAILED (Error): Exception in module cleanup callback.
+19. MODULE_HANDLER_FAILED (Error): Exception or promise rejection in user handler callback.
+20. MODULE_READ_FAILED (Error): Exception in module read() hook.
+21. MODULE_SETUP_FAILED (Error): Exception in module setup() hook.
+22. MODULE_STORE_REQUIRED (Warn): Module ctx.watch() called without a store.
+23. MODULE_TRIGGER_OVERRIDDEN (Warn): Lower-priority module trigger shadowed.
+24. MODULE_UPDATE_FAILED (Error): Exception in module update() hook.
+25. MODULE_WATCH_FAILED (Error): Exception in reactive watch callback.
+26. MOUNT_ALREADY_MOUNTED (Warn): Duplicate mount on an already mounted target.
+27. MOUNT_HOOK_FAILED (Error): beforeRender or afterRender mount lifecycle hook threw.
+28. MOUNT_INVALID_TARGET (Error): Invalid target element or selector passed to mount().
+29. MOUNT_TARGET_NOT_FOUND (Error): CSS selector in mount() matched zero elements.
+30. MOUNT_TEMPLATE_NOT_FOUND (Error): Template id="tpl-{name}" not found in document.
+31. PARTIAL_DEPTH_LIMIT (Error): Partial recursion depth limit exceeded.
+32. PARTIAL_MISSING_NAME (Error): <partial> tag missing name attribute.
+33. PARTIAL_NOT_FOUND (Error): Partial template id="tpl-{name}" not found.
+34. PATH_CLOBBER (Warn): Intermediate non-object segment overwritten in store.set().
+35. PIPELINE_DEPTH_LIMIT (Error): Transform phase reached 100 iterations limit.
+36. RESERVED_ATTR_NAME (Error): Reserved name used as {x} attribute placeholder.
+37. SHOW_MISSING_PATH (Error): data-show attribute is empty.
+38. SLOT_NOT_FOUND (Error): Slot name targeted by caller child not found in partial template; content discarded.
+39. TABLE_FOSTER_PARENTING (Warn): HTML parser foster-parented special tags outside <table>.
+40. TEMPLATE_NOT_FOUND (Error): Template element not found.
+41. UNKNOWN_DIFF_STRATEGY (Warn): Unrecognized data-diff value on <for data-live>.
+42. UNKNOWN_EVENT (Error): Unsupported event name in data-on-{event}.
+43. UNKNOWN_KEY_MODIFIER (Error): Unsupported key modifier in data-on-keydown-{key}.
+44. UNKNOWN_OPERATOR (Error): Unrecognized condition operator starting with is-.
+45. UNSAFE_EVENT_ATTR (Error): Reactive binding attempted on on* event attribute.
+46. UNSAFE_URL_ATTR (Warn): Unsafe URL protocol sanitized to empty string.
 
 ================================================================================
 6. COMPLETE WORKING PATTERNS

@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-09-11
 
-### Major Architecture Milestone: Unprivileged Micro-Kernel
+### Major Architecture Milestone: Unprivileged Micro-Kernel & Built-in Composition
 
-Version `0.3.0` is a landmark release that refactors `lime-csr-js` from an ad-hoc monolithic rendering engine into a modular, unprivileged Micro-Kernel architecture. The Kernel contains zero feature-specific rendering knowledge; all built-in directives (conditionals, loops, partials, text, visibility, two-way form binding, and event delegation) are discrete unprivileged modules.
+Version `0.3.0` is a landmark release that refactors `lime-csr-js` from an ad-hoc monolithic rendering engine into a modular, unprivileged Micro-Kernel architecture with built-in template composition. The Kernel contains zero feature-specific rendering knowledge; all built-in directives (conditionals, loops, text, visibility, two-way form binding, and event delegation) are discrete unprivileged modules, while template composition (`<partial>` and `<slot>`) is built directly into the core runtime.
 
 ### Added
 - **Unprivileged Micro-Kernel (`src/core/`)**:
@@ -19,18 +19,35 @@ Version `0.3.0` is a landmark release that refactors `lime-csr-js` from an ad-ho
   - Compiled Partitioned Router with $O(1)$ indexed lookup by trigger type and execution phase.
   - Deterministic module precedence: `modules[0] > modules[1] > ... > modules[N]` resolved at compile time with development shadowing diagnostics (`MODULE_TRIGGER_OVERRIDDEN`).
   - Prototypal lexical scope system (`createScope`) with native property shadowing and $O(1)$ instantiation.
-  - Isolated scopes for partials (`createIsolatedScope`) ensuring component encapsulation.
   - Unified LIFO cleanup stack per element and subtree, guaranteeing fault-isolated, idempotent teardown.
   - Asynchronous deactivation: Pending microtasks abort automatically if cleanup executes first.
+- **Built-in Composition (`<partial>` + `<slot>`) (`src/core/composition.js`)**:
+  - Native sub-template instantiation via `<partial name="..." data="..." [props...]>`.
+  - Default (`<slot>`) and Named (`<slot name="...">`) slot projection mapping caller children into template slots.
+  - Fallback slot content rendered when no matching caller children are provided.
+  - Scope isolation: Partial templates execute with isolated scopes (`createIsolatedScope`), while projected slot children preserve caller lexical scope.
+  - Projection metadata cleanup: `slot` attribute stripped from rendered DOM elements.
+  - Standard module wrapper: `partials()` exported for modular distribution and custom engine pipelines.
+- **Mount Runtime Boundary Redesign (`mount(target, template, store, options)`)**:
+  - Target-first signature: `mount(target, template, store, options)` with options-object fallback `mount(target, options)`.
+  - In-place mount ownership: Mounts linking existing DOM in place preserve caller markup on unmount; only Lime-created template content is cleared.
+  - Mount-local state isolation: Engine instances and mount targets share zero mutable state.
+  - Duplicate mount protection: Guard against mounting on already mounted targets (`MOUNT_ALREADY_MOUNTED`).
+  - Lifecycle integration: First-class `AbortSignal` support via `options.signal`.
+- **Modern Handlers API (`options.handlers`)**:
+  - Mount-scoped application callback mechanism `{ handlers: { fn({ event, element, scope, store, data }) } }`.
+  - Delegated event dispatch with single payload object passing DOM event, matched element, active lexical scope, store instance, and resolved companion data.
+  - Prototype-pollution protection (`Object.hasOwn`).
+  - Fault-isolated asynchronous error handling (`MODULE_HANDLER_FAILED`).
 - **Engine Runtime (`createEngine`)**:
   - Compile custom, isolated runtimes with user-selected modules.
   - Complete instance isolation: engines share zero mutable state.
 - **Module Authoring API (`defineModule`)**:
   - Declarative module definition with `name`, `version`, `triggers`, `beforeMount`, and `afterMount`.
   - Module lifecycle hooks: `match`, `read` (pure extraction), `setup`, `update`, and `cleanup`.
-  - Rich `ModuleContext` (`ctx`) providing encapsulated access to scope, store, DOM element, watch subscriptions, microtasks, and diagnostics.
+  - Rich `ModuleContext` (`ctx`) providing encapsulated access to scope, store, DOM element, watch subscriptions, microtasks, handlers, and diagnostics.
 - **7 Standard Unprivileged Modules (`src/modules/`)**:
-  - `partials`: Sub-template expansion with isolated scopes and shared store.
+  - `partials`: Modular wrapper for built-in sub-template expansion and slot projection.
   - `conditionals`: Static and reactive (`data-live`) branching supporting `is-gt`, `is-lt`, `is-gte`, `is-lte`, `is-eq`, `is-neq`, and `is-truthy`.
   - `loops`: Static and reactive (`data-live`) list rendering with prototypal item scopes and diff strategies (`simple`, `lcs`, `replace`).
   - `text`: Reactive text (`data-text`) and attribute templates (`{x}` / `data-x`) with URL protocol sanitization.
@@ -49,9 +66,10 @@ Version `0.3.0` is a landmark release that refactors `lime-csr-js` from an ad-ho
 
 ### Changed
 - **Production Bundle Size**:
-  - `dist/index.min.js` decreased from **59.0 kB to 42.0 kB** (**-28.8% reduction**, 17.0 kB saved) by eliminating duplicate monolithic rendering code.
-  - Tarball package size decreased from **134.0 kB to 96.5 kB** (**-28.0% reduction**).
-  - Packaged files reduced from 39 to 29.
+  - `dist/index.min.js` decreased from **59.0 kB to 47.0 kB** (**-20.3% reduction**, 12.0 kB saved) by eliminating duplicate monolithic rendering code.
+  - Standalone Micro-Kernel `dist/core.min.js` is **28.7 kB**.
+  - Tarball package size is **124.0 kB** (unpacked: **429.9 kB**).
+  - Packaged files: **42 files** across `src/`, `dist/`, and documentation.
 - **Root Public Surface Cleanliness**:
   - Root package now exports **exactly 34 clean symbols** strictly classified into Facade (3), Store & Utilities (3), Template & Security (7), Diagnostics (7), Kernel Primitives (7), and Standard Modules (7).
 - **`defaultEngine` Visibility**:

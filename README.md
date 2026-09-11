@@ -11,7 +11,7 @@ Zero compilation. Zero virtual DOM. Zero `eval` or `new Function`. Strict Conten
 - **HTML-First Templates**: Author templates in native `<template>` tags. No JSX, no compiler, no build step required during development.
 - **Unprivileged Micro-Kernel**: The kernel provides generic triggers, routing, prototypal scope, and lifecycle management without any hardcoded feature semantics.
 - **Built-in Composition**: Core `<partial>` and `<slot>` composition with isolated template scope, caller lexical scope projection, and fallback resolution.
-- **Extensible Standard Modules**: Conditionals, loops, partials, text, show, model, and events are discrete unprivileged modules that can be overridden or omitted.
+- **Extensible Standard Modules**: Conditionals, loops, text, show, model, and events are discrete unprivileged modules that can be overridden or omitted, with `partials()` provided as a modular wrapper for the built-in composition capability.
 - **Extensible Module API**: Create custom domain directives using `defineModule()` and compose custom runtimes using `createEngine()`.
 - **Path-Based Reactive Store**: Fine-grained reactive state with prefix-tree indexing, batch updates, computed properties, and prototype-pollution guards.
 - **Keyed DOM Reconciliation**: Reactive `<for data-live>` loops support Longest Increasing Subsequence (LCS) diffing, preserving DOM identity and focus state.
@@ -93,18 +93,18 @@ If you only need specific directives (e.g. only text and events for a tiny widge
 
 | Distribution File | Description | Typical Size |
 |---|---|---|
-| `dist/index.min.js` | **Full bundle**: Micro-Kernel, Store, Router, and all 7 standard modules | ~43 kB |
-| `dist/core.min.js` | **Micro-Kernel runtime**: `createEngine`, `defineModule`, triggers, scope | ~22 kB |
+| `dist/index.min.js` | **Full bundle**: Micro-Kernel, Store, Router, and all 7 standard modules | ~47.0 kB |
+| `dist/core.min.js` | **Micro-Kernel runtime**: `createEngine`, `defineModule`, triggers, scope | ~28.7 kB |
 | `dist/store.min.js` | **Reactive Store**: `createStore`, `getByPath`, `setByPath` | ~6.5 kB |
 | `dist/router.min.js` | **Compiled Trigger Router**: `createRouter` | ~6.2 kB |
-| `dist/modules/index.min.js` | **All Standard Modules** in one package | ~24.5 kB |
+| `dist/modules/index.min.js` | **All Standard Modules** in one package | ~28.0 kB |
 | `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.5 kB |
 | `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~1.6 kB |
-| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~3.7 kB |
+| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~5.8 kB |
 | `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.5 kB |
-| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.6 kB |
-| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~12.7 kB |
-| `dist/modules/partials.min.js` | `<partial>` sub-template expansion & isolated scopes | ~8.6 kB |
+| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.8 kB |
+| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~13.1 kB |
+| `dist/modules/partials.min.js` | Modular wrapper for built-in `<partial>` & `<slot>` composition | ~10.5 kB |
 
 ---
 
@@ -272,15 +272,15 @@ const instance = engine.mount(document.getElementById('app'), 'my-template', sto
 ---
 
 ## The 7 Standard Modules
-
+ 
 | Module | Phase | Triggers | Description |
 |---|---|---|---|
-| [partials](DOCS.md#13-standard-modules-reference) | Transform | `<partial name="..." data="...">` | Built-in template composition with isolated scopes, named/default `<slot>` projection, fallback content, and caller scope preservation. |
-| [conditionals](DOCS.md#14-conditionals) | Transform + Link | `<if>`, `<template data-if>`, `<else>` | Evaluates comparison operators (`is-gt`, `is-lt`, `is-gte`, `is-lte`, `is-eq`, `is-neq`, `is-truthy`). `data-live` provides reactive updates. |
-| [loops](DOCS.md#15-loops) | Transform + Link | `<for each as>`, `<template data-for>` | Renders array items with prototypal child scopes. `data-live key="..."` provides keyed LCS reconciliation. |
-| [text](DOCS.md#17-behavioral-modules) | Link | `data-text="path"`, `{x}` attribute templates | Reactively binds store values to `textContent` and attribute values with URL sanitization. |
-| [show](DOCS.md#17-behavioral-modules) | Link | `data-show="path"` | Toggles element visibility via the native `hidden` attribute without altering inline styles. |
-| [model](DOCS.md#17-behavioral-modules) | Link | `data-model="path"` | Two-way binding for inputs (text, number, checkbox, radio, select) with cursor preservation. |
+| [partials](DOCS.md#131-partials-module-partials) | Transform | `<partial name="..." data="...">` | Modular wrapper for built-in template composition with isolated scopes, named/default `<slot>` projection, fallback content, and caller scope preservation. |
+| [conditionals](DOCS.md#132-conditionals-module-conditionals) | Transform + Link | `<if>`, `<template data-if>`, `<else>` | Evaluates comparison operators (`is-gt`, `is-lt`, `is-gte`, `is-lte`, `is-eq`, `is-neq`, `is-truthy`). `data-live` provides reactive updates. |
+| [loops](DOCS.md#133-loops-module-loops) | Transform + Link | `<for each as>`, `<template data-for>` | Renders array items with prototypal child scopes. `data-live key="..."` provides keyed LCS reconciliation. |
+| [text](DOCS.md#134-text--attribute-bindings-module-text) | Link | `data-text="path"`, `{x}` attribute templates | Reactively binds store values to `textContent` and attribute values with URL sanitization. |
+| [show](DOCS.md#135-visibility-module-show) | Link | `data-show="path"` | Toggles element visibility via the native `hidden` attribute without altering inline styles. |
+| [model](DOCS.md#136-two-way-form-binding-module-model) | Link | `data-model="path"` | Two-way binding for inputs (text, number, checkbox, radio, select) with cursor preservation. |
 | [events](DOCS.md#137-event-delegation-module-events) | Link | `data-on-{event}="handler"`, `data-on-*-data` | Delegated event dispatch with single object payload `{ event, element, scope, store, data }`, companion data attributes, and prototype protection. |
 
 ---

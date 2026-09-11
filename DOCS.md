@@ -264,19 +264,19 @@ If your application only needs a subset of features (e.g., only reactive text bi
 
 | CDN Path | Purpose | Size |
 |---|---|---|
-| `dist/index.min.js` | Complete bundle: default engine, store, router, diagnostics, all 7 modules | ~43 kB |
-| `dist/core.min.js` | Micro-Kernel runtime: `createEngine`, `defineModule`, triggers, scope | ~22 kB |
+| `dist/index.min.js` | Complete bundle: default engine, store, router, diagnostics, all 7 modules | ~47.0 kB |
+| `dist/core.min.js` | Micro-Kernel runtime: `createEngine`, `defineModule`, triggers, scope | ~28.7 kB |
 | `dist/store.min.js` | Standalone reactive store: `createStore`, `getByPath`, `setByPath` | ~6.5 kB |
 | `dist/router.min.js` | Standalone trigger router: `createRouter` | ~6.2 kB |
-| `dist/modules/index.min.js` | All 7 standard modules bundled together | ~24.5 kB |
+| `dist/modules/index.min.js` | All 7 standard modules bundled together | ~28.0 kB |
 | `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.5 kB |
 | `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~1.6 kB |
-| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~3.7 kB |
+| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~5.8 kB |
 | `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.5 kB |
-| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.6 kB |
-| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~12.7 kB |
-| `dist/modules/partials.min.js` | `<partial>` sub-template expansion & isolated scopes | ~8.6 kB |
-| `dist/errors-messages.js` | Detailed development diagnostics (loaded on-demand) | ~7.1 kB |
+| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.8 kB |
+| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~13.1 kB |
+| `dist/modules/partials.min.js` | Modular wrapper for built-in `<partial>` & `<slot>` composition | ~10.5 kB |
+| `dist/errors-messages.js` | Detailed development diagnostics (loaded on-demand) | ~7.2 kB |
 
 ---
 
@@ -1168,6 +1168,7 @@ Lime never throws runtime exceptions that crash user pages. All issues are dispa
 | `TABLE_FOSTER_PARENTING` | Warn | Template | HTML parser moved special tags out of `<table>`. | Placing `<if>` or `<for>` directly inside `<table>`; use `<template data-if>`. |
 | `TEMPLATE_NOT_FOUND` | Error | Template | `getTemplate()` could not locate target template. | Missing `<template>` element. |
 | `PARTIAL_NOT_FOUND` | Error | Partials | `<partial name="...">` template not found. | Missing `<template id="tpl-{name}">`. |
+| `SLOT_NOT_FOUND` | Error | Partials | Slot targeted by caller child not found in partial template. | `<div slot="header">` when partial has no `<slot name="header">`. |
 | `PARTIAL_MISSING_NAME` | Error | Partials | `<partial>` tag missing `name` attribute. | `<partial data="foo"></partial>` without `name`. |
 | `PARTIAL_DEPTH_LIMIT` | Error | Partials | Partial recursion depth exceeded. | Partial template referencing itself recursively. |
 | `MISSING_OPERATOR` | Error | Conditionals | `<if>` tag missing condition operator attribute. | `<if is="true">` instead of `<if is-truthy="flag">`. |
