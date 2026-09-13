@@ -53,7 +53,7 @@ export function isSafeUrlProtocol(value = "") {
   if (!url) return false;
   return (
     /^https?:\/\//i.test(url) ||
-    (url.startsWith("/") && !url.startsWith("//")) ||
+    (url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\")) ||
     url.startsWith("#")
   );
 }
@@ -80,5 +80,5 @@ export function safeUrl(value = "") {
 export function safeStyleUrl(value = "") {
   const url = safeUrl(value);
   if (!url) return "";
-  return `url('${url.replace(/'/g, "%27")}')`;
+  return `url('${url.replace(/\\/g, "%5C").replace(/'/g, "%27").replace(/\)/g, "%29").replace(/\(/g, "%28")}')`;
 }
