@@ -29,7 +29,7 @@ const INDEXED_PATH_RE = /(?:^|\.)\d+(?:\.|$)/;
  * Classifies an element into a supported form input kind.
  *
  * @param {Element} el
- * @returns {'checkbox'|'radio'|'select-multiple'|'select-single'|'number'|'text'}
+ * @returns {'checkbox'|'radio'|'select-multiple'|'select-single'|'number'|'text'|'file'}
  */
 function classify(el) {
   if (el.tagName === 'SELECT') {
@@ -42,10 +42,20 @@ function classify(el) {
   if (type === 'checkbox') return 'checkbox';
   if (type === 'radio') return 'radio';
   if (type === 'number' || type === 'range') return 'number';
+  if (type === 'file') return 'file';
   return 'text';
 }
 
 const KIND_HANDLERS = {
+  file: {
+    event: 'change',
+    read: (el) => (el.multiple ? Array.from(el.files || []) : (el.files?.[0] || null)),
+    write: (el, val) => {
+      if (val == null || val === '') {
+        el.value = '';
+      }
+    },
+  },
   text: {
     event: 'input',
     read: (el) => el.value,
