@@ -1,6 +1,6 @@
 # lime-csr-js — Technical Reference Manual
 
-Version: **0.3.0**  
+Version: **0.3.1**  
 Architecture: **Unprivileged Micro-Kernel + Discrete Modules**  
 Status: **Production Release**
 

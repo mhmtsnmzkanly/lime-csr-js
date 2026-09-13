@@ -28,7 +28,7 @@ npm install lime-csr-js
 
 ### Subpath Exports
 
-`lime-csr-js@0.3.0` provides clean, dedicated subpaths:
+`lime-csr-js@0.3.1` provides clean, dedicated subpaths:
 
 ```js
 // 1. Root package (Facade, Store, Diagnostics, Standard Modules)

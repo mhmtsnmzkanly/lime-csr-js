@@ -1,6 +1,6 @@
 # lime-csr-js
 
-Version: 0.3.0  
+Version: 0.3.1  
 Architecture: Unprivileged Micro-Kernel + Discrete Modules  
 Type: Browser-First Client-Side Rendering Engine  
 CSP: Compatible with script-src 'self' (Eval-Free)

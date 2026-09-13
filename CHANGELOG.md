@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.1] - 2026-09-14
+
+### Fixed & Hardened
+- **Conditionals & Loops Memory Lifecycle**: Fixed branch and loop keyed block subscriptions leaking detached DOM nodes on reactive updates; isolated cleanup stacks per dynamic branch and keyed item.
+- **Backslash Open Redirect / Protocol-Relative Bypass**: Fixed `isSafeUrlProtocol` to reject `/\` URLs (which modern browsers normalize to `//` protocol-relative paths).
+- **CSS Injection Breakout**: Hardened `safeStyleUrl` to escape backslashes and parentheses (`%5C`, `%29`, `%28`).
+- **AbortSignal Listener Leak**: Fixed `mount()` to remove signal abort event listener upon manual unmount.
+- **File Input DOMException**: Fixed `data-model` on `<input type="file">` to prevent `InvalidStateError` DOMException on programmatic writes.
+- **Loop Index Scope Collision**: Prevented `<for as="item" index="item">` from clobbering loop item in scope and added `FOR_INDEX_COLLISION` warning.
+
 ## [0.3.0] - 2026-09-11
 
 ### Major Architecture Milestone: Unprivileged Micro-Kernel & Built-in Composition
