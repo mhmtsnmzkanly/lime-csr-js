@@ -12,6 +12,7 @@
 
 import { tag, attr } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
+import { createCleanupStack } from '../core/context.js';
 import { createScope, setElementScope } from '../core/scope.js';
 import { getByPath } from '../store.js';
 import { resolveStatic } from '../template.js';
@@ -45,6 +46,10 @@ function transformLoop(el, data, ctx) {
     return;
   }
 
+  if (indexAttr && indexAttr === as) {
+    ctx.warn('FOR_INDEX_COLLISION', { as, index: indexAttr }, el);
+  }
+
   const childSource = el.tagName === 'TEMPLATE' ? el.content : el;
   const templateNodes = Array.from(childSource.childNodes).map((n) => n.cloneNode(true));
   const doc = el.ownerDocument;
@@ -71,7 +76,7 @@ function transformLoop(el, data, ctx) {
       const item = list[i];
       const itemScope = createScope(ctx.scope, {
         [as]: item,
-        ...(indexAttr ? { [indexAttr]: i } : {}),
+        ...(indexAttr && indexAttr !== as ? { [indexAttr]: i } : {}),
       });
 
       const frag = doc.createDocumentFragment();
@@ -127,12 +132,10 @@ function transformLoop(el, data, ctx) {
     }
   }
 
-  let initialPassDone = false;
-
   function renderItemNodes(item, idx) {
     const itemScope = createScope(ctx.scope, {
       [as]: item,
-      ...(indexAttr ? { [indexAttr]: idx } : {}),
+      ...(indexAttr && indexAttr !== as ? { [indexAttr]: idx } : {}),
     });
 
     const frag = doc.createDocumentFragment();
@@ -144,15 +147,14 @@ function transformLoop(el, data, ctx) {
     setElementScope(frag, itemScope);
     ctx.transform(frag, itemScope);
 
-    if (initialPassDone) {
-      ctx.link(frag, itemScope);
-    }
+    const itemCleanupStack = createCleanupStack();
+    ctx.link(frag, itemScope, itemCleanupStack);
 
     const nodes = Array.from(frag.childNodes);
     for (let i = 0; i < nodes.length; i++) {
       setElementScope(nodes[i], itemScope);
     }
-    return { frag, nodes };
+    return { frag, nodes, cleanupStack: itemCleanupStack };
   }
 
   function reconcile(newList) {
@@ -193,6 +195,7 @@ function transformLoop(el, data, ctx) {
     // 1. Delete removed keys
     for (const [oldKey, block] of keyedBlocks.entries()) {
       if (!seenKeys.has(oldKey)) {
+        block.cleanupStack?.run();
         for (const node of block.nodes) {
           node.remove();
         }
@@ -203,15 +206,16 @@ function transformLoop(el, data, ctx) {
     if (diffStrategy === 'replace') {
       // Replace strategy: re-render all from scratch
       for (const block of keyedBlocks.values()) {
+        block.cleanupStack?.run();
         for (const node of block.nodes) node.remove();
       }
       keyedBlocks.clear();
 
       for (const keyVal of newKeyOrder) {
         const { item, idx } = newItemMap.get(keyVal);
-        const { frag, nodes } = renderItemNodes(item, idx);
+        const { frag, nodes, cleanupStack } = renderItemNodes(item, idx);
         appendNode(frag);
-        keyedBlocks.set(keyVal, { nodes, item, idx });
+        keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack });
       }
       orderedKeys = newKeyOrder;
       return;
@@ -253,13 +257,15 @@ function transformLoop(el, data, ctx) {
           const indexChanged = Boolean(indexAttr && block.idx !== idx);
 
           if (itemChanged || indexChanged) {
-            const { frag, nodes } = renderItemNodes(item, idx);
+            block.cleanupStack?.run();
+            const { frag, nodes, cleanupStack } = renderItemNodes(item, idx);
             const firstOld = block.nodes[0];
             firstOld?.parentNode?.insertBefore(frag, firstOld);
             for (const oldNode of block.nodes) oldNode.remove();
             block.nodes = nodes;
             block.item = item;
             block.idx = idx;
+            block.cleanupStack = cleanupStack;
           }
 
           if (!stayPutKeys.has(keyVal)) {
@@ -276,14 +282,14 @@ function transformLoop(el, data, ctx) {
           nextPlacedNode = block.nodes[0];
         } else {
           // Mount new item
-          const { frag, nodes } = renderItemNodes(item, idx);
+          const { frag, nodes, cleanupStack } = renderItemNodes(item, idx);
           if (container) {
             if (nextPlacedNode) container.insertBefore(frag, nextPlacedNode);
             else container.appendChild(frag);
           } else {
             endAnchor.parentNode?.insertBefore(frag, nextPlacedNode || endAnchor);
           }
-          keyedBlocks.set(keyVal, { nodes, item, idx });
+          keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack });
           nextPlacedNode = nodes[0];
         }
       }
@@ -300,13 +306,15 @@ function transformLoop(el, data, ctx) {
           const indexChanged = Boolean(indexAttr && block.idx !== idx);
 
           if (itemChanged || indexChanged) {
-            const { frag, nodes } = renderItemNodes(item, idx);
+            block.cleanupStack?.run();
+            const { frag, nodes, cleanupStack } = renderItemNodes(item, idx);
             const firstOld = block.nodes[0];
             firstOld?.parentNode?.insertBefore(frag, firstOld);
             for (const oldNode of block.nodes) oldNode.remove();
             block.nodes = nodes;
             block.item = item;
             block.idx = idx;
+            block.cleanupStack = cleanupStack;
           }
 
           const firstNode = block.nodes[0];
@@ -317,9 +325,9 @@ function transformLoop(el, data, ctx) {
             expectedPrev = block.nodes[block.nodes.length - 1];
           }
         } else {
-          const { frag, nodes } = renderItemNodes(item, idx);
+          const { frag, nodes, cleanupStack } = renderItemNodes(item, idx);
           appendNode(frag);
-          keyedBlocks.set(keyVal, { nodes, item, idx });
+          keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack });
           expectedPrev = nodes[nodes.length - 1];
         }
       }
@@ -343,8 +351,6 @@ function transformLoop(el, data, ctx) {
     reconcile(initialList);
   }
 
-  initialPassDone = true;
-
   // Reactive subscription
   if (ctx.store && typeof ctx.store.subscribe === 'function') {
     const unsubscribe = ctx.store.subscribe(each, (newList) => {
@@ -354,6 +360,15 @@ function transformLoop(el, data, ctx) {
     ctx.onCleanup(() => {
       unsubscribe();
       for (const block of keyedBlocks.values()) {
+        block.cleanupStack?.run();
+        for (const node of block.nodes) node.remove();
+      }
+      keyedBlocks.clear();
+    });
+  } else {
+    ctx.onCleanup(() => {
+      for (const block of keyedBlocks.values()) {
+        block.cleanupStack?.run();
         for (const node of block.nodes) node.remove();
       }
       keyedBlocks.clear();

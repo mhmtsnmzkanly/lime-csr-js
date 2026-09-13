@@ -206,9 +206,9 @@ export function createModuleContext(options = {}) {
      * @param {Object} [subScope]
      * @returns {*}
      */
-    link(node, subScope) {
+    link(node, subScope, customCleanupStack) {
       if (typeof link === 'function') {
-        return link(node, subScope);
+        return link(node, subScope, customCleanupStack);
       }
       return null;
     },

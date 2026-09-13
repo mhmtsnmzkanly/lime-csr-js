@@ -12,6 +12,7 @@
 
 import { tag, attr } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
+import { createCleanupStack } from '../core/context.js';
 import { getByPath } from '../store.js';
 import { resolveStatic } from '../template.js';
 
@@ -168,10 +169,11 @@ function transformConditional(el, data, ctx) {
   let currentCondition = null;
   let currentBranchCleanup = () => {};
 
-  let initialPassDone = false;
-
   function renderBranch(condition) {
     currentBranchCleanup();
+
+    const branchStack = createCleanupStack();
+    currentBranchCleanup = () => branchStack.run();
 
     const winningTemplateNodes = condition ? thenNodes : elseNodes;
     const branchFrag = doc.createDocumentFragment();
@@ -181,10 +183,7 @@ function transformConditional(el, data, ctx) {
 
     resolveStatic(branchFrag, ctx.scope, ctx.store);
     ctx.transform(branchFrag, ctx.scope);
-
-    if (initialPassDone) {
-      ctx.link(branchFrag, ctx.scope);
-    }
+    ctx.link(branchFrag, ctx.scope, branchStack);
 
     if (container) {
       container.textContent = '';
@@ -210,8 +209,6 @@ function transformConditional(el, data, ctx) {
     renderBranch(initialCondition);
   }
 
-  initialPassDone = true;
-
   // Reactive subscription
   if (trackPath && ctx.store && typeof ctx.store.subscribe === 'function') {
     const unsubscribe = ctx.store.subscribe(trackPath, () => {
@@ -223,6 +220,10 @@ function transformConditional(el, data, ctx) {
 
     ctx.onCleanup(() => {
       unsubscribe();
+      currentBranchCleanup();
+    });
+  } else {
+    ctx.onCleanup(() => {
       currentBranchCleanup();
     });
   }

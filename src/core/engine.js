@@ -261,6 +261,7 @@ export function createEngine(options = {}) {
       handlers: mountOptions.handlers || null,
       options: mountOptions,
       target: resolvedTarget,
+      linkedElements: new WeakSet(),
     };
 
     // 6. Execution Pipeline (Transform -> resolveStatic -> Link -> Placement)
@@ -348,7 +349,11 @@ export function createEngine(options = {}) {
     mountedTargets.set(resolvedTarget, instance);
 
     if (mountOptions.signal) {
-      mountOptions.signal.addEventListener('abort', () => unmountSelf(), { once: true });
+      const onAbort = () => unmountSelf();
+      mountOptions.signal.addEventListener('abort', onAbort, { once: true });
+      cleanupStack.onCleanup(() => {
+        mountOptions.signal.removeEventListener('abort', onAbort);
+      });
     }
 
     return instance;

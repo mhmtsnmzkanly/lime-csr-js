@@ -73,6 +73,7 @@ export function runTransform(root, router, options = {}) {
     cleanupStack = createCleanupStack(),
     document = root.ownerDocument || globalThis.document,
     maxIterations = MAX_PIPELINE_ITERATIONS,
+    linkedElements = options.linkedElements || new WeakSet(),
   } = options;
 
   let iterations = 0;
@@ -139,15 +140,17 @@ export function runTransform(root, router, options = {}) {
             handlers: options.handlers || null,
             options: options.options || options,
             target: options.target || null,
+            linkedElements,
           }),
-          link: (subNode, subScope) => runLink(subNode, router, {
+          link: (subNode, subScope, customCleanupStack) => runLink(subNode, router, {
             store,
             scope: subScope || elementScope,
-            cleanupStack,
+            cleanupStack: customCleanupStack || cleanupStack,
             document,
             handlers: options.handlers || null,
             options: options.options || options,
             target: options.target || null,
+            linkedElements,
           }),
         });
 
@@ -215,6 +218,7 @@ export function runLink(root, router, options = {}) {
     store = null,
     scope = Object.create(null),
     document = root.ownerDocument || globalThis.document,
+    linkedElements = options.linkedElements || new WeakSet(),
   } = options;
 
   // Single-pass snapshot of elements in document order
@@ -223,8 +227,11 @@ export function runLink(root, router, options = {}) {
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
     if (inIgnoredBlock(el)) continue;
+    if (linkedElements.has(el)) continue;
     const matches = router.matchElement(el, 'link');
     if (matches.length === 0) continue;
+
+    linkedElements.add(el);
 
     const elementScope = getElementScope(el) || scope;
 
@@ -252,15 +259,17 @@ export function runLink(root, router, options = {}) {
           handlers: options.handlers || null,
           options: options.options || options,
           target: options.target || null,
+          linkedElements,
         }),
-        link: (subNode, subScope) => runLink(subNode, router, {
+        link: (subNode, subScope, customCleanupStack) => runLink(subNode, router, {
           store,
           scope: subScope || elementScope,
-          cleanupStack,
+          cleanupStack: customCleanupStack || cleanupStack,
           document,
           handlers: options.handlers || null,
           options: options.options || options,
           target: options.target || null,
+          linkedElements,
         }),
       });
 
