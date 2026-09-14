@@ -1,6 +1,6 @@
 # lime-csr-js — Comprehensive LLM Reference Manual
 
-Version: 0.3.1
+Version: 0.4.0
 Architecture: Unprivileged Micro-Kernel + Discrete Modules
 Package: lime-csr-js
 Platform: Browser-First Client-Side Rendering (ESM)

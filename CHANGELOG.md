@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-09-14
+
+### Added
+- **Structured Diagnostics**: Diagnostics now include severity, category, details, timestamp, and short-window occurrence aggregation. Mounts can observe scoped diagnostics with `onDiagnostic` and `onError`.
+- **Reproducible Performance Benchmarks**: The benchmark utility uses warm-up runs and median samples, with live-loop, structural, event-heavy, and admin-table scenarios.
+
+### Changed
+- **Object-Only Mount API (Breaking)**: `mount()` and `Engine.mount()` now accept one configuration object. Positional forms such as `mount(target, template, store, options)` are removed.
+- **Single Target Owner**: Mounting a different engine on an already-owned target safely unmounts the prior owner.
+
+### Fixed
+- Hardened computed-store validation, replacement disposal, primitive path lookup, static root interpolation, router matching, and delegated event cleanup in reactive loops.
+- Optimized LCS live-loop reconciliation by indexing previous keys instead of repeatedly scanning them.
+
 ## [0.3.1] - 2026-09-14
 
 ### Fixed & Hardened

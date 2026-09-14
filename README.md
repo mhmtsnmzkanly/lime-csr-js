@@ -28,7 +28,7 @@ npm install lime-csr-js
 
 ### Subpath Exports
 
-`lime-csr-js@0.3.1` provides clean, dedicated subpaths:
+`lime-csr-js@0.4.0` provides clean, dedicated subpaths:
 
 ```js
 // 1. Root package (Facade, Store, Diagnostics, Standard Modules)
@@ -50,18 +50,14 @@ import 'lime-csr-js/dist/index.min.js';
 
 ### Browser / CDN Usage
 
-Zero build tools or installation required. Lime can be loaded directly from standard CDNs (jsDelivr or unpkg) in any modern browser via native `<script type="module">`.
+Zero build tools or installation required. Lime can be loaded directly from jsDelivr's GitHub CDN in any modern browser via native `<script type="module">`.
 
 #### Option A: Full Bundle (Default Engine + All 7 Modules)
 If you want the complete framework with all directives pre-registered:
 
 ```html
 <script type="module">
-  // Via jsDelivr:
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/index.min.js';
-
-  // Or via unpkg:
-  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.1/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/index.min.js';
 </script>
 ```
 
@@ -70,10 +66,10 @@ If you only need specific directives (e.g. only text and events for a tiny widge
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/modules/events.min.js';
 
   // Assemble a bespoke engine with only the modules you need
   const engine = createEngine({

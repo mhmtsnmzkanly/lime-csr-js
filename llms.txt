@@ -1,6 +1,6 @@
 # lime-csr-js
 
-Version: 0.3.1  
+Version: 0.4.0
 Architecture: Unprivileged Micro-Kernel + Discrete Modules  
 Type: Browser-First Client-Side Rendering Engine  
 CSP: Compatible with script-src 'self' (Eval-Free)
@@ -28,11 +28,11 @@ import { partials, conditionals, loops, text, show, model, events } from 'lime-c
 // Single Module import (alternative granular import)
 // import show from 'lime-csr-js/modules/show';
 
-// Browser / CDN distribution (jsDelivr / unpkg)
-// Full bundle: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/index.min.js'
-// Micro-Kernel: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/core.min.js'
-// Standalone Store: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/store.min.js'
-// Discrete Modules: 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/{text,show,events,model,conditionals,loops,partials}.min.js'
+// Browser / CDN distribution (jsDelivr GitHub CDN)
+// Full bundle: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/index.min.js'
+// Micro-Kernel: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/core.min.js'
+// Standalone Store: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/store.min.js'
+// Discrete Modules: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/modules/{text,show,events,model,conditionals,loops,partials}.min.js'
 ```
 
 ---

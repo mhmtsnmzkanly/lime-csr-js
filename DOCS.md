@@ -1,6 +1,6 @@
 # lime-csr-js — Technical Reference Manual
 
-Version: **0.3.1**  
+Version: **0.4.0**
 Architecture: **Unprivileged Micro-Kernel + Discrete Modules**  
 Status: **Production Release**
 
@@ -229,10 +229,9 @@ Use `dist/index.min.js` to get the complete framework with all 7 standard module
 ```html
 <script type="module">
   // Via jsDelivr:
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/index.min.js';
 
   // Or via unpkg:
-  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.1/dist/index.min.js';
 </script>
 ```
 
@@ -241,10 +240,10 @@ If your application only needs a subset of features (e.g., only reactive text bi
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.0/dist/modules/events.min.js';
 
   // Create an engine configured strictly with text and events
   const engine = createEngine({
