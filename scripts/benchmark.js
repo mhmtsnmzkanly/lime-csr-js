@@ -5,8 +5,51 @@ import { createStore, mount } from '../src/index.js';
 const count = Number(process.argv[2] || 1000);
 const iterations = Number(process.argv[3] || 5);
 const diffStrategy = process.argv[4] || 'simple';
-const template = `<ul><for data-live data-diff="${diffStrategy}" each="items" as="item" key="item.id"><li data-on-click="select">\${item.label}</li></for></ul>`;
-const handlers = { select() {} };
+const scenario = process.argv[5] || 'reorder';
+
+if (!Number.isInteger(count) || count < 1 || !Number.isInteger(iterations) || iterations < 1) {
+  throw new TypeError('Items and iterations must be positive integers.');
+}
+
+const loopTemplate = `<ul><for data-live data-diff="${diffStrategy}" each="items" as="item" key="item.id"><li data-on-click="select">\${item.label}</li></for></ul>`;
+const structuralTemplate = `<ul><for data-live data-diff="${diffStrategy}" each="items" as="item" key="item.id"><partial name="row"></partial></for></ul>`;
+const structuralTemplates = {
+  row: '<li data-on-click="select"><if is-truthy="item.visible"><span>${item.label}</span><else><em>${item.label}</em></else></if></li>',
+};
+
+const scenarios = {
+  reorder: {
+    template: loopTemplate,
+    update: (store) => store.set('items', [...store.get('items')].reverse()),
+    dispatch: (target) => target.querySelector('li')?.click(),
+  },
+  'item-update': {
+    template: loopTemplate,
+    update: (store) => {
+      const itemIndex = Math.floor(count / 2);
+      store.set('items', store.get('items').map((item, index) => (
+        index === itemIndex ? { ...item, label: `${item.label} updated` } : item
+      )));
+    },
+    dispatch: (target) => target.querySelector('li')?.click(),
+  },
+  'event-heavy': {
+    template: loopTemplate,
+    update: () => {},
+    dispatch: (target) => target.querySelectorAll('li').forEach((element) => element.click()),
+  },
+  structural: {
+    template: structuralTemplate,
+    templates: structuralTemplates,
+    update: (store) => store.set('items', [...store.get('items')].reverse()),
+    dispatch: (target) => target.querySelector('li')?.click(),
+  },
+};
+
+const selectedScenario = scenarios[scenario];
+if (!selectedScenario) {
+  throw new RangeError(`Unknown scenario "${scenario}". Valid scenarios: ${Object.keys(scenarios).join(', ')}.`);
+}
 
 function runIteration() {
   const dom = new JSDOM('<main id="app"></main>', { url: 'http://localhost/' });
@@ -16,14 +59,24 @@ function runIteration() {
 
   const target = dom.window.document.getElementById('app');
   const store = createStore({
-    items: Array.from({ length: count }, (_, id) => ({ id, label: `Item ${id}` })),
+    items: Array.from({ length: count }, (_, id) => ({
+      id,
+      label: `Item ${id}`,
+      visible: id % 2 === 0,
+    })),
   });
   const started = performance.now();
-  const instance = mount({ target, template, store, handlers });
+  const instance = mount({
+    target,
+    template: selectedScenario.template,
+    templates: selectedScenario.templates,
+    store,
+    handlers: { select() {} },
+  });
   const mounted = performance.now();
-  store.set('items', [...store.get('items')].reverse());
+  selectedScenario.update(store);
   const updated = performance.now();
-  target.querySelector('li')?.click();
+  selectedScenario.dispatch(target);
   const dispatched = performance.now();
   instance.unmount();
   return {
@@ -46,7 +99,8 @@ console.log(JSON.stringify({
   items: count,
   iterations,
   diffStrategy,
+  scenario,
   mountMs: measurement('mountMs'),
-  reorderMs: measurement('reorderMs'),
+  updateMs: measurement('reorderMs'),
   eventMs: measurement('eventMs'),
 }));
