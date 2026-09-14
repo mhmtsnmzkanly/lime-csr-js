@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.1] - 2026-09-14
+
+### Performance
+- **Adaptive Static Transform Scheduling**: Built-in static loops, partials, and conditionals defer generated fragments into a shared lifecycle queue, avoiding recursive transform runs per generated fragment while retaining conservative root scans for custom structural modules.
+
 ## [0.4.0] - 2026-09-14
 
 ### Added
