@@ -196,11 +196,9 @@ export function resolveStatic(root, context, store = null) {
     showFlags,
   );
 
-  let node = walker.nextNode();
-  while (node) {
+  const resolveNode = (node) => {
     if (inLiveBlock(node) || inUnexpandedFor(node) || inIgnoredBlock(node)) {
-      node = walker.nextNode();
-      continue;
+      return;
     }
     const nodeScope = getNodeScope(node, context);
     if (node.nodeType === 3) {
@@ -226,6 +224,17 @@ export function resolveStatic(root, context, store = null) {
         }
       }
     }
+  };
+
+  // TreeWalker does not visit its root, but callers may render an Element
+  // directly and expect placeholders in that element's attributes to resolve.
+  if (root.nodeType === 1) {
+    resolveNode(root);
+  }
+
+  let node = walker.nextNode();
+  while (node) {
+    resolveNode(node);
     node = walker.nextNode();
   }
 }

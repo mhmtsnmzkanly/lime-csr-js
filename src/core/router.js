@@ -58,7 +58,7 @@ function getTriggerConflictKey(trigger, phase) {
     case TRIGGER_TYPES.ATTR:
       return `${phase}:ATTR:${trigger.name}`;
     case TRIGGER_TYPES.ATTRS:
-      return `${phase}:ATTRS:${trigger.required.join(',')}`;
+      return `${phase}:ATTRS:${[...trigger.required].sort().join(',')}`;
     case TRIGGER_TYPES.PATTERN:
       return `${phase}:PATTERN:${String(trigger.pattern)}`;
     default:

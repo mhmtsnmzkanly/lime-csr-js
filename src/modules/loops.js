@@ -118,7 +118,16 @@ function transformLoop(el, data, ctx) {
     }
   }
 
-  const diffStrategy = el.getAttribute('data-diff') || 'simple';
+  const requestedDiffStrategy = el.getAttribute('data-diff') || 'simple';
+  const diffStrategy = ['simple', 'lcs', 'replace'].includes(requestedDiffStrategy)
+    ? requestedDiffStrategy
+    : 'simple';
+  if (diffStrategy !== requestedDiffStrategy) {
+    ctx.error('UNKNOWN_DIFF_STRATEGY', {
+      value: requestedDiffStrategy,
+      templateName: el.id || '?',
+    }, el);
+  }
 
   // State for keyed blocks: key -> { nodes, cleanup, item, idx }
   const keyedBlocks = new Map();

@@ -28,6 +28,10 @@ import { createRouter } from './router.js';
 import { runTransform, runLink } from './lifecycle.js';
 import { createCompositionModule, resolveTemplate } from './composition.js';
 
+// A DOM target can host only one active runtime, even when it is mounted
+// through different Engine instances.
+const mountOwners = new WeakMap();
+
 /**
  * @typedef {Object} EngineMountResult
  * @property {() => void} unmount - Unmounts the target, disposes all subscriptions, and clears DOM contents
@@ -196,8 +200,8 @@ export function createEngine(options = {}) {
       }
     }
 
-    // 5. Duplicate Mount Protection: unmount / replace existing active instance on target
-    const previous = mountedTargets.get(resolvedTarget);
+    // 5. Duplicate Mount Protection: unmount / replace any active owner of target
+    const previous = mountOwners.get(resolvedTarget);
     if (previous && previous.active) {
       previous.unmount();
     }
@@ -322,6 +326,9 @@ export function createEngine(options = {}) {
       cleanupSelf();
       active = false;
       mountedTargets.delete(resolvedTarget);
+      if (mountOwners.get(resolvedTarget) === instance) {
+        mountOwners.delete(resolvedTarget);
+      }
       if (ownsContent) {
         resolvedTarget.textContent = '';
       }
@@ -354,6 +361,7 @@ export function createEngine(options = {}) {
     });
 
     mountedTargets.set(resolvedTarget, instance);
+    mountOwners.set(resolvedTarget, instance);
 
     if (mountOptions.signal) {
       const onAbort = () => unmountSelf();
@@ -387,7 +395,7 @@ export function createEngine(options = {}) {
       }
     }
     if (!target || target.nodeType !== 1) return;
-    const entry = mountedTargets.get(target);
+    const entry = mountOwners.get(target) || mountedTargets.get(target);
     if (entry) {
       entry.unmount();
     }

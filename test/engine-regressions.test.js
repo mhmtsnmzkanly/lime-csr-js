@@ -103,6 +103,42 @@ test('regression: <for data-live> cleans up removed item subscriptions and prese
   assert.equal(target.querySelectorAll('.item').length, 0);
 });
 
+test('regression: removing a live-loop item does not detach delegation for its siblings', () => {
+  const dom = new JSDOM(`<!doctype html>
+    <html>
+      <body>
+        <main id="app">
+          <for each="items" as="item" key="id" data-live>
+            <button class="item" data-on-click="select" data-on-click-data="item.id">\${item.name}</button>
+          </for>
+        </main>
+      </body>
+    </html>
+  `, { url: 'http://localhost/' });
+
+  globalThis.document = dom.window.document;
+  globalThis.Node = dom.window.Node;
+  globalThis.NodeFilter = dom.window.NodeFilter;
+
+  const target = document.getElementById('app');
+  const store = createStore({ items: [] });
+  const selected = [];
+  const instance = mount(target, null, store, {
+    handlers: {
+      select({ data }) {
+        selected.push(data);
+      },
+    },
+  });
+
+  store.set('items', [{ id: 1, name: 'First' }, { id: 2, name: 'Second' }]);
+  store.set('items', [{ id: 2, name: 'Second' }]);
+  target.querySelector('.item').click();
+
+  assert.deepEqual(selected, [2]);
+  instance.unmount();
+});
+
 test('regression: isSafeUrlProtocol rejects backslash protocol-relative URLs (/\\evil.com)', () => {
   assert.equal(isSafeUrlProtocol('/\\evil.com'), false);
   assert.equal(isSafeUrlProtocol('/\\\\evil.com'), false);

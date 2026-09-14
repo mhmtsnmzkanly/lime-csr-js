@@ -242,69 +242,80 @@ function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
     targetDelegatedMap.set(target, delegations);
   }
 
-  if (delegations.has(domType)) {
-    return;
+  let delegation = delegations.get(domType);
+  if (!delegation) {
+    const onEvent = (event) => {
+      let current = event.target;
+      while (current && current.nodeType === 1) {
+        if (inIgnoredBlock(current)) break;
+
+        for (const attr of current.attributes) {
+          if (!attr.name.startsWith('data-on-') || attr.name.endsWith('-data')) continue;
+          const evName = attr.name.slice(8);
+          const parsed = parseEventName(evName);
+          if (!parsed || parsed.type !== domType) continue;
+
+          if (parsed.requiredKey !== null && event.key !== parsed.requiredKey) {
+            continue;
+          }
+
+          if (domType === 'submit') {
+            event.preventDefault();
+          }
+
+          const handlerName = attr.value;
+          const handlers = ctx.handlers || ctx.options?.handlers || moduleOptions.handlers || {};
+          const elementScope = findElementScope(current, target, ctx.scope);
+          const handler = lookupHandler(handlerName, handlers, elementScope);
+
+          if (typeof handler !== 'function') {
+            ctx.error('HANDLER_NOT_FOUND', { name: handlerName, available: Object.keys(handlers) }, current);
+            continue;
+          }
+
+          const dataAttr = `${attr.name}-data`;
+          const rawData = current.hasAttribute(dataAttr) ? current.getAttribute(dataAttr) : null;
+          const resolvedData = rawData !== null
+            ? resolveHandlerData(rawData, elementScope, ctx.store)
+            : null;
+
+          const payload = {
+            event,
+            element: current,
+            scope: elementScope,
+            store: ctx.store || null,
+            data: resolvedData,
+          };
+
+          invokeHandler(handler, handlerName, payload, ctx, current);
+        }
+
+        if (current === target || event.cancelBubble) {
+          break;
+        }
+        current = current.parentNode;
+      }
+    };
+
+    delegation = { onEvent, owners: 0 };
+    target.addEventListener(domType, onEvent);
+    delegations.set(domType, delegation);
   }
 
-  const onEvent = (event) => {
-    let current = event.target;
-    while (current && current.nodeType === 1) {
-      if (inIgnoredBlock(current)) break;
-
-      for (const attr of current.attributes) {
-        if (!attr.name.startsWith('data-on-') || attr.name.endsWith('-data')) continue;
-        const evName = attr.name.slice(8);
-        const parsed = parseEventName(evName);
-        if (!parsed || parsed.type !== domType) continue;
-
-        if (parsed.requiredKey !== null && event.key !== parsed.requiredKey) {
-          continue;
-        }
-
-        if (domType === 'submit') {
-          event.preventDefault();
-        }
-
-        const handlerName = attr.value;
-        const handlers = ctx.handlers || ctx.options?.handlers || moduleOptions.handlers || {};
-        const elementScope = findElementScope(current, target, ctx.scope);
-        const handler = lookupHandler(handlerName, handlers, elementScope);
-
-        if (typeof handler !== 'function') {
-          ctx.error('HANDLER_NOT_FOUND', { name: handlerName, available: Object.keys(handlers) }, current);
-          continue;
-        }
-
-        const dataAttr = `${attr.name}-data`;
-        const rawData = current.hasAttribute(dataAttr) ? current.getAttribute(dataAttr) : null;
-        const resolvedData = rawData !== null
-          ? resolveHandlerData(rawData, elementScope, ctx.store)
-          : null;
-
-        const payload = {
-          event,
-          element: current,
-          scope: elementScope,
-          store: ctx.store || null,
-          data: resolvedData,
-        };
-
-        invokeHandler(handler, handlerName, payload, ctx, current);
-      }
-
-      if (current === target || event.cancelBubble) {
-        break;
-      }
-      current = current.parentNode;
-    }
-  };
-
-  target.addEventListener(domType, onEvent);
-  delegations.set(domType, onEvent);
+  delegation.owners++;
+  let released = false;
 
   ctx.onCleanup(() => {
-    target.removeEventListener(domType, onEvent);
-    delegations.delete(domType);
+    if (released) return;
+    released = true;
+    delegation.owners--;
+    if (delegation.owners === 0) {
+      target.removeEventListener(domType, delegation.onEvent);
+      delegations.delete(domType);
+      if (delegations.size === 0) {
+        targetDelegatedMap.delete(target);
+      }
+    }
   });
 }
 

@@ -87,3 +87,12 @@ test('renderTemplate and resolveStatic accept store fallback directly', () => {
   resolveStatic(div, {}, store);
   assert.equal(div.querySelector('#direct').textContent, 'DirectValue');
 });
+
+test('resolveStatic: resolves placeholders in root element attributes', () => {
+  const dom = new JSDOM('<div title="Hello ${user.name}"></div>');
+  const root = dom.window.document.body.firstElementChild;
+
+  resolveStatic(root, { user: { name: 'Ada' } });
+
+  assert.equal(root.getAttribute('title'), 'Hello Ada');
+});

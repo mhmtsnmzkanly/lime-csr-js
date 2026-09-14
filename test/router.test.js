@@ -157,12 +157,29 @@ test('router: multi-attribute trigger produces exactly ONE match per element', (
       }, () => {}),
     ],
   });
-
   const router = createRouter([condMod]);
   const el = createElement('<div cond-l="a" cond-op="eq" cond-r="b"></div>');
   const matches = router.matchElement(el, 'link');
 
   assert.equal(matches.length, 1, 'Multi-attribute trigger must only match once on the same element');
+});
+
+test('router: equivalent multi-attribute routes conflict regardless of required order', () => {
+  const first = defineModule({
+    name: 'first-multi-attr',
+    triggers: [attrs({ required: ['data-a', 'data-b'] }, () => {})],
+  });
+  const second = defineModule({
+    name: 'second-multi-attr',
+    triggers: [attrs({ required: ['data-b', 'data-a'] }, () => {})],
+  });
+  const router = createRouter([first, second]);
+  const el = createElement('<div data-a data-b></div>');
+
+  const matches = router.matchElement(el, 'link');
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].record.moduleName, 'first-multi-attr');
 });
 
 // ── 5. PRECEDENCE (CONFLICT RESOLUTION) ──────────────────────────────────────

@@ -50,7 +50,11 @@ export function getByPath(source, path) {
   return keys.reduce((value, key) => {
     if (value == null) return undefined;
     if (Object.hasOwn(value, key)) return value[key];
-    if (key in value && !Object.prototype.hasOwnProperty.call(Object.prototype, key)) {
+    if (
+      (typeof value === 'object' || typeof value === 'function')
+      && key in value
+      && !Object.prototype.hasOwnProperty.call(Object.prototype, key)
+    ) {
       return value[key];
     }
     return undefined;
@@ -177,6 +181,7 @@ export function createStore(initialState = {}) {
 
   // Set of computed paths — direct store.set() on these warns in dev-mode
   const computedPaths = new Set();
+  const computedDisposers = new Map();
 
   // Guard flag to swallow a computed's own re-trigger (loop prevention)
   const computedUpdating = new Set();
@@ -420,7 +425,8 @@ export function createStore(initialState = {}) {
      *
      * @param {string}            path   - Destination path in the store (ordinary path).
      * @param {string[]}          deps   - Array of store paths to watch.
-     * @param {function(): *}     fn     - Pure function; return value is written to path.
+     * @param {function(...*): *} fn     - Pure function receiving dependency values in `deps`
+     *                                      order; return value is written to path.
      * @returns {function(): void}        dispose — cancels all dep subscriptions AND
      *   deletes the computed value from state, so no ghost value remains
      *   (store.get(path) → undefined afterwards). The deletion itself emits
@@ -428,18 +434,23 @@ export function createStore(initialState = {}) {
      *
      * @example
      * const dispose = store.computed('fullName', ['firstName', 'lastName'],
-     *   () => store.get('firstName') + ' ' + store.get('lastName'));
+     *   (firstName, lastName) => `${firstName} ${lastName}`);
      * // later:
      * dispose(); // stops recomputing AND removes "fullName" from state
      */
     computed(path, deps, fn) {
+      const previousDispose = computedDisposers.get(path);
+      if (previousDispose) {
+        previousDispose();
+      }
+
       computedPaths.add(path);
 
       const recompute = () => {
         if (computedUpdating.has(path)) return; // loop guard
         computedUpdating.add(path);
         try {
-          const newVal = fn();
+          const newVal = fn(...deps.map((dep) => getByPath(initialState, dep)));
           // Bypass the computed-path warning by going through setByPath directly
           const result = setByPath(initialState, path, newVal);
           if (result.changed) scheduleNotify(path, result.previousValue);
@@ -454,16 +465,24 @@ export function createStore(initialState = {}) {
       // Subscribe to each dep
       const unsubs = deps.map((dep) => this.subscribe(dep, recompute));
 
-      return function dispose() {
+      let disposed = false;
+      const dispose = function dispose() {
+        if (disposed) return;
+        disposed = true;
         for (const unsub of unsubs) unsub();
+        if (computedDisposers.get(path) !== dispose) return;
+
+        computedDisposers.delete(path);
         computedPaths.delete(path);
         // Ghost-value removal: delete the last computed value from state so
         // nothing stale remains readable after disposal (silent — no notify)
         deleteByPath(initialState, path);
       };
+
+      computedDisposers.set(path, dispose);
+      return dispose;
     },
   };
 }
 
 export default createStore;
-

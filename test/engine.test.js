@@ -269,6 +269,31 @@ test('engine: mounting on an already mounted target unmounts previous instance c
   assert.equal(cleanedOld, true);
 });
 
+test('engine: mounting through another engine replaces the target owner cleanly', () => {
+  let firstCleaned = false;
+  const firstEngine = createEngine({
+    modules: [defineModule({
+      name: 'first-owner',
+      triggers: [attr('x-first-owner', (el, data, ctx) => {
+        ctx.onCleanup(() => { firstCleaned = true; });
+      })],
+    })],
+  });
+  const secondEngine = createEngine({ modules: [] });
+  const dom = createDom('<div id="target" x-first-owner>First</div>');
+  const target = dom.window.document.getElementById('target');
+
+  const first = firstEngine.mount(target);
+  const second = secondEngine.mount(target, '<p>Second</p>');
+
+  assert.equal(first.active, false);
+  assert.equal(firstCleaned, true);
+  assert.equal(second.active, true);
+  assert.equal(target.textContent, 'Second');
+
+  second.unmount();
+});
+
 test('engine: a failed replacement mount preserves the active mount and its resources', () => {
   let cleaned = false;
   const mod = defineModule({

@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import {
   mount,
   createStore,
+  subscribeDiagnostics,
 } from '../src/index.js';
 
 test('live for updates item content in-place when item properties change', () => {
@@ -269,4 +270,38 @@ test('template[data-for][data-live] works inside tables and updates in-place', (
   trs = target.querySelectorAll('tr');
   assert.equal(trs[0].textContent, 'Row 10 Modified');
   assert.equal(trs[1].textContent, 'Row 20');
+});
+
+test('live for: unknown data-diff strategy reports a diagnostic and uses simple reconciliation', () => {
+  const dom = new JSDOM(`<!doctype html>
+    <html>
+      <body>
+        <template id="tpl-invalid-diff">
+          <for data-live data-diff="invalid" each="items" as="item" key="item.id">
+            <span class="item">\${item.name}</span>
+          </for>
+        </template>
+        <main id="app"></main>
+      </body>
+    </html>
+  `, { url: 'http://localhost/' });
+
+  globalThis.document = dom.window.document;
+  globalThis.Node = dom.window.Node;
+  globalThis.NodeFilter = dom.window.NodeFilter;
+
+  const diagnostics = [];
+  const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
+  const store = createStore({ items: [{ id: 1, name: 'Initial' }] });
+  const target = document.getElementById('app');
+
+  try {
+    mount(target, 'invalid-diff', store);
+    store.set('items', [{ id: 1, name: 'Updated' }]);
+
+    assert.equal(target.querySelector('.item').textContent, 'Updated');
+    assert.ok(diagnostics.some((diagnostic) => diagnostic.code === 'UNKNOWN_DIFF_STRATEGY'));
+  } finally {
+    unsubscribe();
+  }
 });
