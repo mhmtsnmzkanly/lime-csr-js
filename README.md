@@ -269,6 +269,10 @@ const store = createStore({ message: 'Hello World' });
 const instance = engine.mount(document.getElementById('app'), 'my-template', store);
 ```
 
+### Multiple Engines and Target Ownership
+
+Engines are isolated and may run independently on separate target elements. A target element has one active mount owner across all engines: mounting another engine to the same target automatically unmounts the previous runtime before the replacement starts. This keeps DOM updates, reactive subscriptions, and delegated event listeners owned by one runtime at a time.
+
 ---
 
 ## The 7 Standard Modules

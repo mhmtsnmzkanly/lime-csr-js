@@ -398,6 +398,7 @@ import { mount, unmount, render } from 'lime-csr-js';
     - `instance.store`: Bound Store instance.
     - `instance.scope`: Root lexical scope.
     - `instance.active`: Boolean indicating if mount runtime is currently active.
+  - **Target ownership**: A target has one active mount owner across all `Engine` instances. Mounting to an occupied target automatically unmounts the prior owner before the new runtime takes control.
 
 - **`unmount(targetOrInstance)`**:
   ```js
@@ -497,7 +498,11 @@ const engine = createEngine({
 
 ### 6.2 Engine Instance Isolation
 
-Each `Engine` instance maintains its own isolated route table, partition indexes, and active mount targets. Multiple engines can coexist within the same application or web page without cross-talk.
+Each `Engine` instance maintains its own isolated route table, partition indexes, and module configuration. Multiple engines can coexist within the same application or web page without cross-talk **when mounted to different target elements**.
+
+DOM targets have exclusive runtime ownership across all engines. Mounting an engine to a target that is already mounted by another engine first unmounts the previous owner, including its reactive subscriptions and delegated event listeners, then activates the new owner. This prevents two runtimes from concurrently controlling the same DOM tree.
+
+Use separate targets for independent widgets. To replace an application in the same target, mount the replacement engine normally; no manual cross-engine teardown is needed.
 
 ### 6.3 Custom Engine Composition
 
