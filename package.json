@@ -54,6 +54,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test",
     "test:browser": "node --test test/browser-smoke.test.js",
+    "benchmark": "node scripts/benchmark.js",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
     "prepublishOnly": "npm run verify"
   },

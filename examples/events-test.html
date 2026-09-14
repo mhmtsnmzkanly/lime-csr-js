@@ -87,13 +87,13 @@
     const target = document.createElement('div');
     let calledWith = null;
 
-    const cleanup = mount(target, 'events-basic', store, {
+    const cleanup = mount({ target: target, template: 'events-basic', store: store, ...{
       handlers: {
         handleClick({ event, element }) {
           calledWith = { type: event.type, tag: element.tagName };
         },
       },
-    });
+    } });
 
     target.querySelector('button').click();
 
@@ -112,11 +112,11 @@
     const target = document.createElement('div');
     let readId = null;
 
-    const cleanup = mount(target, 'events-basic', store, {
+    const cleanup = mount({ target: target, template: 'events-basic', store: store, ...{
       handlers: {
         handleClick({ element }) { readId = element.dataset.id; },
       },
-    });
+    } });
 
     target.querySelector('button').click();
 
@@ -132,11 +132,11 @@
     const target = document.createElement('div');
     const removedIds = [];
 
-    const cleanup = mount(target, 'events-list', store, {
+    const cleanup = mount({ target: target, template: 'events-list', store: store, ...{
       handlers: {
         removeItem({ element }) { removedIds.push(element.dataset.id); },
       },
-    });
+    } });
 
     // A NEW element is added reactively — NO extra setup call is made.
     store.set('items', [...store.get('items'), { id: 2, label: 'B' }]);
@@ -163,11 +163,11 @@
     const target = document.createElement('div');
     let submitted = false;
 
-    const cleanup = mount(target, 'events-submit', store, {
+    const cleanup = mount({ target: target, template: 'events-submit', store: store, ...{
       handlers: {
         handleSubmit() { submitted = true; },
       },
-    });
+    } });
 
     const form = target.querySelector('form');
     const evt = new Event('submit', { bubbles: true, cancelable: true });
@@ -191,7 +191,7 @@
     let threw = false;
 
     try {
-      mount(target, 'events-basic', store, { handlers: {} }); // handleClick NOT DEFINED
+      mount({ target: target, template: 'events-basic', store: store, ...{ handlers: {} } }); // handleClick NOT DEFINED
       target.querySelector('button').click();
     } catch { threw = true; }
 
@@ -216,7 +216,7 @@
 
     const store = createStore({});
     const target = document.createElement('div');
-    mount(target, 'events-bad', store, { handlers: {} });
+    mount({ target: target, template: 'events-bad', store: store, ...{ handlers: {} } });
 
     console.warn = orig;
 
@@ -234,9 +234,9 @@
     const target = document.createElement('div');
     let called = false;
 
-    mount(target, 'events-basic', store, {
+    mount({ target: target, template: 'events-basic', store: store, ...{
       handlers: { handleClick() { called = true; } },
-    });
+    } });
 
     const btn = target.querySelector('button');
     unmount(target); // content is cleared AND the delegation listener is removed
@@ -264,7 +264,7 @@
     let threw = false;
 
     try {
-      mount(target, 'events-basic', store); // NO handlers
+      mount({ target: target, template: 'events-basic', store: store }); // NO handlers
       target.querySelector('button').click();
     } catch { threw = true; }
 

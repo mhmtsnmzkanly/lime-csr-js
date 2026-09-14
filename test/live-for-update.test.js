@@ -39,7 +39,7 @@ test('live for updates item content in-place when item properties change', () =>
   });
 
   const target = document.getElementById('app');
-  mount(target, 'todo-list', store);
+  mount({ target: target, template: 'todo-list', store: store });
 
   const initialLi1 = target.querySelector('#todo-1');
   const initialLi2 = target.querySelector('#todo-2');
@@ -95,7 +95,7 @@ test('live for preserves DOM identity and active focus during sort/reorder', () 
   });
 
   const target = document.getElementById('app');
-  mount(target, 'focus-list', store);
+  mount({ target: target, template: 'focus-list', store: store });
 
   const inputB = target.querySelector('#input-b');
   const rowB = target.querySelector('#item-b');
@@ -153,7 +153,7 @@ test('live for with lcs preserves activeElement focus on stay-put items during r
   });
 
   const target = document.getElementById('app');
-  mount(target, 'focus-stayput', store);
+  mount({ target: target, template: 'focus-stayput', store: store });
 
   const inputB = target.querySelector('#input-b');
   inputB.focus();
@@ -201,7 +201,7 @@ test('live for with lcs strategy updates item in-place and preserves unmutated i
   });
 
   const target = document.getElementById('app');
-  mount(target, 'lcs-list', store);
+  mount({ target: target, template: 'lcs-list', store: store });
 
   const initialItem2 = target.querySelector('#item-2');
   const initialItem3 = target.querySelector('#item-3');
@@ -254,7 +254,7 @@ test('template[data-for][data-live] works inside tables and updates in-place', (
   });
 
   const target = document.getElementById('app');
-  mount(target, 'table-live', store);
+  mount({ target: target, template: 'table-live', store: store });
 
   let trs = target.querySelectorAll('tr');
   assert.equal(trs.length, 2);
@@ -296,7 +296,7 @@ test('live for: unknown data-diff strategy reports a diagnostic and uses simple 
   const target = document.getElementById('app');
 
   try {
-    mount(target, 'invalid-diff', store);
+    mount({ target: target, template: 'invalid-diff', store: store });
     store.set('items', [{ id: 1, name: 'Updated' }]);
 
     assert.equal(target.querySelector('.item').textContent, 'Updated');

@@ -26,7 +26,7 @@ test('number input maintains type consistency and returns null when cleared', ()
   const target = document.getElementById('app');
   const store = createStore({ user: { age: 30 } });
 
-  mount(target, 'model-num', store);
+  mount({ target: target, template: 'model-num', store: store });
 
   const input = target.querySelector('#age');
   assert.equal(input.value, '30');

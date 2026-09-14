@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-<h1>src/index.js — mount() options-object signature + mount-scoped computed tests</h1>
+<h1>src/index.js — mount() configuration-object API + mount-scoped computed tests</h1>
 
 <!-- ═══════════════════════ Template definitions ════════════════════════════ -->
 
@@ -85,16 +85,16 @@
     realWarn(...args);
   };
 
-  // ── 1. mount(target, template, store, options) ──────────────────────────
-  group('1. mount(target, template, store, options) mounts and binds correctly');
+  // ── 1. mount({ target, template, store, ...options }) ───────────────────
+  group('1. configuration object mounts and binds correctly');
   {
     const store = createStore({ msg: 'hello' });
     const target = document.createElement('div');
     let clicks = 0;
 
-    const cleanup = mount(target, 'opt-basic', store, {
+    const cleanup = mount({ target: target, template: 'opt-basic', store: store, ...{
       handlers: { bump() { clicks++; } },
-    });
+    } });
 
     const p = target.querySelector('p');
     assert('initial data-text bound', p.textContent, 'hello');
@@ -109,13 +109,13 @@
     show('1. mount with options', target.cloneNode(true));
   }
 
-  // ── 2. in-place options object: mount(target, { template, store }) ───────
-  group('2. in-place options: mount(target, { template, store })');
+  // ── 2. in-place configuration object: mount({ target, template, store }) ─
+  group('2. in-place configuration object');
   {
     const store = createStore({ msg: 'options-obj' });
     const target = document.createElement('div');
 
-    const cleanup = mount(target, { template: 'opt-basic', store });
+    const cleanup = mount({ target: target, ...{ template: 'opt-basic', store } });
     assert('options-object mount rendered', target.querySelector('p').textContent, 'options-obj');
 
     cleanup();
@@ -128,14 +128,14 @@
     const target = document.createElement('div');
     let calls = 0;
 
-    const cleanup = mount(target, 'opt-computed', store, {
+    const cleanup = mount({ target: target, template: 'opt-computed', store: store, ...{
       computed: {
         fullName: {
           deps: ['first', 'last'],
           fn: () => { calls++; return store.get('first') + ' ' + store.get('last'); },
         },
       },
-    });
+    } });
 
     const p = target.querySelector('p');
     assert('initial computed value bound', p.textContent, 'Ada Lovelace');
@@ -163,15 +163,15 @@
   }
 
   // ── 5. mount with store omitted: auto-creates store and binds context ────
-  group('5. store omitted: mount(target, template, options) auto-creates store');
+  group('5. store omitted: configuration object auto-creates store');
   {
     const target = document.createElement('div');
     let threw = false;
 
     try {
-      const cleanup = mount(target, 'opt-static', {
+      const cleanup = mount({ target: target, template: 'opt-static', ...{
         context: { title: 'Static Title' },
-      });
+      } });
       cleanup();
     } catch { threw = true; }
 
@@ -185,11 +185,11 @@
     const store = createStore({ a: 2 });
     const target = document.createElement('div');
 
-    mount(target, 'opt-computed', store, {
+    mount({ target: target, template: 'opt-computed', store: store, ...{
       computed: {
         fullName: { deps: ['a'], fn: () => 'a=' + store.get('a') },
       },
-    });
+    } });
 
     assert('computed present while mounted', store.get('fullName'), 'a=2');
 

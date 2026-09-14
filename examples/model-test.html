@@ -305,7 +305,7 @@
     let storeValueSeenByHandler = null;
     let handlerCallCount = 0;
 
-    mount(target, 'model-order', store, {
+    mount({ target: target, template: 'model-order', store: store, ...{
       handlers: {
         onInput() {
           handlerCallCount++;
@@ -314,7 +314,7 @@
           storeValueSeenByHandler = store.get('text');
         },
       },
-    });
+    } });
 
     const input = target.querySelector('input');
     input.value = 'typed value';

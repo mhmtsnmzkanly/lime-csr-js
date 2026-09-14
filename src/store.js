@@ -439,6 +439,27 @@ export function createStore(initialState = {}) {
      * dispose(); // stops recomputing AND removes "fullName" from state
      */
     computed(path, deps, fn) {
+      if (
+        typeof path !== 'string'
+        || !path.trim()
+        || String(path).split('.').some((key) => UNSAFE_PATH_SEGMENTS.has(key))
+      ) {
+        throw new TypeError('store.computed(path, deps, fn) requires a safe, non-empty string path.');
+      }
+      if (
+        !Array.isArray(deps)
+        || !deps.every(
+          (dep) => typeof dep === 'string'
+            && dep.trim()
+            && !dep.split('.').some((key) => UNSAFE_PATH_SEGMENTS.has(key)),
+        )
+      ) {
+        throw new TypeError('store.computed(path, deps, fn) requires an array of safe, non-empty string dependency paths.');
+      }
+      if (typeof fn !== 'function') {
+        throw new TypeError('store.computed(path, deps, fn) requires a calculation function.');
+      }
+
       const previousDispose = computedDisposers.get(path);
       if (previousDispose) {
         previousDispose();

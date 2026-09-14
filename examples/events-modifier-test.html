@@ -118,9 +118,9 @@
     const target = document.createElement('div');
     const keys = [];
 
-    const cleanup = mount(target, 'mod-keyup', store, {
+    const cleanup = mount({ target: target, template: 'mod-keyup', store: store, ...{
       handlers: { handleKeyup({ event }) { keys.push(event.key); } },
-    });
+    } });
 
     const input = target.querySelector('input');
     key(input, 'keyup', 'a');
@@ -139,11 +139,11 @@
     const target = document.createElement('div');
     let calledWith = null;
 
-    const cleanup = mount(target, 'mod-dblclick', store, {
+    const cleanup = mount({ target: target, template: 'mod-dblclick', store: store, ...{
       handlers: {
         handleDblclick({ event, element }) { calledWith = { type: event.type, tag: element.tagName }; },
       },
-    });
+    } });
 
     target.querySelector('button')
       .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
@@ -162,9 +162,9 @@
     const target = document.createElement('div');
     let saves = 0;
 
-    const cleanup = mount(target, 'mod-enter', store, {
+    const cleanup = mount({ target: target, template: 'mod-enter', store: store, ...{
       handlers: { save() { saves++; } },
-    });
+    } });
 
     const input = target.querySelector('input');
     key(input, 'keydown', 'a');
@@ -186,9 +186,9 @@
     const target = document.createElement('div');
     let cancels = 0;
 
-    const cleanup = mount(target, 'mod-escape', store, {
+    const cleanup = mount({ target: target, template: 'mod-escape', store: store, ...{
       handlers: { cancel() { cancels++; } },
-    });
+    } });
 
     const input = target.querySelector('input');
     key(input, 'keydown', 'Enter');
@@ -209,12 +209,12 @@
     const target = document.createElement('div');
     let drafts = 0, saves = 0;
 
-    const cleanup = mount(target, 'mod-coexist', store, {
+    const cleanup = mount({ target: target, template: 'mod-coexist', store: store, ...{
       handlers: {
         draft() { drafts++; },
         save()  { saves++; },
       },
-    });
+    } });
 
     const input = target.querySelector('input');
     key(input, 'keydown', 'a');
@@ -236,13 +236,13 @@
     const target = document.createElement('div');
     let calls = 0;
 
-    const cleanup = mount(target, 'mod-ignored', store, {
+    const cleanup = mount({ target: target, template: 'mod-ignored', store: store, ...{
       handlers: {
         handleKeyup()    { calls++; },
         handleDblclick() { calls++; },
         save()           { calls++; },
       },
-    });
+    } });
 
     const input = target.querySelector('input');
     key(input, 'keyup', 'a');
@@ -270,7 +270,7 @@
 
     let cleanup = () => {};
     try {
-      cleanup = mount(target, 'mod-bad', store, { handlers: { whatever() { bogusCalls++; } } });
+      cleanup = mount({ target: target, template: 'mod-bad', store: store, ...{ handlers: { whatever() { bogusCalls++; } } } });
       key(target.querySelector('input'), 'keydown', 'f');
       key(target.querySelector('input'), 'keydown', 'Enter');
     } catch { threw = true; }

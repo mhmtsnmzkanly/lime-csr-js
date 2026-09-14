@@ -37,9 +37,9 @@ test('built ESM bundle imports and performs a browser-style mount, module execut
   let calls = 0;
 
   const target = document.getElementById('app');
-  const instance = mount(target, 'smoke', store, {
+  const instance = mount({ target: target, template: 'smoke', store: store, ...{
     handlers: { increment: () => { calls += 1; store.update('count', (n) => n + 1); } },
-  });
+  } });
 
   target.querySelector('button').dispatchEvent(new Event('click', { bubbles: true }));
   assert.equal(target.querySelector('button').textContent, '1');
@@ -96,13 +96,13 @@ test('modular CDN: dist/core.min.js + dist/store.min.js + discrete dist/modules/
   const store = createStore({ count: 10, visible: false, msg: 'Lean Core CDN Success' });
   const target = document.getElementById('app');
 
-  const unmount = engine.mount(target, {
+  const unmount = engine.mount({ target: target, ...{
     templateName: 'lean',
     store,
     handlers: {
       inc: () => store.update('count', (n) => n + 1),
     },
-  });
+  } });
 
   const btn = target.querySelector('button');
   const p = target.querySelector('p');
@@ -164,10 +164,10 @@ test('discrete structural CDN modules: conditionals, loops, partials with core.m
   });
 
   const target = document.getElementById('container');
-  const unmount = engine.mount(target, {
+  const unmount = engine.mount({ target: target, ...{
     templateName: 'main',
     store,
-  });
+  } });
 
   assert.equal(target.querySelector('.user-card b').textContent, 'Alice');
   assert.equal(target.querySelector('.badge').textContent, 'Active');
@@ -205,10 +205,10 @@ test('discrete model and all-in-one modules/index.min.js CDN bundles', async () 
 
   const store = createStore({ username: 'InitialUser' });
   const target = document.getElementById('form-container');
-  const unmount = engine.mount(target, {
+  const unmount = engine.mount({ target: target, ...{
     templateName: 'form',
     store,
-  });
+  } });
 
   const input = target.querySelector('input');
   assert.equal(input.value, 'InitialUser');

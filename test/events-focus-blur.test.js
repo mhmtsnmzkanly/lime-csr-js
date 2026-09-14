@@ -29,7 +29,7 @@ test('delegated data-on-focus and data-on-blur fire through bubbling focusin/foc
   let focusCount = 0;
   let blurCount = 0;
 
-  mount(target, 'focus-blur-test', store, {
+  mount({ target: target, template: 'focus-blur-test', store: store, ...{
     handlers: {
       handleFocus() {
         focusCount++;
@@ -38,7 +38,7 @@ test('delegated data-on-focus and data-on-blur fire through bubbling focusin/foc
         blurCount++;
       },
     },
-  });
+  } });
 
   const input = target.querySelector('#test-input');
 

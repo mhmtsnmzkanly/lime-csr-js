@@ -737,7 +737,7 @@
     let stopEyes = () => {};
     let blinkEye = () => {};
 
-    const mountCleanup = mount(target, "googly-eyes", null, {
+    const mountCleanup = mount({ target: target, template: "googly-eyes", store: null, ...{
       context: {
         eyebrow: "lime-csr.js example",
         title: "Googly Eyes",
@@ -774,7 +774,7 @@
         stopEyes = initGooglyEyes(componentRoot);
         blinkEye = stopEyes.blink;
       },
-    });
+    } });
 
     let destroyed = false;
 

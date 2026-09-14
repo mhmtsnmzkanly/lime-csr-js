@@ -41,7 +41,7 @@ test('slots: default slot projects caller children in order', () => {
 
   const engine = createEngine({ modules: [text()] });
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('partial'), null);
   assert.equal(root.querySelector('slot'), null);
@@ -67,7 +67,7 @@ test('slots: default slot fallback renders when caller provides no children', ()
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('slot'), null);
   const msg = root.querySelector('.default-msg');
@@ -91,7 +91,7 @@ test('slots: default slot fallback renders when caller provides only whitespace 
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('slot'), null);
   assert.equal(root.querySelector('.fb').textContent, 'Fallback Banner');
@@ -113,7 +113,7 @@ test('slots: caller content overrides default slot fallback', () => {
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('.fb'), null);
   assert.equal(root.querySelector('.custom').textContent, 'Custom Banner');
@@ -141,7 +141,7 @@ test('slots: named slots project to matching slot and strip slot attribute', () 
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('slot'), null);
 
@@ -180,7 +180,7 @@ test('slots: multiple elements targeting the same named slot preserve caller DOM
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   const items = Array.from(root.querySelectorAll('.nav-links li'));
   assert.equal(items.length, 3);
@@ -210,7 +210,7 @@ test('slots: named slot fallback content renders when caller provides nothing fo
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('.title span').textContent, 'Delete Confirmation');
   // actions slot was not provided -> fallback button rendered
@@ -236,7 +236,7 @@ test('slots: multiple slots with same name in template both receive content', ()
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('.top .badge').textContent, 'PRO');
   assert.equal(root.querySelector('.bottom .badge').textContent, 'PRO');
@@ -266,7 +266,7 @@ test('slots: unknown slot emits SLOT_NOT_FOUND diagnostic and discards content',
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   // Discarded from DOM
   assert.equal(root.querySelector('.should-not-exist'), null);
@@ -299,7 +299,7 @@ test('slots: unknown slot formats detailed dev-mode error message', async () => 
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   const diag = diagnostics.find((d) => d.code === 'SLOT_NOT_FOUND');
   assert.ok(diag);
@@ -342,7 +342,7 @@ test('slots: partial template nodes use isolated scope; slot content keeps calle
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   assert.equal(root.querySelector('.partial-title').textContent, 'User Profile');
   assert.equal(root.querySelector('.partial-secret').textContent, 'profile-isolated');
@@ -377,7 +377,7 @@ test('slots: delegated event inside slot resolves handler with caller scope', ()
 
   const engine = createEngine({ modules: [events()] });
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { scope, handlers, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, handlers, document: dom.window.document } });
 
   const btn = root.querySelector('.btn');
   assert.ok(btn);
@@ -414,7 +414,7 @@ test('slots: <partial> inside a loop with slot referencing loop item', () => {
 
   const engine = createEngine({ modules: [loops()] });
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   const rows = Array.from(root.querySelectorAll('.uname'));
   assert.equal(rows.length, 2);
@@ -456,7 +456,7 @@ test('slots: data-text, data-show, data-if inside slot content execute seamlessl
     modules: [text(), show(), conditionals()],
   });
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
 
   assert.equal(root.querySelector('.bound-text').textContent, 'Hello Reactive Slot');
   assert.equal(root.querySelector('.bound-show').style.display, '');
@@ -498,7 +498,7 @@ test('slots: nested partial inside another partial slot compiles cleanly', () =>
 
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   assert.equal(root.querySelector('.outer-card h3').textContent, 'Outer');
   assert.equal(root.querySelector('.inner-card h4').textContent, 'Inner');
@@ -520,7 +520,7 @@ test('slots: partials are built-in and work with empty createEngine()', () => {
   // Zero modules configured
   const engine = createEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('.simple').textContent, 'Simple Fallback');
 });
@@ -528,12 +528,12 @@ test('slots: partials are built-in and work with empty createEngine()', () => {
 test('slots: public mount facade with custom templates option expands partial and slots', () => {
   const dom = createDom('<div id="app"><partial name="inline-card"><p slot="body">Slot Content</p></partial></div>');
 
-  mount('#app', {
+  mount({ target: '#app', ...{
     templates: {
       'inline-card': '<div class="custom-card"><h1>Inline</h1><slot name="body"></slot></div>',
     },
     document: dom.window.document,
-  });
+  } });
 
   const app = dom.window.document.getElementById('app');
   assert.equal(app.querySelector('h1').textContent, 'Inline');
@@ -554,9 +554,9 @@ test('slots: unmount cleanly removes template DOM and teardowns bindings inside 
   const store = createStore({ msg: 'Init' });
   const app = dom.window.document.getElementById('app');
 
-  const instance = mount(app, '<partial name="wrapper"><span data-text="msg"></span></partial>', store, {
+  const instance = mount({ target: app, template: '<partial name="wrapper"><span data-text="msg"></span></partial>', store: store, ...{
     document: dom.window.document,
-  });
+  } });
 
   assert.equal(app.querySelector('span').textContent, 'Init');
 
@@ -586,7 +586,7 @@ test('slots: data-model two-way binding works inside slot content', () => {
   const store = createStore({ user: { nickname: 'Initial' } });
   const engine = createEngine({ modules: [model()] });
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
 
   const input = root.querySelector('input');
   assert.equal(input.value, 'Initial');
@@ -615,7 +615,7 @@ test('slots: explicit partials() module in createEngine runs cleanly without dup
     modules: [partials(), text()],
   });
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('.explicit').textContent, 'Explicit Content');
   assert.equal(warnings.some((w) => w.code === 'MODULE_TRIGGER_OVERRIDDEN'), false);
@@ -650,7 +650,7 @@ test('slots: partial and slot composition inside reactive <for data-live key=...
 
   const engine = createEngine({ modules: [loops(), partials(), text()] });
   const root = dom.window.document.getElementById('root');
-  const instance = engine.mount(root, { store, document: dom.window.document });
+  const instance = engine.mount({ target: root, ...{ store, document: dom.window.document } });
 
   assert.equal(root.querySelectorAll('.card').length, 2);
   let names = Array.from(root.querySelectorAll('.item-name')).map((el) => el.textContent.trim());

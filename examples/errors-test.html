@@ -170,7 +170,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtMsgs.push(args.join(' ')); origWarn.apply(console, args); };
 
-    mount(target, 'partial-test', store);
+    mount({ target: target, template: 'partial-test', store: store });
     console.warn = origWarn;
 
     const hasPartialError = caughtMsgs.some((m) => m.includes('PARTIAL_NOT_FOUND'));
@@ -197,7 +197,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtMsgs.push(args.join(' ')); origWarn.apply(console, args); };
 
-    const cleanup = mount(target, 'totally-missing', store);
+    const cleanup = mount({ target: target, template: 'totally-missing', store: store });
     console.warn = origWarn;
 
     const hasMountError = caughtMsgs.some((m) => m.includes('MOUNT_TEMPLATE_NOT_FOUND'));
@@ -221,7 +221,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtCount++; origWarn.apply(console, args); };
 
-    mount(target, 'also-missing', store);
+    mount({ target: target, template: 'also-missing', store: store });
     console.warn = origWarn;
 
     assert('devMode=false: mount error silent (0 warn)', caughtCount, 0);
@@ -241,7 +241,7 @@
     const origWarn = console.warn;
     console.warn = (...args) => { caughtCount++; origWarn.apply(console, args); };
 
-    mount(target, 'valid', store);
+    mount({ target: target, template: 'valid', store: store });
     console.warn = origWarn;
 
     assert('valid mount: no warn issued', caughtCount, 0);

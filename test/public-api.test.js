@@ -210,7 +210,7 @@ test('public api: build custom engine using only core and modules subpaths', () 
     const target = dom.window.document.getElementById('app');
     const store = createStore({ greeting: 'Subpath Modular Success' });
 
-    engine.mount(target, { store });
+    engine.mount({ target: target, ...{ store } });
     assert.equal(target.querySelector('span').textContent, 'Subpath Modular Success');
 
     engine.unmount(target);

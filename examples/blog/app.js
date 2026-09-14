@@ -524,9 +524,9 @@ function initActions() {
   });
 }
 
-mount(root, 'page', store, {
+mount({ target: root, template: 'page', store: store, ...{
   context: store.get(),
-});
+} });
 initComposerListeners();
 initActions();
 

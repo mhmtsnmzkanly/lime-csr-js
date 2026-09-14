@@ -229,10 +229,10 @@ Use `dist/index.min.js` to get the complete framework with all 7 standard module
 ```html
 <script type="module">
   // Via jsDelivr:
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/index.min.js';
 
   // Or via unpkg:
-  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.0/dist/index.min.js';
+  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.1/dist/index.min.js';
 </script>
 ```
 
@@ -241,10 +241,10 @@ If your application only needs a subset of features (e.g., only reactive text bi
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/events.min.js';
 
   // Create an engine configured strictly with text and events
   const engine = createEngine({
@@ -252,7 +252,10 @@ If your application only needs a subset of features (e.g., only reactive text bi
   });
 
   const store = createStore({ count: 0 });
-  engine.mount(document.getElementById('app'), 'counter', store, {
+  engine.mount({
+    target: document.getElementById('app'),
+    template: 'counter',
+    store,
     handlers: {
       increment: () => store.update('count', (n) => n + 1),
     }
@@ -338,7 +341,10 @@ Below is a complete, standalone example with zero build tools required:
       todos.some((t) => t.done)
     );
 
-    mount('#app', 'todo-app', store, {
+    mount({
+      target: '#app',
+      template: 'todo-app',
+      store,
       context: { appName: 'My Reactive Tasks' },
       handlers: {
         addTodo(event, el, ctx) {
@@ -373,11 +379,11 @@ The root package exports **exactly 34 clean public symbols**:
 import { mount, unmount, render } from 'lime-csr-js';
 ```
 
-- **`mount(target, template, store, options)`**:
+- **`mount({ target, template?, templateName?, store?, ...options })`**:
   Mounts a template or DOM element into a target container. Delegates to the private singleton `defaultEngine`.
   - Signature:
     ```js
-    const instance = mount(target, template, store?, options?);
+    const instance = mount({ target, template, store, handlers, ...options });
     ```
   - **`target`**: CSS selector string (e.g. `'#app'`) matching exactly one element, or a DOM `Element` (connected or detached).
   - **`template`**: Template name string (resolving `<template id="tpl-{name}">`), HTML string, `HTMLTemplateElement`, or `DocumentFragment`. Can be omitted for in-place mounting.
@@ -389,7 +395,10 @@ import { mount, unmount, render } from 'lime-csr-js';
     - `computed`: Object dictionary of computed paths `{ deps, fn }`.
     - `beforeRender(scope, store)`: Lifecycle hook before Transform/Link phases.
     - `afterRender(target, store)`: Lifecycle hook after template placement.
+    - `onDiagnostic(diagnostic)`: Receives structured diagnostics belonging to this mount target or its descendants. Removed automatically on cleanup.
+    - `onError(diagnostic)`: Like `onDiagnostic`, but receives only diagnostics whose `severity` is `'error'`.
     - `document`: DOM document context (defaults to target ownerDocument or global).
+    - `templateName`: Alias for `template`.
   - **Returns a Mount Instance**:
     - `instance()`: Disposes subscriptions and cleans up runtime (clears Lime-created template content; leaves in-place caller DOM intact).
     - `instance.unmount()`: Cleans up runtime and subscriptions. For template mounts (Lime-created content), clears content (`target.textContent = ''`). For in-place mounts (caller-provided existing DOM), preserves caller DOM intact. Never calls `target.remove()`.
@@ -421,9 +430,9 @@ import { createStore, getByPath, setByPath, getTemplate, resolveStatic, renderTe
 - **`createStore(initialState)`**: Returns a reactive `Store` instance.
 - **`getByPath(source, path)`**: Safely reads nested object properties via dot-path (`"user.profile.name"`). Protects against prototype pollution.
 - **`setByPath(source, path, value)`**: Writes nested object properties with prototype-pollution guards. Returns `{ changed: boolean, previousValue: * }`.
-- **`getTemplate(name, document?)`**: Retrieves and clones `<template id="tpl-{name}">` from document cache.
+- **`getTemplate(name)`**: Retrieves and clones `<template id="tpl-{name}">` from the current document cache.
 - **`resolveStatic(fragment, context, store?)`**: Resolves static `${path}` placeholders in text nodes and attributes.
-- **`renderTemplate(name, context?, store?, document?)`**: Clones and statically resolves a template into a DocumentFragment.
+- **`renderTemplate(name, context?, store?)`**: Clones and statically resolves a template into a DocumentFragment.
 - **`escapeHtml(value)`**: Sanitizes strings against XSS by escaping `&`, `<`, `>`, `"`, and `'`.
 - **`safeAttr(value)`**: Escapes HTML entities and backticks for safe attribute values.
 - **`safeUrl(value)`**: Validates URL protocol (`http:`, `https:`, root-relative `/`, or `#`). Returns empty string for dangerous protocols (`javascript:`, `data:`).
@@ -440,11 +449,25 @@ import { setDevMode, isDevMode, subscribeDiagnostics, warn, reportError, error, 
   - `'prod'` or `'production'`: Terse `[lime-error] CODE` console warnings without overlay.
   - `false`: Silences console and overlay (listeners still receive events).
 - **`isDevMode()`**: Returns `true` if development mode is active.
-- **`subscribeDiagnostics(listener)`**: Subscribes to structured diagnostics `{ code, message, context }`. Returns an idempotent `unsubscribe()` function.
+- **`subscribeDiagnostics(listener)`**: Subscribes to structured diagnostics. Returns an idempotent `unsubscribe()` function.
 - **`reportError(code, detailsOrContext?, context?)`**: Dispatches structured diagnostic.
 - **`warn(code, message?, context?)`**: Primary warning dispatch function.
 - **`error`**: Alias for `reportError`.
 - **`loadDevMessages()`**: Loads actionable error catalog on-demand in development mode.
+
+Each diagnostic preserves the original `code`, `message`, and `context` fields and adds:
+
+```js
+{
+  severity: 'warning' | 'error',
+  category: 'mount' | 'module' | 'template' | 'binding' | 'event' | 'security' | 'store' | 'runtime',
+  details: {},        // structured reportError details
+  timestamp: 0,       // Date.now() at first dispatch
+  count: 1,           // repeated equivalent diagnostics within one second are aggregated
+}
+```
+
+The first diagnostic is dispatched synchronously. Repetitions with the same severity, code, message, context, and details within one second are not dispatched again; the original diagnostic object's `count` increases. Console and development-overlay presentation still records every occurrence.
 
 ### 5.4 Kernel Primitives
 
@@ -1168,18 +1191,15 @@ Lime never throws runtime exceptions that crash user pages. All issues are dispa
 | `MOUNT_INVALID_TARGET` | Error | Facade | Target argument is not a valid DOM element or valid selector. | Passing `null`, `undefined`, number, or malformed selector to `mount()`. |
 | `MOUNT_TARGET_NOT_FOUND` | Error | Facade | Selector matched zero elements in document. | Selector typo or mounting before DOM element is rendered. |
 | `MOUNT_HOOK_FAILED` | Error | Facade | `beforeRender` or `afterRender` mount lifecycle hook threw. | Unhandled exception in user-provided lifecycle hook. |
-| `MOUNT_ALREADY_MOUNTED` | Warn | Facade | Duplicate mount on an already mounted target element. | Attempting to mount onto an already mounted element. |
 | `PIPELINE_DEPTH_LIMIT` | Error | Transform | Transform reached iteration limit (100). | Circular `<partial>` or `<if>` macro expansion. |
 | `TABLE_FOSTER_PARENTING` | Warn | Template | HTML parser moved special tags out of `<table>`. | Placing `<if>` or `<for>` directly inside `<table>`; use `<template data-if>`. |
 | `TEMPLATE_NOT_FOUND` | Error | Template | `getTemplate()` could not locate target template. | Missing `<template>` element. |
 | `PARTIAL_NOT_FOUND` | Error | Partials | `<partial name="...">` template not found. | Missing `<template id="tpl-{name}">`. |
 | `SLOT_NOT_FOUND` | Error | Partials | Slot targeted by caller child not found in partial template. | `<div slot="header">` when partial has no `<slot name="header">`. |
 | `PARTIAL_MISSING_NAME` | Error | Partials | `<partial>` tag missing `name` attribute. | `<partial data="foo"></partial>` without `name`. |
-| `PARTIAL_DEPTH_LIMIT` | Error | Partials | Partial recursion depth exceeded. | Partial template referencing itself recursively. |
 | `MISSING_OPERATOR` | Error | Conditionals | `<if>` tag missing condition operator attribute. | `<if is="true">` instead of `<if is-truthy="flag">`. |
 | `UNKNOWN_OPERATOR` | Error | Conditionals | `<if>` operator starting with `is-` is unrecognized. | Typo like `is-equal` instead of `is-eq`. |
 | `ELSE_AFTER_CONTENT` | Error | Conditionals | Sibling elements found after `<else>`. | Placing content after `<else>` inside `<if>`. |
-| `LIVE_IF_MISSING_OP` | Error | Conditionals | `<if data-live>` missing valid operator attribute. | Missing condition operator on reactive if. |
 | `FOR_MISSING_ATTR` | Error | Loops | `<for>` missing `each` or `as` attribute. | `<for each="list">` without `as="item"`. |
 | `FOR_NOT_ARRAY` | Error | Loops | Loop target is not an array. | Path resolves to an object, string, or undefined. |
 | `FOR_MISSING_KEY` | Warn | Loops | `<for data-live>` missing `key` attribute. | Omitting `key="item.id"` on reactive list. |
@@ -1197,7 +1217,6 @@ Lime never throws runtime exceptions that crash user pages. All issues are dispa
 | `UNKNOWN_KEY_MODIFIER` | Error | Events | Unsupported key modifier suffix. | Typo like `data-on-keydown-return`. Use `-enter`. |
 | `HANDLER_NOT_FOUND` | Error | Events | Handler name not found in options or scope. | Handler not passed to `handlers: { ... }`. |
 | `COMPUTED_MANUAL_SET` | Warn | Store | Manual `store.set()` to computed path. | Writing to a path managed by `store.computed()`. |
-| `COMPUTED_WITHOUT_STORE` | Warn | Store | `computed` option passed to mount without store. | Passing computed object without passing store. |
 | `IN_PLACE_MUTATION` | Warn | Store | Setting identical reference to store. | Mutating array in-place and passing same reference. |
 | `PATH_CLOBBER` | Warn | Store | Intermediate non-object segment overwritten. | Setting `user.name` when `user` was a string. |
 | `BATCH_FLUSH_LIMIT` | Error | Store | Batch flush wave limit (100) exceeded. | Cyclic computed properties or mutual set loops. |
@@ -1237,7 +1256,7 @@ const myPlugin = definePlugin({
     // Ad-hoc querySelectorAll across document
   },
 });
-mount('app', { target, store, plugins: [myPlugin] });
+mount({ target, template: 'app', store, plugins: [myPlugin] });
 ```
 
 **New v0.3.0 (Unprivileged Module):**
@@ -1262,7 +1281,7 @@ const engine = createEngine({
   modules: [autoFocusModule, text(), show(), events()],
 });
 
-engine.mount(target, 'app', store);
+engine.mount({ target, template: 'app', store });
 ```
 
 #### 2. Root Package Cleanliness

@@ -34,7 +34,7 @@ test('in-place mount: caller-provided DOM survives unmount while runtime is clea
   let saved = 0;
   const store = createStore({ count: 10 });
 
-  const instance = mount(target, {
+  const instance = mount({ target: target, ...{
     store,
     handlers: {
       save() {
@@ -42,7 +42,7 @@ test('in-place mount: caller-provided DOM survives unmount while runtime is clea
       },
     },
     document: dom.window.document,
-  });
+  } });
 
   // Verify initial link
   assert.equal(target.querySelector('#txt').textContent, '10');
@@ -86,7 +86,7 @@ test('in-place mount: unmount(target) on in-place mount leaves caller DOM intact
   const target = dom.window.document.getElementById('root');
   const store = createStore({ msg: 'Bound' });
 
-  mount(target, { store, document: dom.window.document });
+  mount({ target: target, ...{ store, document: dom.window.document } });
   assert.equal(target.querySelector('p').textContent, 'Bound');
 
   unmount(target);
@@ -117,11 +117,11 @@ test('mount ownership distinction: template mount clears Lime-created content; i
   const store2 = createStore({ val: 'From In-Place' });
 
   // 1. Template mount: Lime owns created content
-  const templateMount = mount(templateTarget, '<span data-text="val"></span>', store1, { document: dom.window.document });
+  const templateMount = mount({ target: templateTarget, template: '<span data-text="val"></span>', store: store1, ...{ document: dom.window.document } });
   assert.equal(templateTarget.querySelector('span').textContent, 'From Template');
 
   // 2. In-place mount: Caller owns pre-existing content
-  const inPlaceMount = mount(inPlaceTarget, { store: store2, document: dom.window.document });
+  const inPlaceMount = mount({ target: inPlaceTarget, ...{ store: store2, document: dom.window.document } });
   assert.equal(inPlaceTarget.querySelector('span').textContent, 'From In-Place');
 
   // Unmount template mount: clears Lime-created content
@@ -147,14 +147,14 @@ test('in-place mount: AbortSignal abort performs cleanup, deactivates runtime, a
   const store = createStore({ status: 'running' });
   let acts = 0;
 
-  const instance = mount(target, {
+  const instance = mount({ target: target, ...{
     store,
     signal: controller.signal,
     handlers: {
       act() { acts++; },
     },
     document: dom.window.document,
-  });
+  } });
 
   assert.equal(target.querySelector('span').textContent, 'running');
   target.querySelector('button').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -193,13 +193,13 @@ test('duplicate mount on in-place target: unmounting previous instance preserves
   const store2 = createStore({ val: 'Second' });
 
   // First in-place mount
-  const first = mount(target, {
+  const first = mount({ target: target, ...{
     store: store1,
     handlers: {
       action() { firstCalls++; },
     },
     document: dom.window.document,
-  });
+  } });
 
   assert.equal(first.active, true);
   assert.equal(target.querySelector('#txt').textContent, 'First');
@@ -209,13 +209,13 @@ test('duplicate mount on in-place target: unmounting previous instance preserves
   assert.equal(firstCalls, 1);
 
   // Second in-place mount on same target (duplicate mount policy kicks in)
-  const second = mount(target, {
+  const second = mount({ target: target, ...{
     store: store2,
     handlers: {
       action() { secondCalls++; },
     },
     document: dom.window.document,
-  });
+  } });
 
   // Previous instance deactivated without destroying DOM
   assert.equal(first.active, false);
@@ -249,11 +249,11 @@ test('duplicate mount transition: in-place mount followed by template mount repl
   const dom = createDom('<div id="app"><p>Existing In-Place</p></div>');
   const target = dom.window.document.getElementById('app');
 
-  const first = mount(target, { document: dom.window.document });
+  const first = mount({ target: target, ...{ document: dom.window.document } });
   assert.equal(target.querySelector('p').textContent, 'Existing In-Place');
 
   // Second mount is a template mount
-  const second = mount(target, '<b>New Template Content</b>', null, { document: dom.window.document });
+  const second = mount({ target: target, template: '<b>New Template Content</b>', store: null, ...{ document: dom.window.document } });
 
   assert.equal(first.active, false);
   assert.equal(second.active, true);

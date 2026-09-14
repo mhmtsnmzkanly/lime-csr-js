@@ -147,7 +147,7 @@
   {
     const store  = createStore({ count: 0 });
     const target = document.createElement('div');
-    mount(target, 'live-count', store);
+    mount({ target: target, template: 'live-count', store: store });
 
     // Initial: count=0 → else branch (zero)
     assert('<if> did not stay in the DOM', target.querySelector('if'), null);
@@ -177,7 +177,7 @@
   {
     const store  = createStore({ show: true, message: 'hello' });
     const target = document.createElement('div');
-    mount(target, 'live-bind-cleanup', store);
+    mount({ target: target, template: 'live-bind-cleanup', store: store });
 
     const thenSpan = target.querySelector('.then-span');
     assert('then branch active, message: hello', thenSpan?.textContent, 'hello');
@@ -216,7 +216,7 @@
   {
     const store  = createStore({ outer: false, inner: false });
     const target = document.createElement('div');
-    mount(target, 'nested-live', store);
+    mount({ target: target, template: 'nested-live', store: store });
 
     // outer=false → outer else
     assert('outer=false: .outer-else present', !!target.querySelector('.outer-else'), true);
@@ -256,7 +256,7 @@
   {
     const store  = createStore({ liveFlag: false });
     const target = document.createElement('div');
-    mount(target, 'mixed', store, { context: { staticFlag: true } });
+    mount({ target: target, template: 'mixed', store: store, ...{ context: { staticFlag: true } } });
 
     // Static if: staticFlag=true (from context) → "static if: true" stays fixed
     assert('static if resolved (true)',
@@ -285,7 +285,7 @@
   {
     const store   = createStore({ count: 1 });
     const target  = document.createElement('div');
-    const cleanup = mount(target, 'live-count', store);
+    const cleanup = mount({ target: target, template: 'live-count', store: store });
 
     assert('initial: then (count=1)', !!target.querySelector('.positive'), true);
 
@@ -303,7 +303,7 @@
   {
     const store  = createStore({ open: true });
     const target = document.createElement('div');
-    mount(target, 'live-el', store);
+    mount({ target: target, template: 'live-el', store: store });
 
     const container = target.querySelector('.el-container');
     assert('el="div" created a container element', container?.tagName, 'DIV');
@@ -333,7 +333,7 @@
   {
     const store  = createStore({ count: 1 });
     const target = document.createElement('div');
-    mount(target, 'live-count', store);
+    mount({ target: target, template: 'live-count', store: store });
 
     // No wrapper element should exist around the branch content beyond what
     // the template itself declares (.wrap) — the branch content's parent is

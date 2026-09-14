@@ -65,6 +65,39 @@ test('router: exact tag route normalizes case and indexes lookup', () => {
   assert.equal(matches2.length, 0);
 });
 
+test('router: exact transform routes cheaply detect whether a tree can still transform', () => {
+  const router = createRouter([
+    defineModule({
+      name: 'transform-mod',
+      triggers: [
+        tag('macro-card', { setup() {} }),
+        attr('data-transform', { phase: 'transform', setup() {} }),
+      ],
+    }),
+  ]);
+  const root = createElement('<main><div class="inert"></div></main>');
+
+  assert.equal(router.hasTransformCandidates(root), false);
+
+  root.firstElementChild.setAttribute('data-transform', '');
+  assert.equal(router.hasTransformCandidates(root), true);
+
+  root.firstElementChild.removeAttribute('data-transform');
+  root.firstElementChild.replaceWith(root.ownerDocument.createElement('macro-card'));
+  assert.equal(router.hasTransformCandidates(root), true);
+});
+
+test('router: transform candidate detection stays conservative for pattern routes', () => {
+  const router = createRouter([
+    defineModule({
+      name: 'pattern-transform-mod',
+      triggers: [pattern('data-macro-', { phase: 'transform', setup() {} })],
+    }),
+  ]);
+
+  assert.equal(router.hasTransformCandidates(createElement('<main><div></div></main>')), true);
+});
+
 // ── 3. PATTERN ATTRIBUTE ROUTE ───────────────────────────────────────────────
 
 test('router: pattern routes support prefix and regex matching, ignoring non-matches', () => {

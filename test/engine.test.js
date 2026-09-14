@@ -59,7 +59,7 @@ test('engine: routes compile once at creation and input array mutation has no ef
 
   const dom = createDom('<div id="root" x-two></div>');
   const target = dom.window.document.getElementById('root');
-  engine.mount(target);
+  engine.mount({ target: target });
 
   // mod2 was NOT compiled into engine
   assert.equal(target.textContent, '');
@@ -83,7 +83,7 @@ test('engine: module order determines precedence at creation time', () => {
   const dom = createDom('<div id="target" data-bind="val"></div>');
   const target = dom.window.document.getElementById('target');
 
-  engine.mount(target);
+  engine.mount({ target: target });
 
   // Higher priority modFirst won the trigger
   assert.deepEqual(events, ['first']);
@@ -111,8 +111,8 @@ test('engine: separate engine instances maintain complete runtime isolation', ()
   const targetA = dom.window.document.getElementById('tA');
   const targetB = dom.window.document.getElementById('tB');
 
-  engineA.mount(targetA);
-  engineB.mount(targetB);
+  engineA.mount({ target: targetA });
+  engineB.mount({ target: targetB });
 
   assert.deepEqual(engineAEvents, ['A']);
   assert.deepEqual(engineBEvents, ['B']);
@@ -135,8 +135,8 @@ test('engine: mounts on the same engine are isolated in state and cleanup', () =
   const m1 = dom.window.document.getElementById('m1');
   const m2 = dom.window.document.getElementById('m2');
 
-  const unmount1 = engine.mount(m1);
-  engine.mount(m2);
+  const unmount1 = engine.mount({ target: m1 });
+  engine.mount({ target: m2 });
 
   // Unmounting m1 should not affect m2
   unmount1();
@@ -202,7 +202,7 @@ test('engine: unmount runs cleanup before detaching DOM content', () => {
   const dom = createDom('<div id="mount-target"></div>');
   const target = dom.window.document.getElementById('mount-target');
 
-  engine.mount(target, '<p x-inspect>Hello</p>');
+  engine.mount({ target: target, template: '<p x-inspect>Hello</p>' });
   assert.equal(target.textContent, 'Hello');
 
   engine.unmount(target);
@@ -232,7 +232,7 @@ test('engine: executes beforeMount and afterMount module hooks with cleanups', (
   const dom = createDom('<div id="target-el"><span x-item></span></div>');
   const target = dom.window.document.getElementById('target-el');
 
-  const unmount = engine.mount(target);
+  const unmount = engine.mount({ target: target });
   assert.deepEqual(hookLog, ['beforeMount:target-el', 'afterMount:target-el']);
 
   unmount();
@@ -261,11 +261,11 @@ test('engine: mounting on an already mounted target unmounts previous instance c
   const dom = createDom('<div id="target" x-v>Initial</div>');
   const target = dom.window.document.getElementById('target');
 
-  engine.mount(target);
+  engine.mount({ target: target });
   assert.equal(cleanedOld, false);
 
   // Mount again on same target
-  engine.mount(target);
+  engine.mount({ target: target });
   assert.equal(cleanedOld, true);
 });
 
@@ -283,8 +283,8 @@ test('engine: mounting through another engine replaces the target owner cleanly'
   const dom = createDom('<div id="target" x-first-owner>First</div>');
   const target = dom.window.document.getElementById('target');
 
-  const first = firstEngine.mount(target);
-  const second = secondEngine.mount(target, '<p>Second</p>');
+  const first = firstEngine.mount({ target: target });
+  const second = secondEngine.mount({ target: target, template: '<p>Second</p>' });
 
   assert.equal(first.active, false);
   assert.equal(firstCleaned, true);
@@ -306,8 +306,8 @@ test('engine: a failed replacement mount preserves the active mount and its reso
   const dom = createDom('<div id="target"><span x-preserve>Existing</span></div>');
   const target = dom.window.document.getElementById('target');
 
-  const current = engine.mount(target);
-  const failed = engine.mount(target, 'missing-template');
+  const current = engine.mount({ target: target });
+  const failed = engine.mount({ target: target, template: 'missing-template' });
 
   assert.equal(failed.active, false);
   assert.equal(current.active, true);
@@ -331,11 +331,67 @@ test('engine: invalid store-shaped values fall back to a mount-local store', () 
   const dom = createDom('<div id="target" x-store></div>');
   const target = dom.window.document.getElementById('target');
 
-  const instance = engine.mount(target, null, { subscribe() {} });
+  const instance = engine.mount({ target: target, template: null, ...{ subscribe() {} } });
 
   assert.equal(target.textContent, 'local');
   assert.equal(typeof receivedStore.get, 'function');
   assert.equal(typeof receivedStore.subscribe, 'function');
+  instance.unmount();
+});
+
+test('engine: invalid computed options preserve the active target owner', () => {
+  const engine = createEngine({ modules: [] });
+  const dom = createDom('<div id="target"></div>');
+  const target = dom.window.document.getElementById('target');
+  const current = engine.mount({ target: target, template: '<p>Existing</p>' });
+
+  assert.throws(
+    () => engine.mount({ target: target, template: '<p>Replacement</p>', store: null, ...{
+      computed: { invalid: { deps: 'value', fn: () => 'value' } },
+    } }),
+    TypeError,
+  );
+
+  assert.equal(current.active, true);
+  assert.equal(target.textContent, 'Existing');
+  current.unmount();
+});
+
+test('engine: object-form mount accepts an explicit configuration object', () => {
+  const engine = createEngine({ modules: [] });
+  const dom = createDom('<div id="target"></div>');
+  const target = dom.window.document.getElementById('target');
+
+  const instance = engine.mount({
+    target,
+    template: '<p>Object API</p>',
+  });
+
+  assert.equal(target.textContent, 'Object API');
+  instance.unmount();
+});
+
+test('engine: mount diagnostic callbacks receive only diagnostics from their target', () => {
+  const engine = createEngine({
+    modules: [defineModule({
+      name: 'diagnostic-module',
+      triggers: [attr('x-error', (el, data, ctx) => ctx.error('TEST_TARGET_ERROR'))],
+    })],
+  });
+  const dom = createDom('<div id="first" x-error></div><div id="second" x-error></div>');
+  const first = dom.window.document.getElementById('first');
+  const second = dom.window.document.getElementById('second');
+  const diagnostics = [];
+  const errors = [];
+  const instance = engine.mount({ target: first, template: null, store: null, ...{
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    onError: (diagnostic) => errors.push(diagnostic),
+  } });
+
+  engine.mount({ target: second, template: '<p>Second</p>' });
+
+  assert.ok(diagnostics.some((diagnostic) => diagnostic.code === 'TEST_TARGET_ERROR'));
+  assert.ok(errors.some((diagnostic) => diagnostic.code === 'TEST_TARGET_ERROR'));
   instance.unmount();
 });
 
@@ -356,7 +412,7 @@ test('engine: abort signal automatically triggers unmount', () => {
   const target = dom.window.document.getElementById('target');
 
   const controller = new AbortController();
-  engine.mount(target, '<span x-sig>Content</span>', null, { signal: controller.signal });
+  engine.mount({ target: target, template: '<span x-sig>Content</span>', store: null, ...{ signal: controller.signal } });
 
   assert.equal(cleaned, false);
   controller.abort();

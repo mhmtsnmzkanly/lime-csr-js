@@ -53,7 +53,7 @@ test('text: data-text reactively updates textContent from store', () => {
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const span = root.querySelector('#msg');
   assert.equal(span.textContent, 'Ada');
 
@@ -71,7 +71,7 @@ test('text: data-text resolves from lexical scope before store fallback', () => 
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, scope, document: dom.window.document } });
   const span = root.querySelector('#msg');
   assert.equal(span.textContent, 'FromScope');
 });
@@ -83,7 +83,7 @@ test('text: empty data-text emits BINDING_MISSING_PATH diagnostic', () => {
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
   unsub();
 
   assert.equal(diagnostics.length, 1);
@@ -100,7 +100,7 @@ test('text: {x} attribute template reactively binds and consumes data-x attribut
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const link = root.querySelector('#profile');
 
   assert.equal(link.getAttribute('href'), '/users/42?tab=overview');
@@ -127,7 +127,7 @@ test('text: {x} URL sanitization blocks dangerous protocols', () => {
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const link = root.querySelector('#bad-link');
   assert.equal(link.getAttribute('href'), '');
 
@@ -147,7 +147,7 @@ test('text: {x} rejects event handler attributes with UNSAFE_EVENT_ATTR', () => 
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   unsub();
 
   assert.equal(diagnostics.length, 1);
@@ -166,7 +166,7 @@ test('text: {x} rejects reserved attribute names with RESERVED_ATTR_NAME', () =>
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   unsub();
 
   assert.equal(diagnostics.length, 1);
@@ -185,7 +185,7 @@ test('text: {x} missing data-x attribute emits BINDING_MISSING_DATA_ATTR', () =>
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   unsub();
 
   assert.equal(diagnostics.length, 1);
@@ -204,7 +204,7 @@ test('show: toggles native hidden property reactively and preserves inline displ
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const box = root.querySelector('#box');
 
   assert.equal(box.hidden, true);
@@ -222,7 +222,7 @@ test('show: injects document-scoped style rule with multi-document isolation', (
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
 
   const styleTag = dom.window.document.getElementById('lime-csr-data-show-style');
   assert.notEqual(styleTag, null);
@@ -232,7 +232,7 @@ test('show: injects document-scoped style rule with multi-document isolation', (
   const dom2Root = dom.window.document.createElement('div');
   dom.window.document.body.appendChild(dom2Root);
   dom2Root.innerHTML = '<span data-show="flag">text2</span>';
-  engine.mount(dom2Root, { store, document: dom.window.document });
+  engine.mount({ target: dom2Root, ...{ store, document: dom.window.document } });
 
   const styleTags = dom.window.document.querySelectorAll('#lime-csr-data-show-style');
   assert.equal(styleTags.length, 1);
@@ -245,7 +245,7 @@ test('show: empty data-show emits SHOW_MISSING_PATH diagnostic', () => {
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
   unsub();
 
   assert.equal(diagnostics.length, 1);
@@ -265,7 +265,7 @@ test('model: two-way text and textarea inputs with loop guard', () => {
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const input = root.querySelector('#inp');
   const textarea = root.querySelector('#txt');
 
@@ -296,7 +296,7 @@ test('model: number input parses numbers and preserves incomplete raw strings', 
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const input = root.querySelector('#num');
   assert.equal(input.value, '25');
 
@@ -328,7 +328,7 @@ test('model: checkbox two-way boolean binding', () => {
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const checkbox = root.querySelector('#chk');
   assert.equal(checkbox.checked, false);
 
@@ -352,7 +352,7 @@ test('model: radio group coordinates selected value', () => {
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const [radioA, radioB, radioC] = root.querySelectorAll('input[type="radio"]');
 
   assert.equal(radioA.checked, false);
@@ -387,7 +387,7 @@ test('model: select-single and select-multiple bindings', () => {
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   const single = root.querySelector('#single');
   const multi = root.querySelector('#multi');
 
@@ -414,7 +414,7 @@ test('model: indexed path emits INDEXED_MODEL_PATH diagnostic', () => {
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
   unsub();
 
   assert.equal(diagnostics.length, 1);
@@ -440,7 +440,7 @@ test('events: delegated click handler receives event, element, scope, store, and
     },
   };
 
-  engine.mount(root, { store, handlers, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, handlers, document: dom.window.document } });
   const btn = root.querySelector('#btn');
   btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
 
@@ -468,7 +468,7 @@ test('events: key modifiers filter keydown events', () => {
     onEscape() { log.push('escape'); },
   };
 
-  engine.mount(root, { store, handlers, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, handlers, document: dom.window.document } });
   const input = root.querySelector('#textInp');
 
   // Ignored other key
@@ -501,7 +501,7 @@ test('events: data-on-submit always calls preventDefault', () => {
     onSubmit() { submitted = true; },
   };
 
-  engine.mount(root, { store, handlers, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, handlers, document: dom.window.document } });
   const form = root.querySelector('#form');
   const event = new dom.window.Event('submit', { bubbles: true, cancelable: true });
   form.dispatchEvent(event);
@@ -522,7 +522,7 @@ test('events: diagnostics for unknown event and bad modifier', () => {
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
   unsub();
 
   const codes = diagnostics.map((d) => d.code);
@@ -541,7 +541,7 @@ test('events: missing handler emits HANDLER_NOT_FOUND diagnostic when fired', ()
   const diagnostics = [];
   const unsub = subscribeDiagnostics((diag) => diagnostics.push(diag));
 
-  engine.mount(root, { handlers: {}, document: dom.window.document });
+  engine.mount({ target: root, ...{ handlers: {}, document: dom.window.document } });
   const btn = root.querySelector('#btn');
   btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   unsub();
@@ -563,7 +563,7 @@ test('events: ignored block prevents event dispatch', () => {
   let called = false;
   const handlers = { onClick() { called = true; } };
 
-  engine.mount(root, { handlers, document: dom.window.document });
+  engine.mount({ target: root, ...{ handlers, document: dom.window.document } });
   root.querySelector('#ignored-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
 
   assert.equal(called, false);
@@ -645,7 +645,7 @@ test('integration: full application flow combining loops, conditionals, model, t
 
   const engine = createFullEngine();
   const root = dom.window.document.getElementById('root');
-  engine.mount(root, { store, handlers, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, handlers, document: dom.window.document } });
 
   const input = root.querySelector('#taskInput');
   const addBtn = root.querySelector('#addBtn');
@@ -688,11 +688,11 @@ test('teardown: unmount cleans up all listeners and subscriptions', () => {
   const root = dom.window.document.getElementById('root');
   let hits = 0;
 
-  const unmount = engine.mount(root, {
+  const unmount = engine.mount({ target: root, ...{
     store,
     handlers: { hit() { hits++; } },
     document: dom.window.document,
-  });
+  } });
 
   const btn = root.querySelector('#btn');
   btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));

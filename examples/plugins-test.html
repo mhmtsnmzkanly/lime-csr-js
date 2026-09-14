@@ -122,7 +122,7 @@
     const engine = createEngine({ modules: [uiMod] });
     const store = createStore({ tipText: 'Helpful hint' });
     const target = document.createElement('div');
-    const cleanup = engine.mount(target, 'plugin-basic', store);
+    const cleanup = engine.mount({ target: target, template: 'plugin-basic', store: store });
 
     const card = target.querySelector('.card');
     assert('data-lime-tooltip set title attribute', card.getAttribute('title'), 'Helpful hint');
@@ -154,7 +154,7 @@
     const engine = createEngine({ modules: [counterMod] });
     const store = createStore({ clicks: 0 });
     const target = document.createElement('div');
-    engine.mount(target, 'plugin-reactive', store);
+    engine.mount({ target: target, template: 'plugin-reactive', store: store });
 
     const btn = target.querySelector('#btn');
     assert('initial count synced via watch', btn.dataset.current, '0');

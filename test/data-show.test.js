@@ -41,14 +41,14 @@ test.afterEach(() => setDevMode(true));
 
 test('initial falsy data-show state adds hidden before mount content is visible', () => {
   const { name, target } = fixture('<div data-show="visible"></div>');
-  mount(target, name, createStore({ visible: false }));
+  mount({ target: target, template: name, store: createStore({ visible: false }) });
   assert.equal(target.firstElementChild.hidden, true);
   assert.equal(target.firstElementChild.hasAttribute('hidden'), true);
 });
 
 test('initial truthy data-show state removes a pre-existing hidden attribute', () => {
   const { name, target } = fixture('<div data-show="visible" hidden></div>');
-  mount(target, name, createStore({ visible: true }));
+  mount({ target: target, template: name, store: createStore({ visible: true }) });
   assert.equal(target.firstElementChild.hidden, false);
   assert.equal(target.firstElementChild.hasAttribute('hidden'), false);
 });
@@ -56,7 +56,7 @@ test('initial truthy data-show state removes a pre-existing hidden attribute', (
 test('data-show updates hidden across false to true to false transitions', () => {
   const { name, target } = fixture('<div data-show="visible"></div>');
   const store = createStore({ visible: false });
-  mount(target, name, store);
+  mount({ target: target, template: name, store: store });
   const element = target.firstElementChild;
   assert.equal(element.hidden, true);
   store.set('visible', true);
@@ -68,7 +68,7 @@ test('data-show updates hidden across false to true to false transitions', () =>
 test('data-show never changes an initially empty inline display value', () => {
   const { name, target } = fixture('<div data-show="visible"></div>');
   const store = createStore({ visible: false });
-  mount(target, name, store);
+  mount({ target: target, template: name, store: store });
   const element = target.firstElementChild;
   assert.equal(element.style.display, '');
   store.set('visible', true);
@@ -80,7 +80,7 @@ for (const display of ['grid', 'flex']) {
   test(`data-show preserves inline display:${display} across every transition`, () => {
     const { name, target } = fixture(`<div data-show="visible" style="display: ${display}"></div>`);
     const store = createStore({ visible: false });
-    mount(target, name, store);
+    mount({ target: target, template: name, store: store });
     const element = target.firstElementChild;
     assert.equal(element.style.display, display);
     store.set('visible', true);
@@ -95,7 +95,7 @@ test('scoped compatibility rule hides a display-important utility element', () =
     <style>.d-flex { display: flex !important; }</style>
     <div class="d-flex" data-show="visible"></div>
   `);
-  mount(target, name, createStore({ visible: false }));
+  mount({ target: target, template: name, store: createStore({ visible: false }) });
   const element = target.querySelector('[data-show]');
   assert.equal(element.hidden, true);
   // jsdom does not reliably apply !important cascade precedence here; assert
@@ -111,8 +111,8 @@ test('multiple mounts install one shared visibility style in a document', () => 
     <main id="one"></main><main id="two"></main>
   `);
   const store = createStore({ visible: false });
-  mount(document.getElementById('one'), 'one', store);
-  mount(document.getElementById('two'), 'two', store);
+  mount({ target: document.getElementById('one'), template: 'one', store: store });
+  mount({ target: document.getElementById('two'), template: 'two', store: store });
   assert.equal(document.querySelectorAll(`#${SHOW_STYLE_ID}`).length, 1);
 });
 
@@ -132,14 +132,14 @@ test('separate documents each receive their own visibility style', () => {
 
 test('rendered content without data-show does not install a visibility style', () => {
   const { name, target } = fixture('<div>always visible</div>');
-  mount(target, name, createStore({}));
+  mount({ target: target, template: name, store: createStore({}) });
   assert.equal(document.getElementById(SHOW_STYLE_ID), null);
 });
 
 test('data-show preserves DOM identity and input value while toggling', () => {
   const { name, target } = fixture('<section data-show="visible"><input value="initial"></section>');
   const store = createStore({ visible: true });
-  mount(target, name, store);
+  mount({ target: target, template: name, store: store });
   const element = target.firstElementChild;
   const input = element.querySelector('input');
   input.value = 'user state';
@@ -153,7 +153,7 @@ test('data-show preserves DOM identity and input value while toggling', () => {
 test('data-show cleanup unsubscribes from future store updates', () => {
   const { name, target } = fixture('<div data-show="visible"></div>');
   const store = createStore({ visible: false });
-  const cleanup = mount(target, name, store);
+  const cleanup = mount({ target: target, template: name, store: store });
   const element = target.firstElementChild;
   cleanup();
   store.set('visible', true);
@@ -164,7 +164,7 @@ test('empty data-show emits SHOW_MISSING_PATH and leaves the element untouched',
   const { name, target } = fixture('<div data-show></div>');
   const diagnostics = [];
   const unsubscribe = subscribeDiagnostics((diagnostic) => diagnostics.push(diagnostic));
-  mount(target, name, createStore({}));
+  mount({ target: target, template: name, store: createStore({}) });
   unsubscribe();
   assert.equal(target.firstElementChild.hasAttribute('hidden'), false);
   assert.deepEqual(diagnostics.map(({ code }) => code), ['SHOW_MISSING_PATH']);
@@ -173,7 +173,7 @@ test('empty data-show emits SHOW_MISSING_PATH and leaves the element untouched',
 test('data-show elements under data-lime-ignore remain untouched', () => {
   const { name, target } = fixture('<div data-lime-ignore><div data-show="visible" hidden></div></div>');
   const store = createStore({ visible: true });
-  mount(target, name, store);
+  mount({ target: target, template: name, store: store });
   const element = target.querySelector('[data-show]');
   assert.equal(element.hidden, true);
   store.set('visible', false);
@@ -189,7 +189,7 @@ test('data-show inside deferred live content binds during the later render pass'
     <else><span>closed</span></else></if>
   `);
   const store = createStore({ expanded: false, visible: false });
-  mount(target, name, store);
+  mount({ target: target, template: name, store: store });
   assert.equal(target.querySelector('[data-show]'), null);
   assert.equal(document.getElementById(SHOW_STYLE_ID), null);
   store.set('expanded', true);

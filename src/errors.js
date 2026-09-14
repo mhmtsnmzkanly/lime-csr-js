@@ -21,6 +21,33 @@ let devMode = true;
 
 /** @type {Set<(diagnostic: {code: string, message: string, context: *}) => void>} */
 const diagnosticListeners = new Set();
+const DIAGNOSTIC_DEDUP_WINDOW_MS = 1000;
+const diagnosticStates = new Map();
+const contextIds = new WeakMap();
+let nextContextId = 0;
+
+const DIAGNOSTIC_CATEGORIES = Object.freeze({
+  MOUNT: 'mount',
+  MODULE: 'module',
+  FOR: 'template',
+  PARTIAL: 'template',
+  SLOT: 'template',
+  TEMPLATE: 'template',
+  UNKNOWN_OPERATOR: 'template',
+  MISSING_OPERATOR: 'template',
+  ELSE_AFTER_CONTENT: 'template',
+  BINDING: 'binding',
+  SHOW: 'binding',
+  MODEL: 'binding',
+  HANDLER: 'event',
+  UNKNOWN_EVENT: 'event',
+  UNKNOWN_KEY_MODIFIER: 'event',
+  UNSAFE: 'security',
+  PATH: 'store',
+  COMPUTED: 'store',
+  IN_PLACE_MUTATION: 'store',
+  BATCH: 'store',
+});
 
 /** @type {Object<string, function(Object): string>|null} */
 let devMessages = null;
@@ -85,11 +112,66 @@ export function isDevMode() {
  * @param {(diagnostic: {code: string, message: string, context: *}) => void} listener
  * @returns {() => void} idempotent unsubscribe function
  */
+function getCategory(code) {
+  const prefix = Object.keys(DIAGNOSTIC_CATEGORIES).find((key) => code.startsWith(key));
+  return prefix ? DIAGNOSTIC_CATEGORIES[prefix] : 'runtime';
+}
+
+function getContextKey(context) {
+  if (context && (typeof context === 'object' || typeof context === 'function')) {
+    if (!contextIds.has(context)) contextIds.set(context, ++nextContextId);
+    return `object:${contextIds.get(context)}`;
+  }
+  return `${typeof context}:${String(context)}`;
+}
+
+function getDetailsKey(details) {
+  if (!details || typeof details !== 'object') return '';
+  return Object.entries(details)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${value instanceof Error ? value.message : String(value)}`)
+    .join('|');
+}
+
+function createDiagnostic(code, message, context, severity, details) {
+  const now = Date.now();
+  const key = `${severity}:${code}:${message}:${getContextKey(context)}:${getDetailsKey(details)}`;
+  const previous = diagnosticStates.get(key);
+  if (previous && now - previous.lastTimestamp <= DIAGNOSTIC_DEDUP_WINDOW_MS) {
+    previous.count++;
+    previous.lastTimestamp = now;
+    return { diagnostic: previous.diagnostic, isDuplicate: true };
+  }
+
+  if (diagnosticStates.size >= 500) {
+    for (const [stateKey, state] of diagnosticStates) {
+      if (now - state.lastTimestamp > DIAGNOSTIC_DEDUP_WINDOW_MS) diagnosticStates.delete(stateKey);
+      if (diagnosticStates.size < 500) break;
+    }
+  }
+
+  const state = { count: 1, lastTimestamp: now, diagnostic: null };
+  const diagnostic = {
+    code,
+    severity,
+    category: getCategory(code),
+    message,
+    context,
+    details: Object.freeze({ ...(details || {}) }),
+    timestamp: now,
+    get count() {
+      return state.count;
+    },
+  };
+  state.diagnostic = Object.freeze(diagnostic);
+  diagnosticStates.set(key, state);
+  return { diagnostic: state.diagnostic, isDuplicate: false };
+}
+
 export function subscribeDiagnostics(listener) {
   if (typeof listener !== 'function') {
     throw new TypeError('subscribeDiagnostics(listener) requires a function listener.');
   }
-
   diagnosticListeners.add(listener);
   let subscribed = true;
   return function unsubscribe() {
@@ -210,19 +292,28 @@ function updateOverlay(code, message) {
  * @param {string} [message] - Actionable description in dev; defaults to code in prod
  * @param {*}     [context]  - Additional context (element, path, name, etc.)
  */
-export function warn(code, message, context) {
+export function warn(code, message, context, options = {}) {
   const resolvedMessage = message !== undefined ? message : code;
-  const diagnostic = Object.freeze({ code, message: resolvedMessage, context });
+  const severity = options.severity || 'warning';
+  const { diagnostic, isDuplicate } = createDiagnostic(
+    code,
+    resolvedMessage,
+    context,
+    severity,
+    options.details,
+  );
 
-  for (const listener of [...diagnosticListeners]) {
-    try {
-      listener(diagnostic);
-    } catch (err) {
-      if (isDevMode()) {
-        try {
-          console.error('[lime-csr] Diagnostic listener failed:', err);
-        } catch {
-          // Diagnostics remain non-throwing even if console.error is replaced.
+  if (!isDuplicate) {
+    for (const listener of [...diagnosticListeners]) {
+      try {
+        listener(diagnostic);
+      } catch (err) {
+        if (isDevMode()) {
+          try {
+            console.error('[lime-csr] Diagnostic listener failed:', err);
+          } catch {
+            // Diagnostics remain non-throwing even if console.error is replaced.
+          }
         }
       }
     }
@@ -284,7 +375,7 @@ export function reportError(code, detailsOrContext = {}, context = undefined) {
 
   let message = isDevMode() && devMessages ? format(devMessages) : code;
 
-  warn(code, message, ctx);
+  warn(code, message, ctx, { severity: 'error', details });
 
   if (isDevMode() && !devMessages && devMessagesPromise) {
     devMessagesPromise.then((msgs) => {

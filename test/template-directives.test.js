@@ -34,9 +34,9 @@ test('template data-if renders correctly inside table without foster parenting',
   const target = document.getElementById('app');
 
   // Test true branch
-  mount(target, 'table-test', null, {
+  mount({ target: target, template: 'table-test', store: null, ...{
     context: { count: 5 },
-  });
+  } });
 
   const rowPos = target.querySelector('#row-pos');
   const rowZero = target.querySelector('#row-zero');
@@ -46,9 +46,9 @@ test('template data-if renders correctly inside table without foster parenting',
   assert.equal(rowPos.textContent.trim(), 'Positive: 5');
 
   // Test false branch
-  mount(target, 'table-test', null, {
+  mount({ target: target, template: 'table-test', store: null, ...{
     context: { count: 0 },
-  });
+  } });
 
   const rowPos2 = target.querySelector('#row-pos');
   const rowZero2 = target.querySelector('#row-zero');
@@ -79,14 +79,14 @@ test('template data-for renders correctly inside select elements', () => {
 
   const target = document.getElementById('app');
 
-  mount(target, 'select-test', null, {
+  mount({ target: target, template: 'select-test', store: null, ...{
     context: {
       users: [
         { id: '1', name: 'Ada' },
         { id: '2', name: 'Alan' },
       ],
     },
-  });
+  } });
 
   const select = target.querySelector('#user-select');
   const options = select.querySelectorAll('option');

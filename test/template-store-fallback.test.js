@@ -35,14 +35,14 @@ test('static interpolation resolves from store fallback when absent in context',
   });
 
   const target = document.getElementById('app');
-  mount(target, 'fallback-test', store, {
+  mount({ target: target, template: 'fallback-test', store: store, ...{
     context: {
       title: 'Hello',
       contextWin: 'ContextWon',
       contextAttr: 'ContextAttrVal',
       nullProp: null,
     },
-  });
+  } });
 
   const textNode = target.querySelector('#text-node');
   const attrNode = target.querySelector('#attr-node');

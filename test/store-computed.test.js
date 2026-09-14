@@ -41,3 +41,21 @@ test('computed: replacing a computed path leaves the replacement active', () => 
   secondDispose();
   assert.equal(store.get('derived'), undefined);
 });
+
+test('computed: rejects malformed paths, dependencies, and calculations before mutation', () => {
+  const store = createStore({ value: 1 });
+
+  assert.throws(
+    () => store.computed('__proto__.derived', ['value'], () => 1),
+    TypeError,
+  );
+  assert.throws(
+    () => store.computed('derived', ['value', ''], () => 1),
+    TypeError,
+  );
+  assert.throws(
+    () => store.computed('derived', ['value'], null),
+    TypeError,
+  );
+  assert.equal(store.get('derived'), undefined);
+});

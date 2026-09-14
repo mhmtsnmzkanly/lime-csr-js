@@ -43,7 +43,7 @@ Subpath Exports:
 
 Exact Export Inventory (34 symbols):
   Facade (3):
-    mount(target, template?, store?, options?) -> Function { unmount, cleanup, target, scope, store, active }
+    mount({ target, template?, templateName?, store?, ...options }) -> Function { unmount, cleanup, target, scope, store, active }
     unmount(targetOrInstance) -> void
     render(nodeOrFragment, options) -> Function { element, scope, store, cleanup }
 
@@ -330,7 +330,11 @@ const engine = createEngine({
 });
 
 const store = createStore({ items: [{ id: 1, name: 'Item 1' }] });
-const instance = engine.mount(document.getElementById('app'), 'main-view', store);
+const instance = engine.mount({
+  target: document.getElementById('app'),
+  template: 'main-view',
+  store,
+});
 ```
 
 Pattern 3: Table and Select Templates (Avoiding Foster-Parenting)

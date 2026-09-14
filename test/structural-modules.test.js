@@ -53,7 +53,7 @@ test('partials: basic expansion with isolated scope and store sharing', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, scope, document: dom.window.document } });
 
   assert.equal(root.querySelector('partial'), null);
   assert.equal(root.querySelector('.user').textContent, 'Alice (Admin)');
@@ -69,7 +69,7 @@ test('partials: missing name diagnostic and element removal', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('partial'), null);
   assert.ok(diagnostics.some((d) => d.code === 'PARTIAL_MISSING_NAME'));
@@ -84,7 +84,7 @@ test('partials: missing template diagnostic', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.equal(root.querySelector('partial'), null);
   assert.ok(diagnostics.some((d) => d.code === 'PARTIAL_NOT_FOUND'));
@@ -117,7 +117,7 @@ test('partials: nested partials with recursive scope isolation', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   assert.equal(root.querySelector('.outer h3').textContent, 'Outer Card');
   assert.equal(root.querySelector('.inner').textContent, 'Inner Badge');
@@ -147,7 +147,7 @@ test('conditionals: evaluates truthy/falsey branches with <else>', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   assert.equal(root.querySelector('#c1 .yes').textContent, 'Active');
   assert.equal(root.querySelector('#c1 .no'), null);
@@ -171,7 +171,7 @@ test('conditionals: all comparison operators (is-gt, is-lt, is-gte, is-lte, is-e
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   assert.equal(root.querySelector('#gt span').textContent, 'GT');
   assert.equal(root.querySelector('#lt span').textContent, 'NOT LT');
@@ -200,7 +200,7 @@ test('conditionals: template[data-if] and template[data-else] inside tables', ()
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope: { score: 75 }, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope: { score: 75 }, document: dom.window.document } });
   assert.ok(root.querySelector('tr.pass'));
   assert.equal(root.querySelector('tr.fail'), null);
 });
@@ -219,7 +219,7 @@ test('conditionals: diagnostics for unknown and missing operators', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { document: dom.window.document });
+  engine.mount({ target: root, ...{ document: dom.window.document } });
 
   assert.ok(diagnostics.some((d) => d.code === 'UNKNOWN_OPERATOR'));
   assert.ok(diagnostics.some((d) => d.code === 'MISSING_OPERATOR'));
@@ -243,7 +243,7 @@ test('conditionals: diagnostic for element after <else>', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope: { flag: false }, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope: { flag: false }, document: dom.window.document } });
 
   assert.ok(diagnostics.some((d) => d.code === 'ELSE_AFTER_CONTENT'));
   unsubscribe();
@@ -268,7 +268,7 @@ test('loops: iterates array, creates lexical item scope and index', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   const items = Array.from(root.querySelectorAll('.item')).map((el) => el.textContent.trim());
   assert.deepEqual(items, [
@@ -283,7 +283,7 @@ test('loops: empty array removes <for> cleanly without errors', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope: { emptyList: [] }, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope: { emptyList: [] }, document: dom.window.document } });
   assert.equal(root.children.length, 0);
 });
 
@@ -295,7 +295,7 @@ test('loops: non-array input emits FOR_NOT_ARRAY diagnostic', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope: { notAnArray: 'invalid' }, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope: { notAnArray: 'invalid' }, document: dom.window.document } });
 
   assert.ok(diagnostics.some((d) => d.code === 'FOR_NOT_ARRAY'));
   assert.equal(root.querySelector('for'), null);
@@ -323,7 +323,7 @@ test('loops: template[data-for] inside select element', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   const opts = Array.from(root.querySelectorAll('option'));
   assert.equal(opts.length, 2);
@@ -356,7 +356,7 @@ test('loops: nested loops with shadowing lexical scopes', () => {
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { scope, document: dom.window.document });
+  engine.mount({ target: root, ...{ scope, document: dom.window.document } });
 
   const cells = Array.from(root.querySelectorAll('.cell')).map((el) => el.textContent.trim());
   assert.deepEqual(cells, [
@@ -406,7 +406,7 @@ test('integration: partial -> conditional -> loop -> nested partial compiles in 
   const engine = createStructuralEngine();
   const app = dom.window.document.getElementById('app');
 
-  engine.mount(app, { scope, document: dom.window.document });
+  engine.mount({ target: app, ...{ scope, document: dom.window.document } });
 
   assert.equal(app.querySelector('h2').textContent, 'Grace Hopper');
   const badges = Array.from(app.querySelectorAll('.badge')).map((el) => el.textContent.trim());
@@ -429,7 +429,7 @@ test('conditionals: reactive <if data-live> updates branch on store change', () 
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  const unmount = engine.mount(root, { store, document: dom.window.document });
+  const unmount = engine.mount({ target: root, ...{ store, document: dom.window.document } });
 
   assert.ok(root.querySelector('.panel'));
   assert.equal(root.querySelector('.closed'), null);
@@ -464,7 +464,7 @@ test('loops: reactive <for data-live> performs keyed updates and preserves untou
   const engine = createStructuralEngine();
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root, { store, document: dom.window.document });
+  engine.mount({ target: root, ...{ store, document: dom.window.document } });
 
   const ul = root.querySelector('#list');
   const initialLi2 = ul.querySelector('li[data-key="2"]');
@@ -505,7 +505,7 @@ test('partials: mutating instantiated partial DOM does not mutate source <templa
 
   const engine = createStructuralEngine();
   const root1 = dom.window.document.getElementById('root1');
-  engine.mount(root1, { document: dom.window.document });
+  engine.mount({ target: root1, ...{ document: dom.window.document } });
 
   const card1 = root1.querySelector('.card');
   assert.ok(card1);
@@ -526,7 +526,7 @@ test('partials: mutating instantiated partial DOM does not mutate source <templa
 
   // Mount root2 and verify it receives a clean, unmutated clone
   const root2 = dom.window.document.getElementById('root2');
-  engine.mount(root2, { document: dom.window.document });
+  engine.mount({ target: root2, ...{ document: dom.window.document } });
 
   const card2 = root2.querySelector('.card');
   assert.ok(card2);

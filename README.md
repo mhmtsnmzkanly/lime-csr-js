@@ -58,10 +58,10 @@ If you want the complete framework with all directives pre-registered:
 ```html
 <script type="module">
   // Via jsDelivr:
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/index.min.js';
 
   // Or via unpkg:
-  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.0/dist/index.min.js';
+  // import { createStore, mount } from 'https://unpkg.com/lime-csr-js@0.3.1/dist/index.min.js';
 </script>
 ```
 
@@ -70,10 +70,10 @@ If you only need specific directives (e.g. only text and events for a tiny widge
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.0/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/npm/lime-csr-js@0.3.1/dist/modules/events.min.js';
 
   // Assemble a bespoke engine with only the modules you need
   const engine = createEngine({
@@ -81,7 +81,10 @@ If you only need specific directives (e.g. only text and events for a tiny widge
   });
 
   const store = createStore({ count: 0 });
-  engine.mount(document.getElementById('app'), 'counter', store, {
+  engine.mount({
+    target: document.getElementById('app'),
+    template: 'counter',
+    store,
     handlers: {
       increment: () => store.update('count', (n) => n + 1),
     }
@@ -144,7 +147,10 @@ Create an HTML file with a `<template>` and mount it using native ES modules:
     store.computed('isPositive', ['count'], (count) => count > 0);
 
     // Mount template into target (CSS selector or DOM Element)
-    const instance = mount('#app', 'counter', store, {
+    const instance = mount({
+      target: '#app',
+      template: 'counter',
+      store,
       handlers: {
         increment() {
           store.update('count', (c) => c + 1);
@@ -201,6 +207,25 @@ store.batch(() => {
 // Unsubscribe
 unsubscribe();
 ```
+
+## Diagnostics
+
+Diagnostics can be observed globally or per mount:
+
+```js
+const instance = mount({
+  target: '#app',
+  template: 'dashboard',
+  store,
+  onError(diagnostic) {
+    monitoring.captureException(diagnostic.details.error, {
+      tags: { code: diagnostic.code, category: diagnostic.category },
+    });
+  },
+});
+```
+
+Every diagnostic includes `code`, `message`, `context`, `severity`, `category`, `details`, `timestamp`, and `count`. `onDiagnostic` receives warnings and errors for its mount target; `onError` receives only errors. Equivalent repeated diagnostics within one second are aggregated into the first event by incrementing `count`.
 
 ---
 
@@ -266,7 +291,11 @@ const engine = createEngine({
 
 // Mount with custom engine
 const store = createStore({ message: 'Hello World' });
-const instance = engine.mount(document.getElementById('app'), 'my-template', store);
+const instance = engine.mount({
+  target: document.getElementById('app'),
+  template: 'my-template',
+  store,
+});
 ```
 
 ### Multiple Engines and Target Ownership

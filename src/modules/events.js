@@ -425,19 +425,9 @@ export function events(moduleOptions = {}) {
         }
       }
 
-      // Also scan target for any used data-on-* attributes
-      const allEls = [target, ...Array.from(target.querySelectorAll('*'))];
-      for (let i = 0; i < allEls.length; i++) {
-        for (const attr of allEls[i].attributes) {
-          if (attr.name.startsWith('data-on-') && !attr.name.endsWith('-data')) {
-            const evName = attr.name.slice(8);
-            const parsed = parseEventName(evName);
-            if (parsed && parsed.type) {
-              ensureDelegatedListener(target, parsed.type, hookApi, moduleOptions);
-            }
-          }
-        }
-      }
+      // Link setup installs listeners for each compiled data-on-* attribute,
+      // including nodes rendered by live structural modules. No second
+      // full-target attribute scan is necessary here.
     },
   });
 }

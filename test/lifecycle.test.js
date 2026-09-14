@@ -49,7 +49,7 @@ test('lifecycle: match -> read -> setup executes in deterministic sequence', () 
   const dom = createDom('<div id="el1" x-seq="alpha"></div>');
   const target = dom.window.document.getElementById('el1');
 
-  engine.mount(target);
+  engine.mount({ target: target });
 
   assert.deepEqual(sequence, [
     'match:el1',
@@ -75,7 +75,7 @@ test('lifecycle: setup registers cleanups via ctx.onCleanup and returned functio
   const dom = createDom('<div id="c-target" x-clean></div>');
   const target = dom.window.document.getElementById('c-target');
 
-  const unmount = engine.mount(target);
+  const unmount = engine.mount({ target: target });
   assert.deepEqual(cleanups, []);
 
   unmount();
@@ -100,7 +100,7 @@ test('lifecycle: cleanups execute in strict LIFO (reverse registration) order', 
   const dom = createDom('<div id="lifo-el" x-lifo></div>');
   const target = dom.window.document.getElementById('lifo-el');
 
-  const unmount = engine.mount(target);
+  const unmount = engine.mount({ target: target });
   unmount();
 
   assert.deepEqual(order, ['step-3', 'step-2', 'step-1']);
@@ -122,7 +122,7 @@ test('lifecycle: cleanup execution is idempotent', () => {
   const dom = createDom('<div id="idem-el" x-idem></div>');
   const target = dom.window.document.getElementById('idem-el');
 
-  const unmount = engine.mount(target);
+  const unmount = engine.mount({ target: target });
   assert.equal(count, 0);
 
   unmount();
@@ -163,7 +163,7 @@ test('lifecycle: update via explicit watch runs without re-running read()', () =
   const dom = createDom('<div id="target" x-live="greeting"></div>');
   const target = dom.window.document.getElementById('target');
 
-  engine.mount(target, { store });
+  engine.mount({ target: target, ...{ store } });
 
   assert.equal(readCount, 1);
   assert.equal(target.textContent, 'Hello');
@@ -201,7 +201,7 @@ test('lifecycle: update failure is isolated and reported via diagnostics', () =>
   const dom = createDom('<div id="target" x-throw></div>');
   const target = dom.window.document.getElementById('target');
 
-  engine.mount(target, { store });
+  engine.mount({ target: target, ...{ store } });
 
   // Cause watch callback to throw
   assert.doesNotThrow(() => {
@@ -235,7 +235,7 @@ test('lifecycle: cleanup failure does not prevent remaining cleanups from runnin
   const dom = createDom('<div id="target" x-fail-clean></div>');
   const target = dom.window.document.getElementById('target');
 
-  const unmount = engine.mount(target);
+  const unmount = engine.mount({ target: target });
   assert.doesNotThrow(() => {
     unmount();
   });
@@ -294,7 +294,7 @@ test('context: provides scope, store, onCleanup, watch, error, warn and hides in
   const dom = createDom('<div id="target" x-inspect></div>');
   const target = dom.window.document.getElementById('target');
 
-  engine.mount(target, { store, scope });
+  engine.mount({ target: target, ...{ store, scope } });
 
   assert.ok(capturedCtx);
   assert.equal(capturedCtx.store, store);
@@ -432,6 +432,39 @@ test('transform: multi-pass fixed-point expansion compiles nested generated macr
   assert.equal(finalEl.textContent, 'All expanded');
 });
 
+test('transform: exact routes skip the final full-tree scan once the tree is stable', () => {
+  const macroAMod = defineModule({
+    name: 'scan-macro-a',
+    triggers: [tag('SCAN-MACRO-A', {
+      setup(el) {
+        el.replaceWith(el.ownerDocument.createElement('scan-macro-b'));
+      },
+    })],
+  });
+  const macroBMod = defineModule({
+    name: 'scan-macro-b',
+    triggers: [tag('SCAN-MACRO-B', {
+      setup(el) {
+        el.replaceWith(el.ownerDocument.createElement('p'));
+      },
+    })],
+  });
+  const router = createRouter([macroAMod, macroBMod]);
+  const dom = createDom('<div id="root"><scan-macro-a></scan-macro-a></div>');
+  const root = dom.window.document.getElementById('root');
+  const querySelectorAll = root.querySelectorAll.bind(root);
+  let fullTreeScans = 0;
+  root.querySelectorAll = (selector) => {
+    if (selector === '*') fullTreeScans++;
+    return querySelectorAll(selector);
+  };
+
+  runTransform(root, router);
+
+  assert.equal(root.querySelector('p')?.tagName, 'P');
+  assert.equal(fullTreeScans, 2);
+});
+
 // ── 14. TRANSFORM TERMINATION GUARD ─────────────────────────────────────────
 
 test('transform: infinite macro expansion triggers PIPELINE_DEPTH_LIMIT guard', () => {
@@ -493,7 +526,7 @@ test('mount: Transform phase completes entirely before Link phase starts', () =>
   const dom = createDom('<div id="root"><box-transform></box-transform></div>');
   const root = dom.window.document.getElementById('root');
 
-  engine.mount(root);
+  engine.mount({ target: root });
 
   assert.deepEqual(phaseLog, ['transform', 'link']);
 });
@@ -516,7 +549,7 @@ test('mount: afterConnect executes after element is connected and avoids unmount
   const dom = createDom('<div id="target" x-connect></div>');
   const target = dom.window.document.getElementById('target');
 
-  engine.mount(target);
+  engine.mount({ target: target });
 
   // Allow microtask to execute
   await Promise.resolve();
@@ -542,7 +575,7 @@ test('async: unmount deactivates pending afterConnect microtask', async () => {
   const dom = createDom('<div id="target" x-guard></div>');
   const target = dom.window.document.getElementById('target');
 
-  const unmount = engine.mount(target);
+  const unmount = engine.mount({ target: target });
   // Unmount synchronously before microtasks flush
   unmount();
 
@@ -585,4 +618,3 @@ test('lifecycle: runTransform and runLink standalone execution', () => {
   runLink(body, router);
   assert.equal(body.querySelector('span').textContent, 'linked');
 });
-

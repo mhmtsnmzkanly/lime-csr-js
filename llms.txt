@@ -41,7 +41,10 @@ import { partials, conditionals, loops, text, show, model, events } from 'lime-c
 
 ```js
 // Mount template into DOM container (CSS selector or Element)
-const instance = mount('#app', 'templateName', reactiveStore, {
+const instance = mount({
+  target: '#app',
+  template: 'templateName',
+  store: reactiveStore,
   context: { staticKey: 'value' },  // Read once during transform (${staticKey})
   handlers: {                        // Event handlers for data-on-*
     handleClick({ event, element, scope, store, data }) { /* application logic */ },
@@ -132,7 +135,7 @@ const engine = createEngine({
   modules: [tooltip, text(), show(), events()],
 });
 
-engine.mount(target, 'app', store);
+engine.mount({ target, template: 'app', store });
 ```
 
 ---

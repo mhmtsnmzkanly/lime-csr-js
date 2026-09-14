@@ -41,6 +41,8 @@ function createPhaseRouteTables() {
     patternRoutes: [],             // RouteRecord[]
     multiAttrRoutes: new Map(),    // anchorAttrName (first required) -> RouteRecord[]
     triggerList: [],               // RouteRecord[] (all triggers in this phase)
+    candidateSelectorParts: [],    // Safe exact-route selectors used for transform fast-paths
+    hasUnselectableCandidates: false,
   };
 }
 
@@ -130,14 +132,25 @@ export function createRouter(modules = [], options = {}) {
       switch (trigger.type) {
         case TRIGGER_TYPES.TAG:
           tables.exactTagRoutes.set(trigger.name, record);
+          if (/^[A-Z][A-Z0-9-]*$/.test(trigger.name)) {
+            tables.candidateSelectorParts.push(trigger.name.toLowerCase());
+          } else {
+            tables.hasUnselectableCandidates = true;
+          }
           break;
 
         case TRIGGER_TYPES.ATTR:
           tables.exactAttrRoutes.set(trigger.name, record);
+          if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(trigger.name)) {
+            tables.candidateSelectorParts.push(`[${trigger.name}]`);
+          } else {
+            tables.hasUnselectableCandidates = true;
+          }
           break;
 
         case TRIGGER_TYPES.PATTERN:
           tables.patternRoutes.push(record);
+          tables.hasUnselectableCandidates = true;
           break;
 
         case TRIGGER_TYPES.ATTRS: {
@@ -148,6 +161,7 @@ export function createRouter(modules = [], options = {}) {
             tables.multiAttrRoutes.set(anchorAttr, bucket);
           }
           bucket.push(record);
+          tables.hasUnselectableCandidates = true;
           break;
         }
 
@@ -156,6 +170,11 @@ export function createRouter(modules = [], options = {}) {
       }
     }
   }
+
+  const transformTables = phaseTables.transform;
+  const transformCandidateSelector = transformTables.hasUnselectableCandidates
+    ? null
+    : transformTables.candidateSelectorParts.join(',');
 
   /**
    * Matches an element against the compiled routes for a given phase,
@@ -269,6 +288,24 @@ export function createRouter(modules = [], options = {}) {
     },
     hasLinkRoutes() {
       return phaseTables.link.triggerList.length > 0;
+    },
+    /**
+     * Returns false only when an exact-route selector proves no transform route
+     * can match. Pattern and multi-attribute routes retain the normal scan.
+     *
+     * @param {Element|DocumentFragment} root
+     * @returns {boolean}
+     */
+    hasTransformCandidates(root) {
+      if (!transformCandidateSelector || !root) return true;
+      try {
+        return (root.nodeType === 1 && root.matches(transformCandidateSelector))
+          || Boolean(root.querySelector?.(transformCandidateSelector));
+      } catch {
+        // Custom trigger names are allowed; retain the general matcher if a
+        // host DOM rejects an otherwise safe selector.
+        return true;
+      }
     },
     getTransformTag(tagName) {
       if (typeof tagName !== 'string') return undefined;

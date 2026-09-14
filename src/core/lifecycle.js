@@ -79,6 +79,12 @@ export function runTransform(root, router, options = {}) {
   let iterations = 0;
 
   while (iterations < maxIterations) {
+    // Exact tag/attribute routes can prove that no structural work remains
+    // without materializing and matching the entire tree one final time.
+    if (typeof router.hasTransformCandidates === 'function' && !router.hasTransformCandidates(root)) {
+      break;
+    }
+
     const allElements = getAllElements(root);
     const candidateMatches = [];
 

@@ -19,7 +19,7 @@
  *      - Cleanup runs before DOM detachment.
  */
 
-import { reportError, warn } from '../errors.js';
+import { reportError, subscribeDiagnostics, warn } from '../errors.js';
 import { resolveStatic } from '../template.js';
 import { createStore } from '../store.js';
 import { createScope } from './scope.js';
@@ -31,6 +31,7 @@ import { createCompositionModule, resolveTemplate } from './composition.js';
 // A DOM target can host only one active runtime, even when it is mounted
 // through different Engine instances.
 const mountOwners = new WeakMap();
+const UNSAFE_STORE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**
  * @typedef {Object} EngineMountResult
@@ -52,7 +53,7 @@ const mountOwners = new WeakMap();
 
 /**
  * @typedef {Object} Engine
- * @property {function((string|Element), Object=, Object=): EngineMountResult} mount - Mounts a template or element into a target
+ * @property {function(Object): EngineMountResult} mount - Mounts a template or element into a target
  * @property {function(Element): void} unmount - Unmounts target, clears DOM, and disposes subscriptions
  * @property {function((DocumentFragment|Element), Object=): EngineRenderResult} render - Compiles an arbitrary fragment or element
  * @property {ReadonlyArray<import('./registry.js').ModuleDefinition>} modules - Registered module definitions
@@ -90,6 +91,39 @@ export function createEngine(options = {}) {
       && typeof value.subscribe === 'function';
   }
 
+  function validateDiagnosticCallbacks(options) {
+    for (const name of ['onDiagnostic', 'onError']) {
+      if (options[name] !== undefined && typeof options[name] !== 'function') {
+        throw new TypeError(`mount options.${name} must be a function when provided.`);
+      }
+    }
+  }
+
+  function validateComputedDefinitions(computed) {
+    if (computed == null) return;
+    if (typeof computed !== 'object' || Array.isArray(computed)) {
+      throw new TypeError('mount options.computed must be an object mapping paths to { deps, fn } definitions.');
+    }
+
+    for (const [path, def] of Object.entries(computed)) {
+      const isSafePath = (value) => typeof value === 'string'
+        && value.trim()
+        && !value.split('.').some((segment) => UNSAFE_STORE_PATH_SEGMENTS.has(segment));
+      if (!def || typeof def !== 'object' || Array.isArray(def)) {
+        throw new TypeError(`mount options.computed["${path}"] must be a { deps, fn } definition.`);
+      }
+      if (
+        !Array.isArray(def.deps)
+        || !isSafePath(path)
+        || !def.deps.every(isSafePath)
+        || typeof def.fn !== 'function'
+      ) {
+        throw new TypeError(`mount options.computed["${path}"] requires string[] deps and a function fn.`);
+      }
+    }
+
+  }
+
   /**
    * Helper to create a no-op inactive mount result for invalid or aborted mounts.
    *
@@ -108,97 +142,227 @@ export function createEngine(options = {}) {
     return Object.freeze(noop);
   }
 
-  /**
-   * Mounts a template and runtime configuration into a target element.
-   *
-   * @param {Element|string} target - DOM Element or CSS selector string
-   * @param {string|Element|DocumentFragment} [template] - Template name, HTML string, or template element
-   * @param {import('../store.js').Store|Object|null} [store=null] - Reactive Store, or options if store omitted
-   * @param {Object} [options={}] - Mount configuration options (handlers, signal, beforeRender, afterRender)
-   * @returns {EngineMountResult} Mount runtime instance
-   */
-  function mount(target, template, store, options = {}) {
-    let templateArg = template;
-    let mountStore = store;
-    let mountOptions = options || {};
-
-    // If 2nd arg is an options object (in-place mount on target):
-    if (template && typeof template === 'object' && template.nodeType !== 1 && template.nodeType !== 11) {
-      mountOptions = template;
-      templateArg = mountOptions.templateName || mountOptions.template || null;
-      mountStore = isStore(store) ? store : (mountOptions.store || null);
-    } else if (store && typeof store === 'object' && !isStore(store)) {
-      // 3rd arg was options, store was omitted: mount(target, template, options)
-      mountOptions = store;
-      mountStore = null;
+  function normalizeMountConfig(config, argumentCount) {
+    if (
+      argumentCount !== 1
+      || !config
+      || typeof config !== 'object'
+      || Array.isArray(config)
+      || config.nodeType === 1
+      || config.nodeType === 11
+    ) {
+      throw new TypeError('mount: expected a single configuration object.');
     }
 
-    const doc = mountOptions?.document || (target && target.nodeType === 1 ? target.ownerDocument : null) || globalThis.document;
+    return {
+      target: config.target,
+      template: config.template ?? config.templateName,
+      store: config.store,
+      options: config,
+    };
+  }
 
-    // 1. Target Resolution
-    let resolvedTarget = null;
+  function resolveMountTarget(target, options) {
+    const doc = options.document
+      || (target && target.nodeType === 1 ? target.ownerDocument : null)
+      || globalThis.document;
+
     if (typeof target === 'string') {
       if (!doc || typeof doc.querySelector !== 'function') {
         reportError('MOUNT_INVALID_TARGET', { target });
-        return createInactiveMount(null, mountStore);
+        return null;
       }
+      let resolvedTarget;
       try {
         resolvedTarget = doc.querySelector(target);
-      } catch (err) {
-        reportError('MOUNT_INVALID_TARGET', { target, error: err });
-        return createInactiveMount(null, mountStore);
+      } catch (error) {
+        reportError('MOUNT_INVALID_TARGET', { target, error });
+        return null;
       }
       if (!resolvedTarget || resolvedTarget.nodeType !== 1) {
         reportError('MOUNT_TARGET_NOT_FOUND', { selector: target });
-        return createInactiveMount(null, mountStore);
+        return null;
       }
-    } else if (target && typeof target === 'object' && target.nodeType === 1) {
-      resolvedTarget = target;
-    } else {
-      reportError('MOUNT_INVALID_TARGET', { target });
-      return createInactiveMount(null, mountStore);
+      return { doc, target: resolvedTarget };
     }
 
-    // 2. Store: If omitted or null, create a mount-local Store instance
-    if (!isStore(mountStore)) {
-      mountStore = createStore({});
+    if (target && typeof target === 'object' && target.nodeType === 1) {
+      return { doc, target };
     }
 
-    // 3. AbortSignal early exit
-    if (mountOptions.signal?.aborted) {
-      return createInactiveMount(resolvedTarget, mountStore);
-    }
+    reportError('MOUNT_INVALID_TARGET', { target });
+    return null;
+  }
 
-    // 4. Resolve the template before replacing an active mount. A failed
-    // replacement must not tear down the currently rendered application.
-    let fragment = null;
-    if (typeof templateArg === 'string') {
-      const trimmed = templateArg.trim();
+  function resolveMountStore(store) {
+    return isStore(store) ? store : createStore({});
+  }
+
+  function resolveMountTemplate(template, doc, options, target) {
+    if (typeof template === 'string') {
+      const trimmed = template.trim();
       if (trimmed.startsWith('<')) {
-        const tpl = doc.createElement('template');
-        tpl.innerHTML = templateArg;
-        fragment = tpl.content.cloneNode(true);
-      } else {
-        const tplEl = resolveTemplate(templateArg, { templates: mountOptions.templates, document: doc });
-
-        if (!tplEl) {
-          const available = Array.from(doc.querySelectorAll('template[id^="tpl-"]'))
-            .map((t) => t.id.slice(4));
-          reportError('MOUNT_TEMPLATE_NOT_FOUND', { name: templateArg, available }, resolvedTarget);
-          return createInactiveMount(resolvedTarget, mountStore);
-        }
-
-        fragment = tplEl.content ? tplEl.content.cloneNode(true) : tplEl.cloneNode(true);
+        const element = doc.createElement('template');
+        element.innerHTML = template;
+        return { found: true, fragment: element.content.cloneNode(true) };
       }
-    } else if (templateArg && templateArg.nodeType === 11) {
-      fragment = templateArg.cloneNode(true);
-    } else if (templateArg && templateArg.nodeType === 1) {
-      if (templateArg.tagName === 'TEMPLATE' && templateArg.content) {
-        fragment = templateArg.content.cloneNode(true);
-      } else {
-        fragment = templateArg.cloneNode(true);
+
+      const templateElement = resolveTemplate(template, {
+        templates: options.templates,
+        document: doc,
+      });
+      if (!templateElement) {
+        const available = Array.from(doc.querySelectorAll('template[id^="tpl-"]'))
+          .map((element) => element.id.slice(4));
+        reportError('MOUNT_TEMPLATE_NOT_FOUND', { name: template, available }, target);
+        return { found: false, fragment: null };
+      }
+      return {
+        found: true,
+        fragment: templateElement.content
+          ? templateElement.content.cloneNode(true)
+          : templateElement.cloneNode(true),
+      };
+    }
+
+    if (template && template.nodeType === 11) {
+      return { found: true, fragment: template.cloneNode(true) };
+    }
+    if (template && template.nodeType === 1) {
+      return {
+        found: true,
+        fragment: template.tagName === 'TEMPLATE' && template.content
+          ? template.content.cloneNode(true)
+          : template.cloneNode(true),
+      };
+    }
+    return { found: true, fragment: null };
+  }
+
+  function validateMountOptions(options) {
+    validateComputedDefinitions(options.computed);
+    validateDiagnosticCallbacks(options);
+  }
+
+  function installMountDiagnostics(options, target, cleanupStack) {
+    if (!options.onDiagnostic && !options.onError) return;
+
+    const unsubscribe = subscribeDiagnostics((diagnostic) => {
+      const context = diagnostic.context;
+      const belongsToMount = context === target
+        || (context?.nodeType != null && target.contains(context));
+      if (!belongsToMount) return;
+      if (options.onDiagnostic) options.onDiagnostic(diagnostic);
+      if (diagnostic.severity === 'error' && options.onError) {
+        options.onError(diagnostic);
+      }
+    });
+    cleanupStack.onCleanup(unsubscribe);
+  }
+
+  function runMountHooks(name, hookApi, cleanupStack, target) {
+    for (let i = 0; i < engineModules.length; i++) {
+      const module = engineModules[i];
+      if (typeof module[name] !== 'function') continue;
+      try {
+        const cleanup = module[name](hookApi);
+        if (typeof cleanup === 'function') cleanupStack.onCleanup(cleanup);
+      } catch (error) {
+        reportError('MODULE_SETUP_FAILED', { module: module.name, hook: name, error }, target);
       }
     }
+  }
+
+  function createMountInstance(target, store, scope, cleanupStack, ownsContent, options) {
+    let active = true;
+    let instance;
+
+    function cleanupSelf() {
+      if (active) cleanupStack.run();
+    }
+
+    function unmountSelf() {
+      if (!active) return;
+      cleanupSelf();
+      active = false;
+      mountedTargets.delete(target);
+      if (mountOwners.get(target) === instance) mountOwners.delete(target);
+      if (ownsContent) target.textContent = '';
+    }
+
+    instance = function unmountCallable() {
+      unmountSelf();
+    };
+    instance.unmount = unmountSelf;
+    instance.cleanup = cleanupSelf;
+    Object.defineProperty(instance, 'active', {
+      get() { return active; },
+      enumerable: true,
+    });
+    for (const [name, value] of Object.entries({ target, store, scope })) {
+      Object.defineProperty(instance, name, {
+        value,
+        writable: false,
+        enumerable: true,
+      });
+    }
+
+    mountedTargets.set(target, instance);
+    mountOwners.set(target, instance);
+
+    if (options.signal) {
+      const onAbort = () => unmountSelf();
+      options.signal.addEventListener('abort', onAbort, { once: true });
+      cleanupStack.onCleanup(() => options.signal.removeEventListener('abort', onAbort));
+    }
+
+    return instance;
+  }
+
+  /**
+   * Mounts a template and runtime configuration into a target element.
+   *
+   * @param {Object} config - Mount configuration
+   * @param {Element|string} config.target - DOM Element or CSS selector string
+   * @param {string|Element|DocumentFragment} [config.template] - Template name, HTML string, or template element
+   * @param {string} [config.templateName] - Alias for template
+   * @param {import('../store.js').Store|null} [config.store] - Reactive Store
+   * @param {Object} [config.handlers] - Mount-scoped event handlers
+   * @param {AbortSignal} [config.signal] - Signal which unmounts this instance when aborted
+   * @param {Object} [config.context] - Root lexical context
+   * @param {Object} [config.computed] - Mount-scoped computed definitions
+   * @param {Function} [config.beforeRender] - Lifecycle hook before rendering
+   * @param {Function} [config.afterRender] - Lifecycle hook after rendering
+   * @param {Document} [config.document] - DOM document context
+   * @returns {EngineMountResult} Mount runtime instance
+    */
+   function mount(config) {
+     const mountConfig = normalizeMountConfig(config, arguments.length);
+     const resolved = resolveMountTarget(mountConfig.target, mountConfig.options);
+     if (!resolved) return createInactiveMount(null, mountConfig.store);
+
+     const { doc, target: resolvedTarget } = resolved;
+     const mountOptions = mountConfig.options;
+     const mountStore = resolveMountStore(mountConfig.store);
+
+     // 3. AbortSignal early exit
+     if (mountOptions.signal?.aborted) {
+       return createInactiveMount(resolvedTarget, mountStore);
+     }
+
+     // 4. Resolve the template before replacing an active mount. A failed
+     // replacement must not tear down the currently rendered application.
+     const template = resolveMountTemplate(
+       mountConfig.template,
+       doc,
+       mountOptions,
+       resolvedTarget,
+     );
+     if (!template.found) return createInactiveMount(resolvedTarget, mountStore);
+     const { fragment } = template;
+
+     // Validate mount configuration before replacing an active target owner.
+     validateMountOptions(mountOptions);
 
     // 5. Duplicate Mount Protection: unmount / replace any active owner of target
     const previous = mountOwners.get(resolvedTarget);
@@ -211,6 +375,8 @@ export function createEngine(options = {}) {
       ? mountOptions.scope
       : (mountOptions.context ? createScope(null, mountOptions.context) : createScope(null, {}));
     const cleanupStack = createCleanupStack();
+
+    installMountDiagnostics(mountOptions, resolvedTarget, cleanupStack);
 
     // Mount Hook API provided to module lifecycle hooks
     const hookApi = Object.freeze({
@@ -230,20 +396,7 @@ export function createEngine(options = {}) {
       warn: (code, details) => warn(code, details, resolvedTarget),
     });
 
-    // Run beforeMount module hooks in registration order
-    for (let i = 0; i < engineModules.length; i++) {
-      const mod = engineModules[i];
-      if (typeof mod.beforeMount === 'function') {
-        try {
-          const cleanup = mod.beforeMount(hookApi);
-          if (typeof cleanup === 'function') {
-            cleanupStack.onCleanup(cleanup);
-          }
-        } catch (err) {
-          reportError('MODULE_SETUP_FAILED', { module: mod.name, hook: 'beforeMount', error: err }, resolvedTarget);
-        }
-      }
-    }
+    runMountHooks('beforeMount', hookApi, cleanupStack, resolvedTarget);
 
     // Mount-scoped computeds if provided
     if (mountOptions.computed) {
@@ -289,20 +442,7 @@ export function createEngine(options = {}) {
       runLink(resolvedTarget, router, contextOptions);
     }
 
-    // Run afterMount module hooks in registration order
-    for (let i = 0; i < engineModules.length; i++) {
-      const mod = engineModules[i];
-      if (typeof mod.afterMount === 'function') {
-        try {
-          const cleanup = mod.afterMount(hookApi);
-          if (typeof cleanup === 'function') {
-            cleanupStack.onCleanup(cleanup);
-          }
-        } catch (err) {
-          reportError('MODULE_SETUP_FAILED', { module: mod.name, hook: 'afterMount', error: err }, resolvedTarget);
-        }
-      }
-    }
+    runMountHooks('afterMount', hookApi, cleanupStack, resolvedTarget);
 
     // afterRender user lifecycle hook
     if (typeof mountOptions.afterRender === 'function') {
@@ -313,65 +453,14 @@ export function createEngine(options = {}) {
       }
     }
 
-    // 7. Mount Instance & Teardown
-    let active = true;
-
-    function cleanupSelf() {
-      if (!active) return;
-      cleanupStack.run();
-    }
-
-    function unmountSelf() {
-      if (!active) return;
-      cleanupSelf();
-      active = false;
-      mountedTargets.delete(resolvedTarget);
-      if (mountOwners.get(resolvedTarget) === instance) {
-        mountOwners.delete(resolvedTarget);
-      }
-      if (ownsContent) {
-        resolvedTarget.textContent = '';
-      }
-    }
-
-    const instance = function unmountCallable() {
-      unmountSelf();
-    };
-
-    instance.unmount = unmountSelf;
-    instance.cleanup = cleanupSelf;
-    Object.defineProperty(instance, 'active', {
-      get() { return active; },
-      enumerable: true,
-    });
-    Object.defineProperty(instance, 'target', {
-      value: resolvedTarget,
-      writable: false,
-      enumerable: true,
-    });
-    Object.defineProperty(instance, 'store', {
-      value: mountStore,
-      writable: false,
-      enumerable: true,
-    });
-    Object.defineProperty(instance, 'scope', {
-      value: scope,
-      writable: false,
-      enumerable: true,
-    });
-
-    mountedTargets.set(resolvedTarget, instance);
-    mountOwners.set(resolvedTarget, instance);
-
-    if (mountOptions.signal) {
-      const onAbort = () => unmountSelf();
-      mountOptions.signal.addEventListener('abort', onAbort, { once: true });
-      cleanupStack.onCleanup(() => {
-        mountOptions.signal.removeEventListener('abort', onAbort);
-      });
-    }
-
-    return instance;
+    return createMountInstance(
+      resolvedTarget,
+      mountStore,
+      scope,
+      cleanupStack,
+      ownsContent,
+      mountOptions,
+    );
   }
 
   /**

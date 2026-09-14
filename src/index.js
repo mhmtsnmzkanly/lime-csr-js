@@ -38,17 +38,15 @@ const defaultEngine = createEngine({
 /**
  * Public mount facade delegating to defaultEngine.
  *
- * Target API:
- *   mount(target, template, store, options)
- *
- * @param {Element|string} target - DOM Element or CSS selector string
- * @param {string|Element|DocumentFragment} [template] - Template name, HTML string, or template element
- * @param {import('./store.js').Store|Object|null} [store=null] - Reactive Store, or options if store omitted
- * @param {Object} [options={}] - Mount configuration options (handlers, signal, beforeRender, afterRender)
+ * @param {Object} config - Mount configuration, including target, optional
+ * template/templateName, store, and mount options
  * @returns {Function} Mount instance (callable cleanup with .unmount, .target, .store, .scope, .active properties)
  */
-export function mount(target, template, store, options = {}) {
-  return defaultEngine.mount(target, template, store, options);
+export function mount(config) {
+  if (arguments.length !== 1) {
+    throw new TypeError('mount: expected a single configuration object.');
+  }
+  return defaultEngine.mount(config);
 }
 
 /**

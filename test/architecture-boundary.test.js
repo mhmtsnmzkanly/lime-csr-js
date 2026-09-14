@@ -65,25 +65,19 @@ test('architecture: single engine with two mounts shares modules but strictly is
   let handlerBCalls = 0;
 
   const mountA = engine.mount(
-    targetA,
-    '<div id="widget-a" data-widget="alpha"><span data-text="textVal"></span><button id="btn-a" data-on-click="action"></button></div>',
-    storeA,
-    {
+    { target: targetA, template: '<div id="widget-a" data-widget="alpha"><span data-text="textVal"></span><button id="btn-a" data-on-click="action"></button></div>', store: storeA, ...{
       handlers: {
         action() { handlerACalls++; },
       },
-    },
+    } },
   );
 
   const mountB = engine.mount(
-    targetB,
-    '<div id="widget-b" data-widget="beta"><span data-text="textVal"></span><button id="btn-b" data-on-click="action"></button></div>',
-    storeB,
-    {
+    { target: targetB, template: '<div id="widget-b" data-widget="beta"><span data-text="textVal"></span><button id="btn-b" data-on-click="action"></button></div>', store: storeB, ...{
       handlers: {
         action() { handlerBCalls++; },
       },
-    },
+    } },
   );
 
   // Both mounts executed the shared custom module
@@ -149,12 +143,12 @@ test('architecture: aborting signal on Mount A does not affect Mount B on same E
   const controllerA = new AbortController();
   const controllerB = new AbortController();
 
-  const mountA = engine.mount(targetA, '<span data-text="msg"></span>', createStore({ msg: 'Hello A' }), {
+  const mountA = engine.mount({ target: targetA, template: '<span data-text="msg"></span>', store: createStore({ msg: 'Hello A' }), ...{
     signal: controllerA.signal,
-  });
-  const mountB = engine.mount(targetB, '<span data-text="msg"></span>', createStore({ msg: 'Hello B' }), {
+  } });
+  const mountB = engine.mount({ target: targetB, template: '<span data-text="msg"></span>', store: createStore({ msg: 'Hello B' }), ...{
     signal: controllerB.signal,
-  });
+  } });
 
   assert.equal(mountA.active, true);
   assert.equal(mountB.active, true);
@@ -197,10 +191,10 @@ test('architecture: mount options cannot mutate Engine configuration', () => {
   const target = dom.window.document.getElementById('app');
 
   // Attempt to pass modules via mount options
-  engine.mount(target, '<div></div>', null, {
+  engine.mount({ target: target, template: '<div></div>', store: null, ...{
     modules: [forbiddenMod],
     handlers: { test: () => {} },
-  });
+  } });
 
   // Engine modules remain untouched and immutable
   assert.equal(engine.modules.length, 1);
@@ -264,10 +258,7 @@ test('architecture: custom module using core primitives has full parity with sta
   });
 
   const mountInstance = engine.mount(
-    target,
-    '<custom-list></custom-list>',
-    null,
-    {
+    { target: target, template: '<custom-list></custom-list>', store: null, ...{
       scope,
       handlers: {
         selectItem(payload) {
@@ -278,7 +269,7 @@ test('architecture: custom module using core primitives has full parity with sta
           });
         },
       },
-    },
+    } },
   );
 
   const btn1 = target.querySelector('#item-101');
@@ -331,12 +322,12 @@ test('architecture: runtime handler mutation behaves dynamically and remains str
     handleAction() { history2.push('initial-2'); },
   };
 
-  const mount1 = engine.mount(target1, '<button id="b1" data-on-click="handleAction"></button>', null, {
+  const mount1 = engine.mount({ target: target1, template: '<button id="b1" data-on-click="handleAction"></button>', store: null, ...{
     handlers: handlers1,
-  });
-  const mount2 = engine.mount(target2, '<button id="b2" data-on-click="handleAction"></button>', null, {
+  } });
+  const mount2 = engine.mount({ target: target2, template: '<button id="b2" data-on-click="handleAction"></button>', store: null, ...{
     handlers: handlers2,
-  });
+  } });
 
   const b1 = target1.querySelector('#b1');
   const b2 = target2.querySelector('#b2');
@@ -368,7 +359,7 @@ test('architecture: unmount clears content but does not remove caller target con
   const container = dom.window.document.getElementById('container');
   const target = dom.window.document.getElementById('target');
 
-  const mount = engine.mount(target, '<span data-text="msg"></span>', createStore({ msg: 'Mounted Content' }));
+  const mount = engine.mount({ target: target, template: '<span data-text="msg"></span>', store: createStore({ msg: 'Mounted Content' }) });
   assert.equal(target.textContent, 'Mounted Content');
   assert.equal(target.parentNode, container);
 

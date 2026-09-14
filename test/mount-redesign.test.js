@@ -40,7 +40,7 @@ test('mount target resolution: CSS selector #app resolves and mounts into single
   installDom('<main id="app"></main><template id="tpl-sel"><span data-text="msg"></span></template>');
   const store = createStore({ msg: 'resolved by selector' });
 
-  const instance = mount('#app', 'sel', store);
+  const instance = mount({ target: '#app', template: 'sel', store: store });
 
   assert.equal(document.getElementById('app').querySelector('span').textContent, 'resolved by selector');
   assert.equal(instance.active, true);
@@ -56,7 +56,7 @@ test('mount target resolution: existing connected DOM element mounts successfull
   const target = document.getElementById('root');
   const store = createStore({ val: 'connected element' });
 
-  const instance = mount(target, 'el', store);
+  const instance = mount({ target: target, template: 'el', store: store });
 
   assert.equal(target.querySelector('p').textContent, 'connected element');
   assert.equal(instance.target, target);
@@ -73,7 +73,7 @@ test('mount target resolution: detached element created via document.createEleme
 
   assert.equal(target.isConnected, false);
 
-  const instance = mount(target, 'tpl-detached');
+  const instance = mount({ target: target, template: 'tpl-detached' });
 
   assert.equal(target.querySelector('b').textContent, 'detached content');
   assert.equal(instance.active, true);
@@ -96,7 +96,7 @@ test('mount invalid target rejection: null, undefined, 123, {}, and [] emit MOUN
 
   for (const badTarget of [null, undefined, 123, {}, []]) {
     diagnostics.length = 0;
-    const instance = mount(badTarget, 'test');
+    const instance = mount({ target: badTarget, template: 'test' });
 
     assert.equal(typeof instance, 'function');
     assert.equal(typeof instance.unmount, 'function');
@@ -118,7 +118,7 @@ test('mount invalid target rejection: missing selector emits MOUNT_TARGET_NOT_FO
   const diagnostics = [];
   const unsubscribe = subscribeDiagnostics((d) => diagnostics.push(d));
 
-  const instance = mount('.missing-element-class', 'test');
+  const instance = mount({ target: '.missing-element-class', template: 'test' });
 
   assert.equal(instance.active, false);
   assert.ok(diagnostics.some((d) => d.code === 'MOUNT_TARGET_NOT_FOUND'));
@@ -131,7 +131,7 @@ test('mount invalid target rejection: malformed selector string emits MOUNT_INVA
   const diagnostics = [];
   const unsubscribe = subscribeDiagnostics((d) => diagnostics.push(d));
 
-  const instance = mount(':::invalid-selector', 'test');
+  const instance = mount({ target: ':::invalid-selector', template: 'test' });
 
   assert.equal(instance.active, false);
   assert.ok(diagnostics.some((d) => d.code === 'MOUNT_INVALID_TARGET'));
@@ -151,8 +151,8 @@ test('mount store behavior: omitting store creates isolated local Store for each
   const a = document.getElementById('target-a');
   const b = document.getElementById('target-b');
 
-  const instanceA = mount(a, 'store');
-  const instanceB = mount(b, 'store');
+  const instanceA = mount({ target: a, template: 'store' });
+  const instanceB = mount({ target: b, template: 'store' });
 
   assert.ok(instanceA.store, 'instanceA has a store');
   assert.ok(instanceB.store, 'instanceB has a store');
@@ -176,11 +176,11 @@ test('mount store behavior: options passed as 3rd arg creates local Store with o
   let hitCount = 0;
 
   // 3rd arg is options object without store
-  const instance = mount(target, 'opts', {
+  const instance = mount({ target: target, template: 'opts', ...{
     handlers: {
       hit() { hitCount++; },
     },
-  });
+  } });
 
   assert.ok(instance.store, 'Store created automatically');
   target.querySelector('button').click();
@@ -194,7 +194,7 @@ test('mount store behavior: explicit Store remains shared between caller and mou
   const target = document.getElementById('target');
   const sharedStore = createStore({ val: 'initial' });
 
-  const instance = mount(target, 'explicit', sharedStore);
+  const instance = mount({ target: target, template: 'explicit', store: sharedStore });
   assert.equal(instance.store, sharedStore);
   assert.equal(target.querySelector('span').textContent, 'initial');
 
@@ -222,17 +222,17 @@ test('mount handler isolation: separate mounts with same handler names do not cr
   const calls1 = [];
   const calls2 = [];
 
-  const inst1 = mount(t1, 'btn', null, {
+  const inst1 = mount({ target: t1, template: 'btn', store: null, ...{
     handlers: {
       fire() { calls1.push('t1'); },
     },
-  });
+  } });
 
-  const inst2 = mount(t2, 'btn', null, {
+  const inst2 = mount({ target: t2, template: 'btn', store: null, ...{
     handlers: {
       fire() { calls2.push('t2'); },
     },
-  });
+  } });
 
   t1.querySelector('button').click();
   assert.deepEqual(calls1, ['t1']);
@@ -252,9 +252,9 @@ test('mount handler prototype safety: prototype properties on handlers object ar
   const warnings = [];
   const unsubscribe = subscribeDiagnostics((d) => warnings.push(d));
 
-  const instance = mount(target, 'proto', null, {
+  const instance = mount({ target: target, template: 'proto', store: null, ...{
     handlers: {}, // Object.prototype has toString
-  });
+  } });
 
   target.querySelector('button').click();
   assert.ok(warnings.some((w) => w.code === 'HANDLER_NOT_FOUND'));
@@ -293,7 +293,7 @@ test('mount cleanup: LIFO execution and idempotence on unmount', () => {
   const engine = createEngine({ modules: [cleanupModule] });
   target.innerHTML = '<div data-clean-1 data-clean-2></div>';
 
-  const instance = engine.mount(target);
+  const instance = engine.mount({ target: target });
 
   assert.equal(executionOrder.length, 0);
 
@@ -318,9 +318,9 @@ test('mount AbortSignal: aborting active signal triggers full teardown and deact
   const store = createStore({ val: 'live' });
   const controller = new AbortController();
 
-  const instance = mount(target, 'sig', store, {
+  const instance = mount({ target: target, template: 'sig', store: store, ...{
     signal: controller.signal,
-  });
+  } });
 
   assert.equal(instance.active, true);
   assert.equal(target.querySelector('span').textContent, 'live');
@@ -342,9 +342,9 @@ test('mount AbortSignal: pre-aborted signal avoids mounting entirely', () => {
   const controller = new AbortController();
   controller.abort(); // already aborted
 
-  const instance = mount(target, 'sig2', null, {
+  const instance = mount({ target: target, template: 'sig2', store: null, ...{
     signal: controller.signal,
-  });
+  } });
 
   assert.equal(instance.active, false);
   assert.equal(target.textContent, '');
@@ -366,12 +366,12 @@ test('duplicate mount protection: mounting an already mounted target unmounts an
   const store1 = createStore({ first: 'initial' });
   const store2 = createStore({ second: 'replacement' });
 
-  const instance1 = mount(target, 'first', store1);
+  const instance1 = mount({ target: target, template: 'first', store: store1 });
   assert.equal(instance1.active, true);
   assert.equal(target.querySelector('span').textContent, 'initial');
 
   // Second mount on the same target
-  const instance2 = mount(target, 'second', store2);
+  const instance2 = mount({ target: target, template: 'second', store: store2 });
 
   assert.equal(instance1.active, false, 'Previous instance must be deactivated');
   assert.equal(instance2.active, true, 'New instance must be active');
@@ -400,7 +400,7 @@ test('target ownership: unmount clears content but never calls target.remove() o
     return originalRemove?.apply(this, arguments);
   };
 
-  const instance = mount(target, 'own');
+  const instance = mount({ target: target, template: 'own' });
   assert.equal(target.querySelector('p').textContent, 'Owned content');
 
   unmount(instance);
@@ -419,7 +419,7 @@ test('mount hooks: beforeRender and afterRender execute in sequence with error i
   const diagnostics = [];
   const unsubscribe = subscribeDiagnostics((d) => diagnostics.push(d));
 
-  const instance = mount(target, 'hook', null, {
+  const instance = mount({ target: target, template: 'hook', store: null, ...{
     beforeRender(scope, store) {
       order.push('beforeRender');
       store.set('msg', 'hook-value');
@@ -431,7 +431,7 @@ test('mount hooks: beforeRender and afterRender execute in sequence with error i
       assert.equal(renderedTarget.querySelector('span').textContent, 'hook-value');
       throw new Error('Explosion in afterRender');
     },
-  });
+  } });
 
   unsubscribe();
 
@@ -445,20 +445,20 @@ test('mount hooks: beforeRender and afterRender execute in sequence with error i
   unmount(instance);
 });
 
-// ── 9. IN-PLACE MOUNTING & CALL STYLES ─────────────────────────────────────────
+// ── 9. IN-PLACE MOUNTING & CONFIGURATION API ───────────────────────────────────
 
-test('in-place mount: mount(target, options) mounts existing DOM content without template', () => {
+test('in-place mount: configuration object mounts existing DOM content without template', () => {
   installDom('<div id="target"><span data-text="name"></span><button data-on-click="click">Hit</button></div>');
   const target = document.getElementById('target');
   const store = createStore({ name: 'In Place' });
   let clicked = false;
 
-  const instance = mount(target, {
+  const instance = mount({ target: target, ...{
     store,
     handlers: {
       click() { clicked = true; },
     },
-  });
+  } });
 
   assert.equal(target.querySelector('span').textContent, 'In Place');
   target.querySelector('button').click();
@@ -479,4 +479,15 @@ test('in-place mount: mount(target, options) mounts existing DOM content without
   // Store updates no longer update span
   store.set('name', 'Changed After Unmount');
   assert.equal(target.querySelector('span').textContent, 'In Place', 'Bindings deactivated after in-place unmount');
+});
+
+test('mount accepts only one configuration object', () => {
+  installDom('<div id="target"></div>');
+  const target = document.getElementById('target');
+  const engine = createEngine({ modules: [] });
+
+  assert.throws(() => Reflect.apply(mount, undefined, [target]), /single configuration object/);
+  assert.throws(() => Reflect.apply(mount, undefined, [{ target }, {}]), /single configuration object/);
+  assert.throws(() => Reflect.apply(engine.mount, engine, [target]), /single configuration object/);
+  assert.throws(() => Reflect.apply(engine.mount, engine, [{ target }, {}]), /single configuration object/);
 });

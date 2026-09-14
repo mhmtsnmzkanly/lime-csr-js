@@ -28,14 +28,14 @@ test('AbortSignal abort cancels store subscriptions, event listeners, and clears
   const controller = new AbortController();
 
   let clicked = 0;
-  mount(target, 'abort-test', store, {
+  mount({ target: target, template: 'abort-test', store: store, ...{
     signal: controller.signal,
     handlers: {
       inc() {
         clicked++;
       },
     },
-  });
+  } });
 
   // Verify mounted content
   assert.equal(target.querySelector('span').textContent, '0');
@@ -78,9 +78,9 @@ test('pre-aborted AbortSignal prevents mount from executing', () => {
   const controller = new AbortController();
   controller.abort(); // already aborted
 
-  const cleanup = mount(target, 'abort-test-2', null, {
+  const cleanup = mount({ target: target, template: 'abort-test-2', store: null, ...{
     signal: controller.signal,
-  });
+  } });
 
   assert.equal(target.textContent, '');
   assert.equal(typeof cleanup, 'function');

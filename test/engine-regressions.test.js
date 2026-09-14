@@ -34,7 +34,7 @@ test('regression: <if data-live> cleans up branch subscriptions and does not lea
     text: 'initial',
   });
 
-  const inst = mount(target, null, store);
+  const inst = mount({ target: target, template: null, store: store });
   assert.equal(target.querySelector('#active-span')?.textContent, 'initial');
 
   // Toggle flag 10 times
@@ -86,7 +86,7 @@ test('regression: <for data-live> cleans up removed item subscriptions and prese
     ],
   });
 
-  const inst = mount(target, null, store);
+  const inst = mount({ target: target, template: null, store: store });
   const getRenderedNames = () => Array.from(target.querySelectorAll('.item')).map((el) => el.textContent);
 
   assert.deepEqual(getRenderedNames(), ['Alice', 'Bob']);
@@ -123,13 +123,13 @@ test('regression: removing a live-loop item does not detach delegation for its s
   const target = document.getElementById('app');
   const store = createStore({ items: [] });
   const selected = [];
-  const instance = mount(target, null, store, {
+  const instance = mount({ target: target, template: null, store: store, ...{
     handlers: {
       select({ data }) {
         selected.push(data);
       },
     },
-  });
+  } });
 
   store.set('items', [{ id: 1, name: 'First' }, { id: 2, name: 'Second' }]);
   store.set('items', [{ id: 2, name: 'Second' }]);
@@ -193,9 +193,9 @@ test('regression: mount() removes AbortSignal abort listener on manual unmount',
     abortFiredAfterUnmount = true;
   });
 
-  const inst = mount(target, null, null, {
+  const inst = mount({ target: target, template: null, store: null, ...{
     signal: controller.signal,
-  });
+  } });
 
   // Manually unmount before abort
   inst.unmount();
@@ -227,7 +227,7 @@ test('regression: data-model on input[type="file"] does not throw DOMException o
   });
 
   // Mount with file input
-  const inst = mount(target, null, store);
+  const inst = mount({ target: target, template: null, store: store });
   const input = target.querySelector('#file-input');
   assert.ok(input);
 
@@ -272,7 +272,7 @@ test('regression: <for as="item" index="item"> emits FOR_INDEX_COLLISION warning
       items: ['alpha', 'beta'],
     });
 
-    mount(target, null, store);
+    mount({ target: target, template: null, store: store });
 
     // Warning emitted
     const collisionWarnings = diagnostics.filter((d) => d.code === 'FOR_INDEX_COLLISION');

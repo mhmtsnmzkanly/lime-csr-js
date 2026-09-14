@@ -73,7 +73,7 @@ test('mount renders static interpolation, static blocks, loops, and partials', (
     <partial name="card" data="user"></partial>
   `);
   document.body.insertAdjacentHTML('afterbegin', '<template id="tpl-card"><em>${name}</em></template>');
-  mount(target, name, null, { context: { user: { name: 'Ada' }, show: false, items: ['a', 'b'] } });
+  mount({ target: target, template: name, store: null, ...{ context: { user: { name: 'Ada' }, show: false, items: ['a', 'b'] } } });
   assert.equal(target.querySelector('.title').textContent.trim(), 'Hello Ada');
   assert.equal(target.querySelector('i').textContent, 'hidden');
   assert.deepEqual([...target.querySelectorAll('.item')].map((el) => el.textContent), ['a', 'b']);
@@ -90,7 +90,7 @@ test('reactive text, attributes, model, show, live if, and live for update', () 
     <for each="items" as="item" key="item.id" data-live><span class="live-item">\${item.label}</span></for>
   `);
   const store = createStore({ name: 'Ada', visible: false, items: [{ id: 1, label: 'one' }] });
-  mount(target, name, store);
+  mount({ target: target, template: name, store: store });
   assert.equal(target.querySelector('#text').textContent, 'Ada');
   assert.equal(target.querySelector('#link').getAttribute('href'), '/u/Ada');
   assert.equal(target.querySelector('#model').value, 'Ada');
@@ -123,13 +123,13 @@ test('delegated handlers work for click, input, change, submit, keydown, and lat
   `);
   const store = createStore({ items: [] });
   const calls = [];
-  mount(target, name, store, { handlers: {
+  mount({ target: target, template: name, store: store, ...{ handlers: {
     click: ({ element }) => calls.push(`click:${element.id || element.className}`),
     input: () => calls.push('input'),
     change: () => calls.push('change'),
     keydown: () => calls.push('keydown'),
     submit: () => calls.push('submit'),
-  } });
+  } } });
   target.querySelector('#click').dispatchEvent(new MouseEvent('click', { bubbles: true }));
   target.querySelector('#input').dispatchEvent(new Event('input', { bubbles: true }));
   target.querySelector('#input').dispatchEvent(new Event('change', { bubbles: true }));
@@ -146,14 +146,14 @@ test('mount replacement, returned cleanup, and unmount remove subscriptions and 
   const { name, target } = fixture('<button data-on-click="hit"></button><span data-text="value"></span>');
   const store = createStore({ value: 'a' });
   let hits = 0;
-  const instance = mount(target, name, store, { handlers: { hit: () => { hits += 1; } } });
+  const instance = mount({ target: target, template: name, store: store, ...{ handlers: { hit: () => { hits += 1; } } } });
   target.querySelector('button').click();
   instance.cleanup();
   target.querySelector('button').click();
   store.set('value', 'b');
   assert.equal(hits, 1);
   assert.equal(target.querySelector('span').textContent, 'a');
-  mount(target, name, store, { handlers: { hit: () => { hits += 1; } } });
+  mount({ target: target, template: name, store: store, ...{ handlers: { hit: () => { hits += 1; } } } });
   unmount(target);
   assert.equal(target.textContent, '');
   store.set('value', 'c');
@@ -165,10 +165,10 @@ test('warnings are emitted in development mode for missing templates, invalid op
   console.warn = (message) => warnings.push(message);
   setDevMode(true);
   const { target } = fixture('<if is-not-real="x">bad</if><partial name="missing"></partial><button data-on-click="missing"></button>');
-  mount(target, 'does-not-exist');
+  mount({ target: target, template: 'does-not-exist' });
   const name = `warning-${++templateNumber}`;
   document.body.insertAdjacentHTML('afterbegin', `<template id="tpl-${name}"><if is-not-real="x">bad</if><partial name="missing"></partial><button data-on-click="missing"></button></template>`);
-  mount(target, name, createStore({}), { context: { x: true }, handlers: {} });
+  mount({ target: target, template: name, store: createStore({}), ...{ context: { x: true }, handlers: {} } });
   target.querySelector('button')?.click();
   console.warn = oldWarn;
   assert.ok(warnings.some((message) => message.includes('MOUNT_TEMPLATE_NOT_FOUND')));
@@ -184,7 +184,7 @@ test('development error overlay treats warning text as text, not markup', () => 
   console.warn = () => {};
   const name = '<img src=x onerror=globalThis.__limeXss=true>';
   document.body.insertAdjacentHTML('beforeend', '<main id="app"></main>');
-  mount(document.getElementById('app'), name);
+  mount({ target: document.getElementById('app'), template: name });
   console.warn = oldWarn;
   assert.equal(document.querySelector('#lime-csr-error-overlay-container img'), null);
   assert.equal(globalThis.__limeXss, undefined);
@@ -196,7 +196,7 @@ test('event handler lookup does not call inherited object methods', () => {
   const oldWarn = console.warn;
   console.warn = (message) => warnings.push(message);
   setDevMode(true);
-  mount(target, name, createStore({}), { handlers: {} });
+  mount({ target: target, template: name, store: createStore({}), ...{ handlers: {} } });
   target.querySelector('button').click();
   console.warn = oldWarn;
   assert.ok(warnings.some((message) => message.includes('HANDLER_NOT_FOUND')));

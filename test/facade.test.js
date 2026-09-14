@@ -84,7 +84,7 @@ test('facade: mount delegating to defaultEngine executes all standard modules en
   });
 
   let clicked = false;
-  const instance = mount(target, name, store, {
+  const instance = mount({ target: target, template: name, store: store, ...{
     context: { user: { name: 'Ada' } },
     handlers: {
       increment() {
@@ -92,7 +92,7 @@ test('facade: mount delegating to defaultEngine executes all standard modules en
         store.set('count', store.get('count') + 1);
       },
     },
-  });
+  } });
 
   assert.equal(target.querySelector('.greeting').textContent.trim(), 'Hello Ada');
   assert.equal(target.querySelector('#txt').textContent, '10');
@@ -121,12 +121,12 @@ test('facade: mount delegating to defaultEngine executes all standard modules en
 
 // ── 4. REDESIGNED PUBLIC MOUNT SIGNATURE & TARGET RESOLUTION ─────────────────
 
-test('facade: redesigned public mount(target, template, store, options) resolves selectors and rejects invalid targets', () => {
+test('facade: configuration-object public mount resolves selectors and rejects invalid targets', () => {
   const { name, target } = fixture(`<span data-text="val"></span><p>Static \${msg}</p>`);
   const store = createStore({ val: 'reactive' });
 
-  // 1. Selector resolution: mount('#app', template, store, options)
-  const instance = mount('#app', name, store, { context: { msg: 'world' } });
+  // 1. Selector resolution: mount({ target, template, store, ...options })
+  const instance = mount({ target: '#app', template: name, store: store, ...{ context: { msg: 'world' } } });
 
   assert.equal(target.querySelector('span').textContent, 'reactive');
   assert.equal(target.querySelector('p').textContent, 'Static world');
@@ -142,11 +142,11 @@ test('facade: redesigned public mount(target, template, store, options) resolves
   const diagnostics = [];
   const unsubscribe = subscribeDiagnostics((d) => diagnostics.push(d));
 
-  const nullInstance = mount(null, name);
+  const nullInstance = mount({ target: null, template: name });
   assert.equal(nullInstance.active, false);
   assert.ok(diagnostics.some((d) => d.code === 'MOUNT_INVALID_TARGET'));
 
-  const notFoundInstance = mount('#missing-target-id', name);
+  const notFoundInstance = mount({ target: '#missing-target-id', template: name });
   assert.equal(notFoundInstance.active, false);
   assert.ok(diagnostics.some((d) => d.code === 'MOUNT_TARGET_NOT_FOUND'));
 
@@ -184,7 +184,7 @@ test('facade: custom engine allows module override with precedence over standard
   });
 
   const store = createStore({ item: { name: 'custom item' } });
-  customEngine.mount(target, { store });
+  customEngine.mount({ target: target, ...{ store } });
 
   assert.equal(target.querySelector('span').textContent, 'CUSTOM ITEM');
   customEngine.unmount(target);
@@ -204,7 +204,7 @@ test('facade: omitting a module leaves its triggers completely untouched in the 
   });
 
   const store = createStore({ visible: false });
-  minimalEngine.mount(target, { store });
+  minimalEngine.mount({ target: target, ...{ store } });
 
   const p = target.querySelector('p');
   assert.equal(p.hasAttribute('data-show'), true);
@@ -226,8 +226,8 @@ test('facade: multiple engine instances are completely isolated', () => {
   const store1 = createStore({ v: 'Engine 1' });
   const store2 = createStore({ v: 'Engine 2' });
 
-  engine1.mount(app1, { store: store1 });
-  engine2.mount(app2, { store: store2 });
+  engine1.mount({ target: app1, ...{ store: store1 } });
+  engine2.mount({ target: app2, ...{ store: store2 } });
 
   assert.equal(app1.querySelector('span').textContent, 'Engine 1');
   assert.equal(app2.querySelector('span').textContent, 'Engine 2');

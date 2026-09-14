@@ -137,7 +137,24 @@ test('existing direct warn signature remains compatible', () => {
   const result = warn('DIRECT_WARN', 'direct message', context);
   unsubscribe();
   assert.equal(result, undefined);
-  assert.deepEqual(received[0], { code: 'DIRECT_WARN', message: 'direct message', context });
+  assert.equal(received[0].code, 'DIRECT_WARN');
+  assert.equal(received[0].message, 'direct message');
+  assert.equal(received[0].context, context);
+  assert.equal(received[0].severity, 'warning');
+  assert.equal(received[0].category, 'runtime');
+  assert.equal(received[0].count, 1);
+});
+
+test('repeated diagnostics are aggregated while preserving their first dispatch', () => {
+  const received = [];
+  const context = {};
+  const unsubscribe = subscribeDiagnostics((diagnostic) => received.push(diagnostic));
+  warn('REPEATED', 'same message', context);
+  warn('REPEATED', 'same message', context);
+  unsubscribe();
+
+  assert.equal(received.length, 1);
+  assert.equal(received[0].count, 2);
 });
 
 test('reportError reaches subscribers with its formatted diagnostic', async () => {

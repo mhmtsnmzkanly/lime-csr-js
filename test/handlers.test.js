@@ -47,13 +47,13 @@ test('handlers: single object payload { event, element, scope, store, data } pas
   const store = createStore({ count: 10 });
 
   let received = null;
-  const instance = mount(target, 'basic', store, {
+  const instance = mount({ target: target, template: 'basic', store: store, ...{
     handlers: {
       onClick(payload) {
         received = payload;
       },
     },
-  });
+  } });
 
   const btn = target.querySelector('#btn');
   btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -64,6 +64,31 @@ test('handlers: single object payload { event, element, scope, store, data } pas
   assert.equal(received.store, store);
   assert.equal(received.data, null);
   assert.ok(typeof received.scope === 'object');
+
+  unmount(instance);
+});
+
+test('handlers: mounting event bindings does not rescan the completed target tree', () => {
+  installDom('<div id="target"></div>');
+  const target = document.getElementById('target');
+  const querySelectorAll = target.querySelectorAll.bind(target);
+  let targetScans = 0;
+  target.querySelectorAll = (...args) => {
+    targetScans++;
+    return querySelectorAll(...args);
+  };
+  let calls = 0;
+
+  const instance = mount({
+    target,
+    template: '<button id="btn" data-on-click="hit">Hit</button>',
+    handlers: { hit() { calls++; } },
+  });
+  target.querySelectorAll = querySelectorAll;
+
+  target.querySelector('#btn').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  assert.equal(calls, 1);
+  assert.equal(targetScans, 0);
 
   unmount(instance);
 });
@@ -81,9 +106,9 @@ test('handlers: missing handler emits HANDLER_NOT_FOUND diagnostic', () => {
   const diagnostics = [];
   const unsub = subscribeDiagnostics((d) => diagnostics.push(d));
 
-  const instance = mount(target, 'missing', null, {
+  const instance = mount({ target: target, template: 'missing', store: null, ...{
     handlers: {},
-  });
+  } });
 
   target.querySelector('#btn').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -108,9 +133,9 @@ test('handlers: prototype properties (toString, valueOf, constructor, __proto__)
   const diagnostics = [];
   const unsub = subscribeDiagnostics((d) => diagnostics.push(d));
 
-  const instance = mount(target, 'proto', null, {
+  const instance = mount({ target: target, template: 'proto', store: null, ...{
     handlers: {},
-  });
+  } });
 
   const names = ['toString', 'valueOf', 'constructor', 'proto', 'hasOwn'];
   for (const name of names) {
@@ -155,7 +180,7 @@ test('handlers: companion data attribute resolves scope paths, store paths, lite
   });
 
   const calls = [];
-  const instance = mount(target, 'data', store, {
+  const instance = mount({ target: target, template: 'data', store: store, ...{
     context: {
       user: { id: 101 },
     },
@@ -164,7 +189,7 @@ test('handlers: companion data attribute resolves scope paths, store paths, lite
         calls.push(data);
       },
     },
-  });
+  } });
 
   const click = (id) => target.querySelector(id).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -226,13 +251,13 @@ test('handlers: keyed events support corresponding companion data attribute', ()
   const target = document.getElementById('target');
   let receivedData = null;
 
-  const instance = mount(target, 'keyed', null, {
+  const instance = mount({ target: target, template: 'keyed', store: null, ...{
     handlers: {
       onEnter({ data }) {
         receivedData = data;
       },
     },
-  });
+  } });
 
   const input = target.querySelector('#input');
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -257,7 +282,7 @@ test('handlers: handler return values (false, true, object, promise) are strictl
   `);
   const target = document.getElementById('target');
 
-  const instance = mount(target, 'returns', null, {
+  const instance = mount({ target: target, template: 'returns', store: null, ...{
     handlers: {
       retFalse() { return false; },
       retTrue() { return true; },
@@ -265,7 +290,7 @@ test('handlers: handler return values (false, true, object, promise) are strictl
       retProm() { return Promise.resolve(false); },
       onSubmit() { return true; },
     },
-  });
+  } });
 
   const ev1 = new MouseEvent('click', { bubbles: true, cancelable: true });
   target.querySelector('#link-false').dispatchEvent(ev1);
@@ -321,13 +346,13 @@ test('handlers: custom module accesses ctx.handlers from ModuleContext', () => {
   });
 
   const engine = createEngine({ modules: [customModule] });
-  const instance = engine.mount(target, 'custom', null, {
+  const instance = engine.mount({ target: target, template: 'custom', store: null, ...{
     handlers: {
       triggerCustom(payload) {
         customReceived = payload;
       },
     },
-  });
+  } });
 
   assert.ok(customReceived, 'Custom module invoked handler');
   assert.equal(customReceived.data, 'custom-val');
@@ -352,12 +377,12 @@ test('handlers: separate mounts have isolated handlers and do not leak', () => {
   const callsA = [];
   const callsB = [];
 
-  const instA = mount(targetA, 'iso', null, {
+  const instA = mount({ target: targetA, template: 'iso', store: null, ...{
     handlers: { act() { callsA.push('A'); } },
-  });
-  const instB = mount(targetB, 'iso', null, {
+  } });
+  const instB = mount({ target: targetB, template: 'iso', store: null, ...{
     handlers: { act() { callsB.push('B'); } },
-  });
+  } });
 
   targetA.querySelector('.btn').dispatchEvent(new MouseEvent('click', { bubbles: true }));
   assert.deepEqual(callsA, ['A']);
@@ -388,9 +413,9 @@ test('handlers: mutating handlers dictionary at runtime dynamically takes effect
     handlerA() { log.push('A-v1'); },
   };
 
-  const instance = mount(target, 'dyn', null, {
+  const instance = mount({ target: target, template: 'dyn', store: null, ...{
     handlers: handlersObj,
-  });
+  } });
 
   target.querySelector('#btn-one').dispatchEvent(new MouseEvent('click', { bubbles: true }));
   assert.deepEqual(log, ['A-v1']);
@@ -423,7 +448,7 @@ test('handlers: synchronous throw inside handler reports MODULE_HANDLER_FAILED a
   const unsub = subscribeDiagnostics((d) => diagnostics.push(d));
   let safeCalled = false;
 
-  const instance = mount(target, 'error', null, {
+  const instance = mount({ target: target, template: 'error', store: null, ...{
     handlers: {
       throwingHandler() {
         throw new Error('Boom in sync handler');
@@ -432,7 +457,7 @@ test('handlers: synchronous throw inside handler reports MODULE_HANDLER_FAILED a
         safeCalled = true;
       },
     },
-  });
+  } });
 
   // Clicking throwing handler must not crash the application
   target.querySelector('#btn-throw').dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -463,7 +488,7 @@ test('handlers: async rejected promise inside handler reports MODULE_HANDLER_FAI
   const unsub = subscribeDiagnostics((d) => diagnostics.push(d));
   let safeCalled = false;
 
-  const instance = mount(target, 'async', null, {
+  const instance = mount({ target: target, template: 'async', store: null, ...{
     handlers: {
       async asyncRejectHandler() {
         throw new Error('Boom in async handler');
@@ -472,7 +497,7 @@ test('handlers: async rejected promise inside handler reports MODULE_HANDLER_FAI
         safeCalled = true;
       },
     },
-  });
+  } });
 
   target.querySelector('#btn-reject').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -514,13 +539,13 @@ test('handlers: live nodes in dynamic loops receive item data and subsequent upd
   });
 
   const deletedIds = [];
-  const instance = mount(target, 'loop', store, {
+  const instance = mount({ target: target, template: 'loop', store: store, ...{
     handlers: {
       deleteItem({ data }) {
         deletedIds.push(data);
       },
     },
-  });
+  } });
 
   const buttons = target.querySelectorAll('.del-btn');
   assert.equal(buttons.length, 2);
@@ -562,14 +587,14 @@ test('handlers: companion data attribute resolves from scope with precedence ove
   const scope = { role: 'scope-priority-role' };
 
   let receivedData = null;
-  const instance = mount(target, 'precedence', store, {
+  const instance = mount({ target: target, template: 'precedence', store: store, ...{
     scope,
     handlers: {
       onAction({ data }) {
         receivedData = data;
       },
     },
-  });
+  } });
 
   const btn = target.querySelector('#btn');
   btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -591,14 +616,14 @@ test('handlers: companion data attribute falls back to store when absent in scop
   const scope = { otherKey: 'irrelevant' };
 
   let receivedData = null;
-  const instance = mount(target, 'store-fallback', store, {
+  const instance = mount({ target: target, template: 'store-fallback', store: store, ...{
     scope,
     handlers: {
       onAction({ data }) {
         receivedData = data;
       },
     },
-  });
+  } });
 
   const btn = target.querySelector('#btn');
   btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -607,4 +632,3 @@ test('handlers: companion data attribute falls back to store when absent in scop
 
   unmount(instance);
 });
-
