@@ -47,6 +47,28 @@ function getAllElements(root) {
 }
 
 /**
+ * Captures queued subtree elements and their scopes before a fragment is moved.
+ *
+ * @param {Element|DocumentFragment} root
+ * @param {Object} scope
+ * @returns {Array<{ element: Element, scope: Object }>}
+ */
+function snapshotDeferredElements(root, scope) {
+  const elements = getAllElements(root);
+  const snapshots = [];
+
+  for (let i = 0; i < elements.length; i++) {
+    const element = elements[i];
+    snapshots.push({
+      element,
+      scope: getElementScope(element) || scope,
+    });
+  }
+
+  return snapshots;
+}
+
+/**
  * Executes Phase 1: Transform (Structural Compilation / Fixed-Point Loop).
  *
  * Scans the tree for elements matching transform routes, runs their setup/transform hooks,
@@ -77,53 +99,48 @@ export function runTransform(root, router, options = {}) {
   } = options;
 
   let iterations = 0;
+  let scanRoot = true;
+  const deferredElements = [];
 
-  while (iterations < maxIterations) {
-    // Exact tag/attribute routes can prove that no structural work remains
-    // without materializing and matching the entire tree one final time.
-    if (typeof router.hasTransformCandidates === 'function' && !router.hasTransformCandidates(root)) {
-      break;
-    }
+  /**
+   * Queues built-in static structural work without recursively starting an
+   * independent transform lifecycle. The elements must be captured now because
+   * callers commonly move the DocumentFragment immediately afterwards.
+   *
+   * @param {Element|DocumentFragment} subNode
+   * @param {Object} subScope
+   */
+  function deferTransform(subNode, subScope) {
+    if (!subNode) return;
+    deferredElements.push(...snapshotDeferredElements(subNode, subScope || scope));
+  }
 
-    const allElements = getAllElements(root);
-    const candidateMatches = [];
-
-    // 1. Snapshot candidate elements matching transform routes
-    for (let i = 0; i < allElements.length; i++) {
-      const el = allElements[i];
-      if (inIgnoredBlock(el)) continue;
-      const matches = router.matchElement(el, 'transform');
-      if (matches.length > 0) {
-        candidateMatches.push({ element: el, matches });
-      }
-    }
-
-    // Fixed-point reached: no matching transform triggers found
-    if (candidateMatches.length === 0) {
-      break;
-    }
-
-    iterations++;
+  /**
+   * Runs the transform matches from one scanned or deferred batch.
+   *
+   * @param {Array<{ element: Element, matches: Array, scope?: Object }>} candidateMatches
+   * @returns {boolean} whether setup/transform hooks ran
+   */
+  function processMatches(candidateMatches) {
     let transformedAny = false;
 
-    // 2. Process structural transformations
     for (let i = 0; i < candidateMatches.length; i++) {
-      const { element, matches } = candidateMatches[i];
+      const { element, matches, scope: capturedScope } = candidateMatches[i];
 
-      // If the element was detached or replaced by an earlier transform in this pass, skip it
+      // Deferred snapshots may refer to elements that an earlier structural
+      // transformation has already removed or replaced.
       if (element !== root && !root.contains(element)) {
         continue;
       }
 
       for (let m = 0; m < matches.length; m++) {
-        // Re-verify containment if a previous match on this element replaced it
         if (element !== root && !root.contains(element)) {
           break;
         }
 
         const { record, matchedAttribute } = matches[m];
         const { trigger, moduleName } = record;
-        const elementScope = getElementScope(element) || scope;
+        const elementScope = capturedScope || getElementScope(element) || scope;
 
         const { ctx } = createModuleContext({
           store,
@@ -148,6 +165,7 @@ export function runTransform(root, router, options = {}) {
             target: options.target || null,
             linkedElements,
           }),
+          deferTransform,
           link: (subNode, subScope, customCleanupStack) => runLink(subNode, router, {
             store,
             scope: subScope || elementScope,
@@ -160,7 +178,6 @@ export function runTransform(root, router, options = {}) {
           }),
         });
 
-        // a. Read phase (pure snapshot)
         let data;
         if (typeof trigger.read === 'function') {
           try {
@@ -170,7 +187,6 @@ export function runTransform(root, router, options = {}) {
           }
         }
 
-        // b. Setup / Transform phase (structural mutation permitted here)
         const transformFn = trigger.setup || trigger.transform;
         if (typeof transformFn === 'function') {
           try {
@@ -184,13 +200,73 @@ export function runTransform(root, router, options = {}) {
       }
     }
 
-    // If matches ran but nothing transformed (e.g. passive or unchanged), break to prevent infinite loop
+    return transformedAny;
+  }
+
+  while (iterations < maxIterations) {
+    const candidateMatches = [];
+
+    if (scanRoot) {
+      // Exact tag/attribute routes can prove that no structural work remains
+      // without materializing and matching the entire tree one final time.
+      if (typeof router.hasTransformCandidates === 'function' && !router.hasTransformCandidates(root)) {
+        break;
+      }
+
+      const allElements = getAllElements(root);
+      for (let i = 0; i < allElements.length; i++) {
+        const element = allElements[i];
+        if (inIgnoredBlock(element)) continue;
+        const matches = router.matchElement(element, 'transform');
+        if (matches.length > 0) {
+          candidateMatches.push({ element, matches });
+        }
+      }
+    } else {
+      // Process one queued generation at once. This amortizes static loop
+      // expansion while still making nested structural output a later pass.
+      const currentBatch = deferredElements.splice(0);
+      for (let i = 0; i < currentBatch.length; i++) {
+        const { element, scope: deferredScope } = currentBatch[i];
+        if (element !== root && !root.contains(element)) continue;
+        if (inIgnoredBlock(element)) continue;
+        const matches = router.matchElement(element, 'transform');
+        if (matches.length > 0) {
+          candidateMatches.push({ element, matches, scope: deferredScope });
+        }
+      }
+    }
+
+    if (candidateMatches.length === 0) {
+      if (!scanRoot && deferredElements.length > 0) {
+        continue;
+      }
+      // A complete root scan remains the conservative fallback for custom
+      // modules and any structural mutation that was not explicitly deferred.
+      if (!scanRoot) {
+        scanRoot = true;
+        continue;
+      }
+      break;
+    }
+
+    iterations++;
+    const transformedAny = processMatches(candidateMatches);
+
     if (!transformedAny) {
       break;
     }
+
+    scanRoot = deferredElements.length === 0;
   }
 
-  if (iterations >= maxIterations) {
+  // Avoid reporting the guard merely because the final allowed pass happened
+  // to complete the tree. Pattern and multi-attribute routes intentionally
+  // retain the conservative diagnostic because they cannot be selected safely.
+  if (
+    iterations >= maxIterations
+    && (typeof router.hasTransformCandidates !== 'function' || router.hasTransformCandidates(root))
+  ) {
     reportError('PIPELINE_DEPTH_LIMIT', { maxIter: maxIterations }, root);
   }
 

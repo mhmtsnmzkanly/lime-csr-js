@@ -13,6 +13,7 @@ import { createRouter } from '../src/core/router.js';
 import { runTransform, runLink } from '../src/core/lifecycle.js';
 import { createStore } from '../src/store.js';
 import { setDevMode, subscribeDiagnostics } from '../src/errors.js';
+import { loops } from '../src/modules/loops.js';
 
 function createDom(html = '') {
   return new JSDOM(`<!doctype html><html><body>${html}</body></html>`);
@@ -430,6 +431,40 @@ test('transform: multi-pass fixed-point expansion compiles nested generated macr
   const finalEl = root.querySelector('.finished');
   assert.ok(finalEl);
   assert.equal(finalEl.textContent, 'All expanded');
+});
+
+test('transform: deferred static work falls back to root scans for custom module output', () => {
+  const firstMod = defineModule({
+    name: 'custom-first',
+    triggers: [tag('CUSTOM-FIRST', {
+      setup(el) {
+        el.replaceWith(el.ownerDocument.createElement('custom-second'));
+      },
+    })],
+  });
+  const secondMod = defineModule({
+    name: 'custom-second',
+    triggers: [tag('CUSTOM-SECOND', {
+      setup(el) {
+        const result = el.ownerDocument.createElement('span');
+        result.className = 'custom-result';
+        result.textContent = 'compiled';
+        el.replaceWith(result);
+      },
+    })],
+  });
+  const router = createRouter([loops(), firstMod, secondMod]);
+  const dom = createDom(`
+    <div id="root">
+      <for each="items" as="item"><custom-first></custom-first></for>
+    </div>
+  `);
+  const root = dom.window.document.getElementById('root');
+
+  runTransform(root, router, { scope: { items: [{}, {}] } });
+
+  assert.equal(root.querySelectorAll('.custom-result').length, 2);
+  assert.equal(root.querySelector('custom-first, custom-second'), null);
 });
 
 test('transform: exact routes skip the final full-tree scan once the tree is stable', () => {

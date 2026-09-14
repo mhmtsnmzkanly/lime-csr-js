@@ -367,6 +367,33 @@ test('loops: nested loops with shadowing lexical scopes', () => {
   ]);
 });
 
+test('loops: large static expansion compiles nested structural work for every item', () => {
+  const dom = createDom(`
+    <div id="root">
+      <for each="items" as="item">
+        <if is-truthy="item.visible">
+          <span class="item">\${item.id}</span>
+          <else><em class="item">\${item.id}</em></else>
+        </if>
+      </for>
+    </div>
+  `);
+  const engine = createStructuralEngine();
+  const root = dom.window.document.getElementById('root');
+  const items = Array.from({ length: 1000 }, (_, id) => ({
+    id,
+    visible: id % 2 === 0,
+  }));
+
+  engine.mount({ target: root, scope: { items }, document: dom.window.document });
+
+  const rendered = root.querySelectorAll('.item');
+  assert.equal(rendered.length, items.length);
+  assert.equal(rendered[0].textContent.trim(), '0');
+  assert.equal(rendered[rendered.length - 1].textContent.trim(), '999');
+  assert.equal(root.querySelector('for, if'), null);
+});
+
 // ── 4. INTEGRATION: FIXED-POINT COMPILATION OF NESTED STRUCTURAL MODULES ─────
 
 test('integration: partial -> conditional -> loop -> nested partial compiles in fixed-point loop', () => {
@@ -411,6 +438,48 @@ test('integration: partial -> conditional -> loop -> nested partial compiles in 
   assert.equal(app.querySelector('h2').textContent, 'Grace Hopper');
   const badges = Array.from(app.querySelectorAll('.badge')).map((el) => el.textContent.trim());
   assert.deepEqual(badges, ['Compilers', 'COBOL', 'Architecture']);
+});
+
+test('integration: deferred static loop snapshots retain scopes through partial and conditional nesting', () => {
+  const dom = createDom(`
+    <template id="tpl-row">
+      <article class="row">
+        <if is-truthy="visible">
+          <for each="labels" as="label">
+            <partial name="badge" label="label"></partial>
+          </for>
+          <else><span class="hidden">Hidden</span></else>
+        </if>
+      </article>
+    </template>
+    <template id="tpl-badge"><span class="badge">\${label}</span></template>
+    <div id="root">
+      <for each="records" as="record">
+        <partial name="row" data="record"></partial>
+      </for>
+    </div>
+  `);
+  const engine = createStructuralEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({
+    target: root,
+    scope: {
+      records: [
+        { visible: true, labels: ['One', 'Two'] },
+        { visible: false, labels: ['Ignored'] },
+      ],
+    },
+    document: dom.window.document,
+  });
+
+  assert.deepEqual(
+    Array.from(root.querySelectorAll('.badge')).map((element) => element.textContent),
+    ['One', 'Two'],
+  );
+  assert.equal(root.querySelectorAll('.row').length, 2);
+  assert.equal(root.querySelectorAll('.hidden').length, 1);
+  assert.equal(root.querySelector('partial, if, for'), null);
 });
 
 // ── 5. REACTIVE (DATA-LIVE) STRUCTURAL BEHAVIOR ─────────────────────────────
@@ -534,4 +603,3 @@ test('partials: mutating instantiated partial DOM does not mutate source <templa
   assert.equal(card2.querySelector('.title').textContent, 'Original Title');
   assert.equal(card2.querySelector('.injected-node'), null);
 });
-

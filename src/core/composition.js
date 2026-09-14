@@ -258,7 +258,7 @@ export function expandPartial(el, data, ctx) {
   resolveStatic(fragment, partialScope, ctx.store);
 
   // 12. Transform nested structural blocks within the fragment
-  ctx.transform(fragment, partialScope);
+  ctx.deferTransform(fragment, partialScope);
 
   // 13. Replace <partial> element with the expanded fragment
   el.replaceWith(fragment);

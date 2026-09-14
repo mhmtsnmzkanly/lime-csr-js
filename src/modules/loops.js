@@ -86,7 +86,7 @@ function transformLoop(el, data, ctx) {
 
       setElementScope(frag, itemScope);
       resolveStatic(frag, itemScope, ctx.store);
-      ctx.transform(frag, itemScope);
+      ctx.deferTransform(frag, itemScope);
 
       allNodes.push(...Array.from(frag.childNodes));
     }

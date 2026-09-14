@@ -119,6 +119,7 @@ export function createCleanupStack() {
  * @param {Object} [options.cleanupStack] - Unified CleanupStack instance
  * @param {Document} [options.document] - Target document
  * @param {function(Element|DocumentFragment, Object=): number} [options.transform] - Subtree transform runner
+ * @param {function(Element|DocumentFragment, Object=): void} [options.deferTransform] - Queues built-in structural subtree work
  * @param {function(Element|DocumentFragment, Object=): *} [options.link] - Subtree link runner
  * @param {string} [options.matchedAttribute] - Matched attribute name
  * @param {Object} [options.handlers] - Handlers dictionary
@@ -136,6 +137,7 @@ export function createModuleContext(options = {}) {
     cleanupStack = createCleanupStack(),
     document = element?.ownerDocument || globalThis.document,
     transform = null,
+    deferTransform = null,
     link = null,
     matchedAttribute = null,
     handlers = null,
@@ -197,6 +199,12 @@ export function createModuleContext(options = {}) {
         return transform(node, subScope);
       }
       return 0;
+    },
+
+    deferTransform(node, subScope) {
+      if (typeof deferTransform === 'function') {
+        deferTransform(node, subScope);
+      }
     },
 
     /**

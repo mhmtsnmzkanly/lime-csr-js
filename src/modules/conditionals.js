@@ -138,7 +138,7 @@ function transformConditional(el, data, ctx) {
 
     // Resolve static expressions and run transform on inner structural nodes
     resolveStatic(frag, ctx.scope, ctx.store);
-    ctx.transform(frag, ctx.scope);
+    ctx.deferTransform(frag, ctx.scope);
 
     el.replaceWith(frag);
     return;
