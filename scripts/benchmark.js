@@ -13,6 +13,7 @@ if (!Number.isInteger(count) || count < 1 || !Number.isInteger(iterations) || it
 
 const loopTemplate = `<ul><for data-live data-diff="${diffStrategy}" each="items" as="item" key="item.id"><li data-on-click="select">\${item.label}</li></for></ul>`;
 const structuralTemplate = `<ul><for data-live data-diff="${diffStrategy}" each="items" as="item" key="item.id"><partial name="row"></partial></for></ul>`;
+const adminTableTemplate = `<table><tbody><template data-for each="items" as="item"><tr><td>\${item.id}</td><td><template data-if is-truthy="item.visible"><span>\${item.label}</span><template data-else><em>\${item.label}</em></template></template></td><td><button data-on-click="select">View</button><button data-on-click="select">Edit</button><button data-on-click="select">Delete</button></td></tr></template></tbody></table>`;
 const structuralTemplates = {
   row: '<li data-on-click="select"><if is-truthy="item.visible"><span>${item.label}</span><else><em>${item.label}</em></else></if></li>',
 };
@@ -43,6 +44,11 @@ const scenarios = {
     templates: structuralTemplates,
     update: (store) => store.set('items', [...store.get('items')].reverse()),
     dispatch: (target) => target.querySelector('li')?.click(),
+  },
+  'admin-table': {
+    template: adminTableTemplate,
+    update: () => {},
+    dispatch: (target) => target.querySelectorAll('button').forEach((element) => element.click()),
   },
 };
 
