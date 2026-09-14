@@ -3,30 +3,48 @@ import { JSDOM } from 'jsdom';
 import { createStore, mount } from '../src/index.js';
 
 const count = Number(process.argv[2] || 1000);
-const dom = new JSDOM('<main id="app"></main>', { url: 'http://localhost/' });
-globalThis.document = dom.window.document;
-globalThis.Node = dom.window.Node;
-globalThis.NodeFilter = dom.window.NodeFilter;
-
-const target = dom.window.document.getElementById('app');
-const store = createStore({
-  items: Array.from({ length: count }, (_, id) => ({ id, label: `Item ${id}` })),
-});
+const iterations = Number(process.argv[3] || 5);
 const template = '<ul><for data-live each="items" as="item" key="item.id"><li data-on-click="select">${item.label}</li></for></ul>';
 const handlers = { select() {} };
 
-const started = performance.now();
-const instance = mount({ target: target, template: template, store: store, ...{ handlers } });
-const mounted = performance.now();
-store.set('items', [...store.get('items')].reverse());
-const updated = performance.now();
-target.querySelector('li')?.click();
-const dispatched = performance.now();
-instance.unmount();
+function runIteration() {
+  const dom = new JSDOM('<main id="app"></main>', { url: 'http://localhost/' });
+  globalThis.document = dom.window.document;
+  globalThis.Node = dom.window.Node;
+  globalThis.NodeFilter = dom.window.NodeFilter;
+
+  const target = dom.window.document.getElementById('app');
+  const store = createStore({
+    items: Array.from({ length: count }, (_, id) => ({ id, label: `Item ${id}` })),
+  });
+  const started = performance.now();
+  const instance = mount({ target, template, store, handlers });
+  const mounted = performance.now();
+  store.set('items', [...store.get('items')].reverse());
+  const updated = performance.now();
+  target.querySelector('li')?.click();
+  const dispatched = performance.now();
+  instance.unmount();
+  return {
+    mountMs: mounted - started,
+    reorderMs: updated - mounted,
+    eventMs: dispatched - updated,
+  };
+}
+
+function median(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+runIteration(); // Warm up JSDOM and module-level caches.
+const samples = Array.from({ length: iterations }, runIteration);
+const measurement = (key) => +median(samples.map((sample) => sample[key])).toFixed(2);
 
 console.log(JSON.stringify({
   items: count,
-  mountMs: +(mounted - started).toFixed(2),
-  reorderMs: +(updated - mounted).toFixed(2),
-  eventMs: +(dispatched - updated).toFixed(2),
+  iterations,
+  mountMs: measurement('mountMs'),
+  reorderMs: measurement('reorderMs'),
+  eventMs: measurement('eventMs'),
 }));
