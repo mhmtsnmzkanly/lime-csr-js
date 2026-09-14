@@ -80,6 +80,12 @@ export function createEngine(options = {}) {
   // Private per-engine mount target tracking
   const mountedTargets = new WeakMap();
 
+  function isStore(value) {
+    return value != null
+      && typeof value.get === 'function'
+      && typeof value.subscribe === 'function';
+  }
+
   /**
    * Helper to create a no-op inactive mount result for invalid or aborted mounts.
    *
@@ -116,8 +122,8 @@ export function createEngine(options = {}) {
     if (template && typeof template === 'object' && template.nodeType !== 1 && template.nodeType !== 11) {
       mountOptions = template;
       templateArg = mountOptions.templateName || mountOptions.template || null;
-      mountStore = (store && typeof store.subscribe === 'function') ? store : (mountOptions.store || null);
-    } else if (store && typeof store === 'object' && typeof store.subscribe !== 'function' && typeof store.get !== 'function') {
+      mountStore = isStore(store) ? store : (mountOptions.store || null);
+    } else if (store && typeof store === 'object' && !isStore(store)) {
       // 3rd arg was options, store was omitted: mount(target, template, options)
       mountOptions = store;
       mountStore = null;
@@ -150,19 +156,50 @@ export function createEngine(options = {}) {
     }
 
     // 2. Store: If omitted or null, create a mount-local Store instance
-    if (!mountStore || typeof mountStore.subscribe !== 'function') {
+    if (!isStore(mountStore)) {
       mountStore = createStore({});
     }
 
-    // 3. Duplicate Mount Protection: unmount / replace existing active instance on target
+    // 3. AbortSignal early exit
+    if (mountOptions.signal?.aborted) {
+      return createInactiveMount(resolvedTarget, mountStore);
+    }
+
+    // 4. Resolve the template before replacing an active mount. A failed
+    // replacement must not tear down the currently rendered application.
+    let fragment = null;
+    if (typeof templateArg === 'string') {
+      const trimmed = templateArg.trim();
+      if (trimmed.startsWith('<')) {
+        const tpl = doc.createElement('template');
+        tpl.innerHTML = templateArg;
+        fragment = tpl.content.cloneNode(true);
+      } else {
+        const tplEl = resolveTemplate(templateArg, { templates: mountOptions.templates, document: doc });
+
+        if (!tplEl) {
+          const available = Array.from(doc.querySelectorAll('template[id^="tpl-"]'))
+            .map((t) => t.id.slice(4));
+          reportError('MOUNT_TEMPLATE_NOT_FOUND', { name: templateArg, available }, resolvedTarget);
+          return createInactiveMount(resolvedTarget, mountStore);
+        }
+
+        fragment = tplEl.content ? tplEl.content.cloneNode(true) : tplEl.cloneNode(true);
+      }
+    } else if (templateArg && templateArg.nodeType === 11) {
+      fragment = templateArg.cloneNode(true);
+    } else if (templateArg && templateArg.nodeType === 1) {
+      if (templateArg.tagName === 'TEMPLATE' && templateArg.content) {
+        fragment = templateArg.content.cloneNode(true);
+      } else {
+        fragment = templateArg.cloneNode(true);
+      }
+    }
+
+    // 5. Duplicate Mount Protection: unmount / replace existing active instance on target
     const previous = mountedTargets.get(resolvedTarget);
     if (previous && previous.active) {
       previous.unmount();
-    }
-
-    // 4. AbortSignal early exit
-    if (mountOptions.signal?.aborted) {
-      return createInactiveMount(resolvedTarget, mountStore);
     }
 
     const win = doc?.defaultView || globalThis.window || null;
@@ -218,36 +255,6 @@ export function createEngine(options = {}) {
         mountOptions.beforeRender(scope, mountStore);
       } catch (err) {
         reportError('MOUNT_HOOK_FAILED', { hook: 'beforeRender', error: err }, resolvedTarget);
-      }
-    }
-
-    // 5. Template Resolution
-    let fragment = null;
-    if (typeof templateArg === 'string') {
-      const trimmed = templateArg.trim();
-      if (trimmed.startsWith('<')) {
-        const tpl = doc.createElement('template');
-        tpl.innerHTML = templateArg;
-        fragment = tpl.content.cloneNode(true);
-      } else {
-        const tplEl = resolveTemplate(templateArg, { templates: mountOptions.templates, document: doc });
-
-        if (!tplEl) {
-          const available = Array.from(doc.querySelectorAll('template[id^="tpl-"]'))
-            .map((t) => t.id.slice(4));
-          reportError('MOUNT_TEMPLATE_NOT_FOUND', { name: templateArg, available }, resolvedTarget);
-          return createInactiveMount(resolvedTarget, mountStore);
-        }
-
-        fragment = tplEl.content ? tplEl.content.cloneNode(true) : tplEl.cloneNode(true);
-      }
-    } else if (templateArg && templateArg.nodeType === 11) {
-      fragment = templateArg.cloneNode(true);
-    } else if (templateArg && templateArg.nodeType === 1) {
-      if (templateArg.tagName === 'TEMPLATE' && templateArg.content) {
-        fragment = templateArg.content.cloneNode(true);
-      } else {
-        fragment = templateArg.cloneNode(true);
       }
     }
 

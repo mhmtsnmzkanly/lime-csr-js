@@ -269,6 +269,51 @@ test('engine: mounting on an already mounted target unmounts previous instance c
   assert.equal(cleanedOld, true);
 });
 
+test('engine: a failed replacement mount preserves the active mount and its resources', () => {
+  let cleaned = false;
+  const mod = defineModule({
+    name: 'preserve-on-failure',
+    triggers: [attr('x-preserve', (el, data, ctx) => {
+      ctx.onCleanup(() => { cleaned = true; });
+    })],
+  });
+  const engine = createEngine({ modules: [mod] });
+  const dom = createDom('<div id="target"><span x-preserve>Existing</span></div>');
+  const target = dom.window.document.getElementById('target');
+
+  const current = engine.mount(target);
+  const failed = engine.mount(target, 'missing-template');
+
+  assert.equal(failed.active, false);
+  assert.equal(current.active, true);
+  assert.equal(cleaned, false);
+  assert.equal(target.textContent, 'Existing');
+
+  current.unmount();
+  assert.equal(cleaned, true);
+});
+
+test('engine: invalid store-shaped values fall back to a mount-local store', () => {
+  let receivedStore;
+  const mod = defineModule({
+    name: 'store-contract',
+    triggers: [attr('x-store', (el, data, ctx) => {
+      receivedStore = ctx.store;
+      el.textContent = ctx.store.get('value') ?? 'local';
+    })],
+  });
+  const engine = createEngine({ modules: [mod] });
+  const dom = createDom('<div id="target" x-store></div>');
+  const target = dom.window.document.getElementById('target');
+
+  const instance = engine.mount(target, null, { subscribe() {} });
+
+  assert.equal(target.textContent, 'local');
+  assert.equal(typeof receivedStore.get, 'function');
+  assert.equal(typeof receivedStore.subscribe, 'function');
+  instance.unmount();
+});
+
 // ── 11. ABORT SIGNAL INTEGRATION ─────────────────────────────────────────────
 
 test('engine: abort signal automatically triggers unmount', () => {

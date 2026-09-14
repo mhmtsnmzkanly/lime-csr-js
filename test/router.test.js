@@ -88,6 +88,27 @@ test('router: pattern routes support prefix and regex matching, ignoring non-mat
   assert.equal(router.matchElement(elNoMatch, 'link').length, 0);
 });
 
+test('router: global and sticky regex patterns match consistently across repeated scans', () => {
+  const globalMod = defineModule({
+    name: 'global-pattern-mod',
+    triggers: [pattern(/^data-on-/g, () => {})],
+  });
+  const stickyMod = defineModule({
+    name: 'sticky-pattern-mod',
+    triggers: [pattern(/^aria-/y, () => {})],
+  });
+  const router = createRouter([globalMod, stickyMod]);
+  const el = createElement('<button data-on-click="save" aria-label="Save"></button>');
+
+  for (let i = 0; i < 3; i++) {
+    const matches = router.matchElement(el, 'link');
+    assert.deepEqual(
+      matches.map((match) => match.matchedAttribute),
+      ['data-on-click', 'aria-label'],
+    );
+  }
+});
+
 // ── 4. MULTI-ATTRIBUTE ROUTE ────────────────────────────────────────────────
 
 test('router: multi-attribute routes index by anchor and require all required attributes', () => {

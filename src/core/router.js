@@ -235,9 +235,17 @@ export function createRouter(modules = [], options = {}) {
       // c. Pattern Attribute Candidate Route (O(P))
       for (let p = 0; p < tables.patternRoutes.length; p++) {
         const patternRecord = tables.patternRoutes[p];
-        const isPatternMatch = typeof patternRecord.trigger.pattern === 'string'
-          ? attrName.startsWith(patternRecord.trigger.pattern)
-          : patternRecord.trigger.pattern.test(attrName);
+        const { pattern } = patternRecord.trigger;
+        let isPatternMatch;
+        if (typeof pattern === 'string') {
+          isPatternMatch = attrName.startsWith(pattern);
+        } else {
+          // RegExp#test is stateful for global and sticky expressions. Routes
+          // must match consistently across transform and link passes.
+          pattern.lastIndex = 0;
+          isPatternMatch = pattern.test(attrName);
+          pattern.lastIndex = 0;
+        }
 
         if (isPatternMatch) {
           if (typeof patternRecord.trigger.match !== 'function' || patternRecord.trigger.match(element, attrName, attr)) {
