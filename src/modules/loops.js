@@ -235,10 +235,15 @@ function transformLoop(el, data, ctx) {
       // LCS Diff Strategy
       const oldIndices = [];
       const survivingNewKeys = [];
+      const oldKeyIndices = new Map();
+
+      for (let i = 0; i < orderedKeys.length; i++) {
+        oldKeyIndices.set(orderedKeys[i], i);
+      }
 
       for (const key of newKeyOrder) {
         if (keyedBlocks.has(key)) {
-          oldIndices.push(orderedKeys.indexOf(key));
+          oldIndices.push(oldKeyIndices.get(key));
           survivingNewKeys.push(key);
         }
       }
