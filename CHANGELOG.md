@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-09-19
+
+### Added
+- **DOM Element Reference Module (`ref`) (`src/modules/ref.js`)**: Added standard behavioral module supporting `data-ref="name"`. Elements are registered directly onto `app.refs` on mount instances and `res.refs` on render results.
+- **Array References & Automatic Grouping**: Supports explicit `data-ref="items[]"` array suffix (always an array) and duplicate `data-ref="item"` attributes (automatically converted into an array in DOM order).
+- **Event Handler Payload Integration (`src/modules/events.js`)**: `refs` is now passed into event handlers (`handler({ event, element, scope, store, data, refs })`).
+- **Reactive Lifecycle Pruning**: References are cleanly unregistered via `ctx.onCleanup` when elements are removed (e.g. inside reactive `<if data-live>` or `<for data-live>`).
+- **New Diagnostic Code `REF_MISSING_NAME`**: Diagnostic error emitted when `data-ref` is empty or contains only whitespace.
+
+### Changed
+- **Removed Obsolete Internal Ref (`src/modules/text.js`)**: Removed deprecated `dataset.ref` stamp and unreserved `ref` from reserved names catalog.
+
 ## [0.4.4] - 2026-09-18
 
 ### Performance & Memory Optimizations
