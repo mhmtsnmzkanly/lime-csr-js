@@ -70,7 +70,7 @@ function transformLoop(el, data, ctx) {
       return;
     }
 
-    const allNodes = [];
+    const resultFrag = doc.createDocumentFragment();
 
     for (let i = 0; i < list.length; i++) {
       const item = list[i];
@@ -88,10 +88,10 @@ function transformLoop(el, data, ctx) {
       resolveStatic(frag, itemScope, ctx.store);
       ctx.deferTransform(frag, itemScope);
 
-      allNodes.push(...Array.from(frag.childNodes));
+      resultFrag.appendChild(frag);
     }
 
-    el.replaceWith(...allNodes);
+    el.replaceWith(resultFrag);
     return;
   }
 

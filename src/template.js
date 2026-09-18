@@ -200,27 +200,34 @@ export function resolveStatic(root, context, store = null) {
     if (inLiveBlock(node) || inUnexpandedFor(node) || inIgnoredBlock(node)) {
       return;
     }
-    const nodeScope = getNodeScope(node, context);
     if (node.nodeType === 3) {
       // ${} in the middle of a text node: "Hello ${user.name}, welcome" is a single node.
-      // A one-time replacement is sufficient here; dynamic reactivity is handled during Link phase.
-      if (PLACEHOLDER.test(node.nodeValue)) {
-        PLACEHOLDER.lastIndex = 0; // reset the stateful regex
-        node.nodeValue = resolveString(node.nodeValue, nodeScope, store);
+      // Fast-path: only resolve scope and run string replacement if ${ is present
+      const val = node.nodeValue;
+      if (val && val.indexOf('${') !== -1) {
+        const nodeScope = getNodeScope(node, context);
+        node.nodeValue = resolveString(val, nodeScope, store);
       }
     } else if (node.nodeType === 1) {
-      // ${} in element attributes
-      for (const attr of Array.from(node.attributes)) {
-        if (PLACEHOLDER.test(attr.value)) {
-          PLACEHOLDER.lastIndex = 0;
-          let resolved = resolveString(attr.value, nodeScope, store);
-          if (URL_ATTRS.has(attr.name.toLowerCase())) {
-            if (!isSafeUrlProtocol(resolved)) {
-              if (isDevMode()) error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
-              resolved = "";
+      // ${} in element attributes - direct NamedNodeMap iteration without Array.from
+      const attrs = node.attributes;
+      const attrCount = attrs ? attrs.length : 0;
+      if (attrCount > 0) {
+        let nodeScope = null;
+        for (let i = 0; i < attrCount; i++) {
+          const attr = attrs[i];
+          const attrVal = attr.value;
+          if (attrVal && attrVal.indexOf('${') !== -1) {
+            if (!nodeScope) nodeScope = getNodeScope(node, context);
+            let resolved = resolveString(attrVal, nodeScope, store);
+            if (URL_ATTRS.has(attr.name.toLowerCase())) {
+              if (!isSafeUrlProtocol(resolved)) {
+                if (isDevMode()) error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
+                resolved = "";
+              }
             }
+            attr.value = resolved;
           }
-          attr.value = resolved;
         }
       }
     }

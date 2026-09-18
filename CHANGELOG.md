@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.2] - 2026-09-18
+
+### Performance & Memory Optimizations
+- **Fast-Path & Bounded Segment Cache (`src/store.js`)**: Single-segment paths in `getByPath` and `setByPath` bypass string splitting, closure loops, and array allocations completely. Dotted paths leverage a bounded 1000-entry segment cache with plain iteration instead of `.reduce()`.
+- **Zero-Allocation Attribute Traversal (`src/core/router.js`, `src/template.js`)**: Replaced `Array.from(element.attributes)` with direct `NamedNodeMap` index iteration and removed transient `Object.freeze` on internal match collections, eliminating tens of thousands of temporary object allocations during large table renders.
+- **Fast String Guard for Static Interpolation (`src/template.js`)**: `resolveStatic` checks `indexOf('${') !== -1` before executing regex replacements and defers `getNodeScope` until an interpolation placeholder is actually confirmed.
+- **Multi-Attribute Candidate Selector Integration (`src/core/router.js`)**: Multi-attribute triggers (`TRIGGER_TYPES.ATTRS`, e.g. `loops`) register their anchor attribute into `candidateSelectorParts` without disabling fast-path transform candidate detection.
+- **DocumentFragment Static Loop Expansion (`src/modules/loops.js`)**: Static loop iterations append to a single `DocumentFragment` before `replaceWith`, avoiding array allocations and arguments spread.
+- **Fast-Path Ignore Block Guard (`src/shared.js`)**: `inIgnoredBlock` checks `el.hasAttribute('data-lime-ignore')` directly before performing DOM parent traversal.
+
 ## [0.4.1] - 2026-09-14
 
 ### Performance

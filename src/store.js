@@ -35,6 +35,26 @@ import { warn } from './errors.js';
  * @property {function(function(): void): void} batch
  *   Runs fn; all set() notifications inside it are coalesced into one flush.
  */
+// __proto__/constructor/prototype are never accepted as a path segment.
+// Otherwise "obj[key]" would point to an existing (typeof "object") prototype
+// chain, and the next assignment would pollute Object.prototype globally.
+const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+const PATH_SEGMENTS_CACHE = new Map();
+const MAX_PATH_CACHE_SIZE = 1000;
+
+function readProperty(curr, key) {
+  if (curr == null) return undefined;
+  if (Object.hasOwn(curr, key)) return curr[key];
+  if (
+    (typeof curr === 'object' || typeof curr === 'function')
+    && key in curr
+    && !Object.prototype.hasOwnProperty.call(Object.prototype, key)
+  ) {
+    return curr[key];
+  }
+  return undefined;
+}
 
 /**
  * Reads a value from an object via a dotted path.
@@ -44,27 +64,37 @@ import { warn } from './errors.js';
  * @returns {*} The found value; `undefined` if any segment is missing.
  */
 export function getByPath(source, path) {
-  const keys = String(path).split('.');
-  if (keys.some((key) => UNSAFE_PATH_SEGMENTS.has(key))) return undefined;
+  if (source == null || path == null) return undefined;
+  const strPath = typeof path === 'string' ? path : String(path);
 
-  return keys.reduce((value, key) => {
-    if (value == null) return undefined;
-    if (Object.hasOwn(value, key)) return value[key];
-    if (
-      (typeof value === 'object' || typeof value === 'function')
-      && key in value
-      && !Object.prototype.hasOwnProperty.call(Object.prototype, key)
-    ) {
-      return value[key];
+  // Fast-path 1: Single segment (no dots)
+  const dotIndex = strPath.indexOf('.');
+  if (dotIndex === -1) {
+    if (UNSAFE_PATH_SEGMENTS.has(strPath)) return undefined;
+    return readProperty(source, strPath);
+  }
+
+  // Fast-path 2: Dotted path using bounded cache
+  let keys = PATH_SEGMENTS_CACHE.get(strPath);
+  if (!keys) {
+    keys = strPath.split('.');
+    for (let i = 0; i < keys.length; i++) {
+      if (UNSAFE_PATH_SEGMENTS.has(keys[i])) return undefined;
     }
-    return undefined;
-  }, source);
-}
+    if (PATH_SEGMENTS_CACHE.size >= MAX_PATH_CACHE_SIZE) {
+      const oldestKey = PATH_SEGMENTS_CACHE.keys().next().value;
+      PATH_SEGMENTS_CACHE.delete(oldestKey);
+    }
+    PATH_SEGMENTS_CACHE.set(strPath, keys);
+  }
 
-// __proto__/constructor/prototype are never accepted as a path segment.
-// Otherwise "obj[key]" would point to an existing (typeof "object") prototype
-// chain, and the next assignment would pollute Object.prototype globally.
-const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+  let curr = source;
+  for (let i = 0; i < keys.length; i++) {
+    if (curr == null) return undefined;
+    curr = readProperty(curr, keys[i]);
+  }
+  return curr;
+}
 
 /**
  * Writes a value to an object via a dotted path; mutates the source object.
@@ -85,7 +115,19 @@ const UNSAFE_PATH_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
  *   `previousValue`: the previous value (`undefined` if no change).
  */
 export function setByPath(source, path, newValue) {
-  const keys = String(path).split(".");
+  if (source == null || path == null) return { changed: false };
+  const strPath = typeof path === 'string' ? path : String(path);
+
+  // Fast-path for single segment (no dot)
+  if (strPath.indexOf('.') === -1) {
+    if (UNSAFE_PATH_SEGMENTS.has(strPath)) return { changed: false };
+    const previousValue = source[strPath];
+    if (Object.is(previousValue, newValue)) return { changed: false };
+    source[strPath] = newValue;
+    return { changed: true, previousValue };
+  }
+
+  const keys = strPath.split(".");
   const lastKey = keys.pop();
 
   if (UNSAFE_PATH_SEGMENTS.has(lastKey) || keys.some((key) => UNSAFE_PATH_SEGMENTS.has(key))) {

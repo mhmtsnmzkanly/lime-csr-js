@@ -16,11 +16,12 @@
  */
 export function inIgnoredBlock(node) {
   if (!node) return false;
-  if (node.nodeType !== 1) { // Node.ELEMENT_NODE is 1
-    const parent = node.parentElement;
-    return !!parent?.closest?.('[data-lime-ignore]');
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  if (!el) return false;
+  if (typeof el.hasAttribute === 'function' && el.hasAttribute('data-lime-ignore')) {
+    return true;
   }
-  return !!node.closest?.('[data-lime-ignore]');
+  return !!el.closest?.('[data-lime-ignore]');
 }
 
 /**

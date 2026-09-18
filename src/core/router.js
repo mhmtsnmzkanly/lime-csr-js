@@ -133,7 +133,10 @@ export function createRouter(modules = [], options = {}) {
         case TRIGGER_TYPES.TAG:
           tables.exactTagRoutes.set(trigger.name, record);
           if (/^[A-Z][A-Z0-9-]*$/.test(trigger.name)) {
-            tables.candidateSelectorParts.push(trigger.name.toLowerCase());
+            const part = trigger.name.toLowerCase();
+            if (!tables.candidateSelectorParts.includes(part)) {
+              tables.candidateSelectorParts.push(part);
+            }
           } else {
             tables.hasUnselectableCandidates = true;
           }
@@ -142,7 +145,10 @@ export function createRouter(modules = [], options = {}) {
         case TRIGGER_TYPES.ATTR:
           tables.exactAttrRoutes.set(trigger.name, record);
           if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(trigger.name)) {
-            tables.candidateSelectorParts.push(`[${trigger.name}]`);
+            const part = `[${trigger.name}]`;
+            if (!tables.candidateSelectorParts.includes(part)) {
+              tables.candidateSelectorParts.push(part);
+            }
           } else {
             tables.hasUnselectableCandidates = true;
           }
@@ -161,7 +167,14 @@ export function createRouter(modules = [], options = {}) {
             tables.multiAttrRoutes.set(anchorAttr, bucket);
           }
           bucket.push(record);
-          tables.hasUnselectableCandidates = true;
+          if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(anchorAttr)) {
+            const part = `[${anchorAttr}]`;
+            if (!tables.candidateSelectorParts.includes(part)) {
+              tables.candidateSelectorParts.push(part);
+            }
+          } else {
+            tables.hasUnselectableCandidates = true;
+          }
           break;
         }
 
@@ -204,13 +217,14 @@ export function createRouter(modules = [], options = {}) {
       }
     }
 
-    // 2. Snapshot DOM attributes for deterministic non-mutating traversal
-    const attributes = Array.from(element.attributes);
-    if (attributes.length === 0) return Object.freeze(matches);
+    // 2. Direct DOM attribute iteration for deterministic non-mutating traversal (zero allocations)
+    const attributes = element.attributes;
+    const attrCount = attributes ? attributes.length : 0;
+    if (attrCount === 0) return matches;
 
-    const matchedMultiAttrs = new Set(); // Prevent re-triggering multi-attr on subsequent required attrs
+    let matchedMultiAttrs = null; // Lazy allocated only when multi-attr route matches
 
-    for (let attrIndex = 0; attrIndex < attributes.length; attrIndex++) {
+    for (let attrIndex = 0; attrIndex < attrCount; attrIndex++) {
       const attr = attributes[attrIndex];
       const attrName = attr.name;
 
@@ -231,7 +245,7 @@ export function createRouter(modules = [], options = {}) {
       if (multiCandidates) {
         for (let c = 0; c < multiCandidates.length; c++) {
           const multiRecord = multiCandidates[c];
-          if (matchedMultiAttrs.has(multiRecord)) continue;
+          if (matchedMultiAttrs && matchedMultiAttrs.has(multiRecord)) continue;
 
           // Verify all required attributes exist (existence check)
           const allRequiredPresent = multiRecord.trigger.required.every(
@@ -240,6 +254,7 @@ export function createRouter(modules = [], options = {}) {
 
           if (allRequiredPresent) {
             if (typeof multiRecord.trigger.match !== 'function' || multiRecord.trigger.match(element, attrName, attr)) {
+              if (!matchedMultiAttrs) matchedMultiAttrs = new Set();
               matchedMultiAttrs.add(multiRecord);
               matches.push({
                 record: multiRecord,
@@ -278,7 +293,7 @@ export function createRouter(modules = [], options = {}) {
       }
     }
 
-    return Object.freeze(matches);
+    return matches;
   }
 
   return Object.freeze({
@@ -288,6 +303,9 @@ export function createRouter(modules = [], options = {}) {
     },
     hasLinkRoutes() {
       return phaseTables.link.triggerList.length > 0;
+    },
+    getTransformCandidateSelector() {
+      return transformCandidateSelector;
     },
     /**
      * Returns false only when an exact-route selector proves no transform route
