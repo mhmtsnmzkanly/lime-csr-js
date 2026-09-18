@@ -97,6 +97,7 @@ export function createCleanupStack() {
  * @property {Object|null} handlers - Handlers dictionary passed to mount/render
  * @property {Object|null} options - Mount configuration options
  * @property {Element|null} target - Mount target container element
+ * @property {Object} refs - Shared DOM element references map for the active mount/render runtime
  * @property {function(Element|DocumentFragment, Object=): number} transform - Executes Transform phase on subtree
  * @property {function(Element|DocumentFragment, Object=): *} link - Executes Link phase on subtree
  * @property {function(Function): Function} onCleanup - Registers a cleanup callback on the unified LIFO stack
@@ -125,6 +126,7 @@ export function createCleanupStack() {
  * @param {Object} [options.handlers] - Handlers dictionary
  * @param {Object} [options.options] - Mount options
  * @param {Element} [options.target] - Mount target element
+ * @param {Object} [options.refs] - Element references map
  * @returns {{ ctx: ModuleContext, cleanupStack: Object }} ModuleContext and its cleanup stack
  */
 export function createModuleContext(options = {}) {

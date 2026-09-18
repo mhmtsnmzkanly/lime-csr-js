@@ -82,6 +82,7 @@ function snapshotDeferredElements(root, scope) {
  * @param {Object} [options.cleanupStack] - Mount cleanup stack
  * @param {Document} [options.document] - Document context
  * @param {number} [options.maxIterations=100] - Fixed-point loop iteration limit
+ * @param {Object} [options.refs] - Element references map
  * @returns {number} number of passes executed
  */
 export function runTransform(root, router, options = {}) {
@@ -291,6 +292,7 @@ export function runTransform(root, router, options = {}) {
  * @param {Object} [options.scope] - Lexical scope
  * @param {Object} [options.cleanupStack] - Mount cleanup stack
  * @param {Document} [options.document] - Document context
+ * @param {Object} [options.refs] - Element references map
  * @returns {Object} cleanupStack
  */
 export function runLink(root, router, options = {}) {

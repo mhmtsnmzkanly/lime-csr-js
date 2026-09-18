@@ -40,6 +40,8 @@ const UNSAFE_STORE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototy
  * @property {Element} target - Mount target element
  * @property {Object} scope - Root lexical scope
  * @property {import('../store.js').Store|null} store - Store instance
+ * @property {Object} refs - DOM element references dictionary
+ * @property {boolean} active - Whether mount runtime is currently active
  */
 
 /**
@@ -47,6 +49,7 @@ const UNSAFE_STORE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototy
  * @property {Element|DocumentFragment} element - Rendered node
  * @property {Object} scope - Resolved lexical scope
  * @property {import('../store.js').Store|null} store - Store instance
+ * @property {Object} refs - DOM element references dictionary
  * @property {() => void} cleanup - Idempotent cleanup function
  * @property {Object} cleanupStack - Underlying cleanup stack
  */

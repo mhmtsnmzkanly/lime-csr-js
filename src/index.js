@@ -4,8 +4,8 @@
  *
  * Architecture:
  *   - Orchestration delegates entirely to an isolated defaultEngine instance
- *     configured with the 7 standard unprivileged modules:
- *     partials, conditionals, loops, model, text, show, events.
+ *     configured with the 8 standard unprivileged modules:
+ *     partials, conditionals, loops, model, text, show, events, ref.
  *   - Zero monolithic pipelines or ad-hoc directive scans.
  *   - Extension mechanism is strictly Module-based via createEngine and defineModule.
  *   - Legacy Plugin API (definePlugin) has been removed in v0.3.0.
@@ -42,7 +42,7 @@ const defaultEngine = createEngine({
  *
  * @param {Object} config - Mount configuration, including target, optional
  * template/templateName, store, and mount options
- * @returns {Function} Mount instance (callable cleanup with .unmount, .target, .store, .scope, .active properties)
+ * @returns {Function} Mount instance (callable cleanup with .unmount, .target, .store, .scope, .refs, .active properties)
  */
 export function mount(config) {
   if (arguments.length !== 1) {
@@ -70,7 +70,7 @@ export function unmount(targetOrInstance) {
  * @param {Object} [store=null]
  * @param {Object} [handlers=null]
  * @param {Document} [ownerDocument=null]
- * @returns {Function} Callable cleanup with { element, scope, store, cleanup, cleanupStack }
+ * @returns {Function} Callable cleanup with { element, scope, store, refs, cleanup, cleanupStack }
  */
 export function render(nodeOrFragment, contextOrOptions = {}, store = null, handlers = null, ownerDocument = null) {
   let options;
