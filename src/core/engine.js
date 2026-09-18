@@ -273,7 +273,7 @@ export function createEngine(options = {}) {
     }
   }
 
-  function createMountInstance(target, store, scope, cleanupStack, ownsContent, options) {
+  function createMountInstance(target, store, scope, cleanupStack, ownsContent, options, refs = Object.create(null)) {
     let active = true;
     let instance;
 
@@ -299,7 +299,7 @@ export function createEngine(options = {}) {
       get() { return active; },
       enumerable: true,
     });
-    for (const [name, value] of Object.entries({ target, store, scope })) {
+    for (const [name, value] of Object.entries({ target, store, scope, refs })) {
       Object.defineProperty(instance, name, {
         value,
         writable: false,
@@ -375,6 +375,7 @@ export function createEngine(options = {}) {
       ? mountOptions.scope
       : (mountOptions.context ? createScope(null, mountOptions.context) : createScope(null, {}));
     const cleanupStack = createCleanupStack();
+    const refs = Object.create(null);
 
     installMountDiagnostics(mountOptions, resolvedTarget, cleanupStack);
 
@@ -383,6 +384,7 @@ export function createEngine(options = {}) {
       target: resolvedTarget,
       store: mountStore,
       scope,
+      refs,
       document: doc,
       window: win,
       get handlers() {
@@ -426,6 +428,7 @@ export function createEngine(options = {}) {
       options: mountOptions,
       target: resolvedTarget,
       linkedElements: new WeakSet(),
+      refs,
     };
 
     // 6. Execution Pipeline (Transform -> resolveStatic -> Link -> Placement)
@@ -460,6 +463,7 @@ export function createEngine(options = {}) {
       cleanupStack,
       ownsContent,
       mountOptions,
+      refs,
     );
   }
 
@@ -508,6 +512,7 @@ export function createEngine(options = {}) {
       ? options.scope
       : (options.context ? createScope(null, options.context) : createScope(null, {}));
     const cleanupStack = options.cleanupStack || createCleanupStack();
+    const refs = options.refs || Object.create(null);
 
     const contextOptions = {
       store,
@@ -517,6 +522,7 @@ export function createEngine(options = {}) {
       handlers: options.handlers || null,
       options,
       target: options.target || (nodeOrFragment.nodeType === 1 ? nodeOrFragment : null),
+      refs,
     };
 
     runTransform(nodeOrFragment, router, contextOptions);
@@ -529,6 +535,7 @@ export function createEngine(options = {}) {
       element: nodeOrFragment,
       scope,
       store,
+      refs,
       cleanup,
       cleanupStack,
     };

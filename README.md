@@ -1,6 +1,6 @@
 # lime-csr-js
 
-An HTML-first, eval-free client-side rendering (CSR) engine built with standard browser APIs. Templates stay in declarative HTML `<template>` elements; an unprivileged Micro-Kernel orchestrates built-in template composition and discrete extensible modules for conditionals, loops, text, visibility, two-way form bindings, and delegated events.
+An HTML-first, eval-free client-side rendering (CSR) engine built with standard browser APIs. Templates stay in declarative HTML `<template>` elements; an unprivileged Micro-Kernel orchestrates built-in template composition and discrete extensible modules for conditionals, loops, text, visibility, two-way form bindings, delegated events, and DOM element references.
 
 Zero compilation. Zero virtual DOM. Zero `eval` or `new Function`. Strict Content Security Policy (CSP) compatible out of the box.
 
@@ -11,12 +11,12 @@ Zero compilation. Zero virtual DOM. Zero `eval` or `new Function`. Strict Conten
 - **HTML-First Templates**: Author templates in native `<template>` tags. No JSX, no compiler, no build step required during development.
 - **Unprivileged Micro-Kernel**: The kernel provides generic triggers, routing, prototypal scope, and lifecycle management without any hardcoded feature semantics.
 - **Built-in Composition**: Core `<partial>` and `<slot>` composition with isolated template scope, caller lexical scope projection, and fallback resolution.
-- **Extensible Standard Modules**: Conditionals, loops, text, show, model, and events are discrete unprivileged modules that can be overridden or omitted, with `partials()` provided as a modular wrapper for the built-in composition capability.
+- **Extensible Standard Modules**: Conditionals, loops, text, show, model, events, and ref are discrete unprivileged modules that can be overridden or omitted, with `partials()` provided as a modular wrapper for the built-in composition capability.
 - **Extensible Module API**: Create custom domain directives using `defineModule()` and compose custom runtimes using `createEngine()`.
 - **Path-Based Reactive Store**: Fine-grained reactive state with prefix-tree indexing, batch updates, computed properties, and prototype-pollution guards.
 - **Keyed DOM Reconciliation**: Reactive `<for data-live>` loops support Longest Increasing Subsequence (LCS) diffing, preserving DOM identity and focus state.
 - **Strict CSP / Eval-Free**: Operates with `Content-Security-Policy: script-src 'self'`. All paths and handler names are identifier lookups, never evaluated JavaScript expressions.
-- **Lightweight Production Bundle**: 47.0 kB minified ESM bundle (`dist/index.min.js`) with on-demand development diagnostics.
+- **Lightweight Production Bundle**: 55.0 kB minified ESM bundle (`dist/index.min.js`) with on-demand development diagnostics.
 
 ---
 
@@ -38,11 +38,12 @@ import { mount, unmount, render, createStore, defineModule, createEngine } from 
 // import { createEngine, defineModule, attr, attrs, tag, pattern, createScope } from 'lime-csr-js/core';
 
 // 3. All standard modules
-import { partials, conditionals, loops, text, show, model, events } from 'lime-csr-js/modules';
+import { partials, conditionals, loops, text, show, model, events, ref } from 'lime-csr-js/modules';
 
 // 4. Granular single-module imports (for custom tree-shaken engines)
 // import show from 'lime-csr-js/modules/show';
 // import text from 'lime-csr-js/modules/text';
+// import ref from 'lime-csr-js/modules/ref';
 
 // 5. Minified browser bundle
 import 'lime-csr-js/dist/index.min.js';
@@ -52,7 +53,7 @@ import 'lime-csr-js/dist/index.min.js';
 
 Zero build tools or installation required. Lime can be loaded directly from jsDelivr's GitHub CDN in any modern browser via native `<script type="module">`.
 
-#### Option A: Full Bundle (Default Engine + All 7 Modules)
+#### Option A: Full Bundle (Default Engine + All 8 Modules)
 If you want the complete framework with all directives pre-registered:
 
 ```html
@@ -92,18 +93,19 @@ If you only need specific directives (e.g. only text and events for a tiny widge
 
 | Distribution File | Description | Typical Size |
 |---|---|---|
-| `dist/index.min.js` | **Full bundle**: Micro-Kernel, Store, Router, and all 7 standard modules | ~47.0 kB |
-| `dist/core.min.js` | **Micro-Kernel runtime**: `createEngine`, `defineModule`, triggers, scope | ~28.7 kB |
-| `dist/store.min.js` | **Reactive Store**: `createStore`, `getByPath`, `setByPath` | ~6.5 kB |
-| `dist/router.min.js` | **Compiled Trigger Router**: `createRouter` | ~6.2 kB |
-| `dist/modules/index.min.js` | **All Standard Modules** in one package | ~28.0 kB |
-| `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.5 kB |
-| `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~1.6 kB |
-| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~5.8 kB |
-| `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.5 kB |
-| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.8 kB |
-| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~13.1 kB |
-| `dist/modules/partials.min.js` | Modular wrapper for built-in `<partial>` & `<slot>` composition | ~10.5 kB |
+| `dist/index.min.js` | **Full bundle**: Micro-Kernel, Store, Router, and all 8 standard modules | ~55.0 kB |
+| `dist/core.min.js` | **Micro-Kernel runtime**: `createEngine`, `defineModule`, triggers, scope | ~35.0 kB |
+| `dist/store.min.js` | **Reactive Store**: `createStore`, `getByPath`, `setByPath` | ~9.3 kB |
+| `dist/router.min.js` | **Compiled Trigger Router**: `createRouter` | ~8.4 kB |
+| `dist/modules/index.min.js` | **All Standard Modules** in one package | ~32.0 kB |
+| `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.8 kB |
+| `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~2.1 kB |
+| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~6.2 kB |
+| `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.6 kB |
+| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~14.0 kB |
+| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~17.0 kB |
+| `dist/modules/partials.min.js` | Modular wrapper for built-in `<partial>` & `<slot>` composition | ~13.0 kB |
+| `dist/modules/ref.min.js` | `data-ref` element and element collection references | ~1.5 kB |
 
 ---
 
@@ -267,7 +269,7 @@ export const tooltipModule = defineModule({
 
 ## Custom Engines
 
-The default `mount()` and `render()` functions use a built-in engine with all 7 standard modules. You can build a customized, isolated runtime using `createEngine()`:
+The default `mount()` and `render()` functions use a built-in engine with all 8 standard modules. You can build a customized, isolated runtime using `createEngine()`:
 
 ```js
 import { createEngine, createStore } from 'lime-csr-js';
@@ -300,7 +302,7 @@ Engines are isolated and may run independently on separate target elements. A ta
 
 ---
 
-## The 7 Standard Modules
+## The 8 Standard Modules
  
 | Module | Phase | Triggers | Description |
 |---|---|---|---|
@@ -310,7 +312,8 @@ Engines are isolated and may run independently on separate target elements. A ta
 | [text](DOCS.md#134-text--attribute-bindings-module-text) | Link | `data-text="path"`, `{x}` attribute templates | Reactively binds store values to `textContent` and attribute values with URL sanitization. |
 | [show](DOCS.md#135-visibility-module-show) | Link | `data-show="path"` | Toggles element visibility via the native `hidden` attribute without altering inline styles. |
 | [model](DOCS.md#136-two-way-form-binding-module-model) | Link | `data-model="path"` | Two-way binding for inputs (text, number, checkbox, radio, select) with cursor preservation. |
-| [events](DOCS.md#137-event-delegation-module-events) | Link | `data-on-{event}="handler"`, `data-on-*-data` | Delegated event dispatch with single object payload `{ event, element, scope, store, data }`, companion data attributes, and prototype protection. |
+| [events](DOCS.md#137-event-delegation-module-events) | Link | `data-on-{event}="handler"`, `data-on-*-data` | Delegated event dispatch with single object payload `{ event, element, scope, store, data, refs }`, companion data attributes, and prototype protection. |
+| [ref](DOCS.md#138-dom-element-reference-module-ref) | Link | `data-ref="name"` | Collects DOM element references into `app.refs` and passes `refs` into event handler payloads. Supports `[]` array suffixes and duplicate grouping. |
 
 ---
 
@@ -335,6 +338,7 @@ Phase 2: Link (Single-Pass Traversal)
   - Visibility toggling (data-show)
   - Live conditionals & live loops reactive setup
   - Delegated event listeners (data-on-*)
+  - DOM element references (data-ref)
       ↓
 Connected DOM with LIFO Cleanup Stack
 ```

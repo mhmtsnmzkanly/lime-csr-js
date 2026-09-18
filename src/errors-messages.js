@@ -63,6 +63,8 @@ export default {
     `<if>/<for>/<partial> cannot be used inside <table> — the HTML parser moves them outside. Solution: move the condition/loop outside the <table>, or treat the tbody as a partial. (template: ${templateName ?? '?'})`,
   SHOW_MISSING_PATH: () =>
     `data-show attribute is empty; a store path is required. Use data-show="path.to.value".`,
+  REF_MISSING_NAME: () =>
+    `data-ref attribute is empty; a reference name is required. Use data-ref="name".`,
   UNKNOWN_EVENT: ({ eventName, validEvents }) =>
     `Unsupported event type: "data-on-${eventName}". Valid types: ${validEvents?.map((e) => `data-on-${e}`).join(', ')}.`,
   UNKNOWN_KEY_MODIFIER: ({ eventName, validKeys }) =>

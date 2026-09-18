@@ -143,6 +143,7 @@ export function createModuleContext(options = {}) {
     handlers = null,
     options: mountOptions = null,
     target = null,
+    refs = Object.create(null),
   } = options;
 
   const window = document?.defaultView || globalThis.window || null;
@@ -185,6 +186,9 @@ export function createModuleContext(options = {}) {
     },
     get target() {
       return target;
+    },
+    get refs() {
+      return refs;
     },
 
     /**

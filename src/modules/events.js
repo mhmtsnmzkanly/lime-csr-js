@@ -12,7 +12,7 @@
  *   - Submit prevention: `data-on-submit` always calls `event.preventDefault()`.
  *   - Delegated event dispatch: when running within a mount target, listens on
  *     target to handle existing and future live nodes via event bubbling.
- *   - Single object payload: handler({ event, element, scope, store, data }).
+ *   - Single object payload: handler({ event, element, scope, store, data, refs }).
  *   - Companion data attribute: `data-on-*-data` resolved via scope/store or literals.
  *   - Return values strictly ignored (no return false -> preventDefault).
  *   - Async and synchronous throws isolated; reports MODULE_HANDLER_FAILED.
@@ -296,6 +296,7 @@ function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
             scope: elementScope,
             store: ctx.store || null,
             data: resolvedData,
+            refs: ctx.refs || Object.create(null),
           };
 
           invokeHandler(handler, handlerName, payload, ctx, current);
@@ -408,6 +409,7 @@ export function events(moduleOptions = {}) {
                 scope: ctx.scope,
                 store: ctx.store || null,
                 data: resolvedData,
+                refs: ctx.refs || Object.create(null),
               };
 
               invokeHandler(handler, data.handlerName, payload, ctx, el);

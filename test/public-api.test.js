@@ -43,8 +43,9 @@ test('public api: root package imports expected facade, store, diagnostics, and 
   assert.equal(typeof root.show, 'function');
   assert.equal(typeof root.model, 'function');
   assert.equal(typeof root.events, 'function');
+  assert.equal(typeof root.ref, 'function');
 
-  // Exact 34 public root export keys
+  // Exact 35 public root export keys
   const exportedKeys = Object.keys(root).sort();
   assert.deepEqual(exportedKeys, [
     'attr',
@@ -66,6 +67,7 @@ test('public api: root package imports expected facade, store, diagnostics, and 
     'mount',
     'partials',
     'pattern',
+    'ref',
     'render',
     'renderTemplate',
     'reportError',
@@ -148,7 +150,7 @@ test('public api: "lime-csr-js/core" exports strictly intended public kernel pri
 
 // ── 4. MODULES SUBPATH EXPORTS ────────────────────────────────────────────────
 
-test('public api: "lime-csr-js/modules" exports all 7 standard unprivileged modules', async () => {
+test('public api: "lime-csr-js/modules" exports all 8 standard unprivileged modules', async () => {
   const modules = await import('lime-csr-js/modules');
 
   const moduleKeys = Object.keys(modules).sort();
@@ -158,6 +160,7 @@ test('public api: "lime-csr-js/modules" exports all 7 standard unprivileged modu
     'loops',
     'model',
     'partials',
+    'ref',
     'show',
     'text',
   ]);
@@ -177,6 +180,7 @@ test('public api: granular "lime-csr-js/modules/*" subpaths import each standard
   const condMod = await import('lime-csr-js/modules/conditionals');
   const loopsMod = await import('lime-csr-js/modules/loops');
   const partialsMod = await import('lime-csr-js/modules/partials');
+  const refMod = await import('lime-csr-js/modules/ref');
 
   assert.equal(typeof textMod.text, 'function');
   assert.equal(typeof showMod.show, 'function');
@@ -185,6 +189,7 @@ test('public api: granular "lime-csr-js/modules/*" subpaths import each standard
   assert.equal(typeof condMod.conditionals, 'function');
   assert.equal(typeof loopsMod.loops, 'function');
   assert.equal(typeof partialsMod.partials, 'function');
+  assert.equal(typeof refMod.ref, 'function');
 });
 
 // ── 6. END-TO-END EXECUTION VIA SUBPATHS ──────────────────────────────────────

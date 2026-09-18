@@ -58,6 +58,7 @@ Status: **Production Release**
     - [13.5 Visibility Module (`show`)](#135-visibility-module-show)
     - [13.6 Two-Way Form Binding Module (`model`)](#136-two-way-form-binding-module-model)
     - [13.7 Event Delegation Module (`events`)](#137-event-delegation-module-events)
+    - [13.8 DOM Element Reference Module (`ref`)](#138-dom-element-reference-module-ref)
 14. [Security Model](#14-security-model)
 15. [Diagnostics & Complete Error Catalog](#15-diagnostics--complete-error-catalog)
 16. [Migration Guide (v0.2.x → v0.3.0)](#16-migration-guide-v02x--v030)
@@ -270,14 +271,15 @@ If your application only needs a subset of features (e.g., only reactive text bi
 | `dist/core.min.js` | Micro-Kernel runtime: `createEngine`, `defineModule`, triggers, scope | ~28.7 kB |
 | `dist/store.min.js` | Standalone reactive store: `createStore`, `getByPath`, `setByPath` | ~6.5 kB |
 | `dist/router.min.js` | Standalone trigger router: `createRouter` | ~6.2 kB |
-| `dist/modules/index.min.js` | All 7 standard modules bundled together | ~28.0 kB |
-| `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.5 kB |
-| `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~1.6 kB |
-| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~5.8 kB |
-| `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.5 kB |
-| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~10.8 kB |
-| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~13.1 kB |
-| `dist/modules/partials.min.js` | Modular wrapper for built-in `<partial>` & `<slot>` composition | ~10.5 kB |
+| `dist/modules/index.min.js` | All 8 standard modules bundled together | ~32.0 kB |
+| `dist/modules/text.min.js` | `data-text` & `{attr}` template reactive bindings | ~3.8 kB |
+| `dist/modules/show.min.js` | `data-show` reactive visibility toggle | ~2.1 kB |
+| `dist/modules/events.min.js` | `data-on-{event}` delegated event dispatching | ~6.2 kB |
+| `dist/modules/model.min.js` | `data-model` two-way form input binding | ~2.6 kB |
+| `dist/modules/conditionals.min.js` | `<if>`, `<else>`, static/live condition evaluation | ~14.0 kB |
+| `dist/modules/loops.min.js` | `<for>`, keyed list diffing, prototypal item scopes | ~17.0 kB |
+| `dist/modules/partials.min.js` | Modular wrapper for built-in `<partial>` & `<slot>` composition | ~13.0 kB |
+| `dist/modules/ref.min.js` | `data-ref` element and element collection references | ~1.5 kB |
 | `dist/errors-messages.js` | Detailed development diagnostics (loaded on-demand) | ~7.2 kB |
 
 ---
@@ -405,6 +407,7 @@ import { mount, unmount, render } from 'lime-csr-js';
     - `instance.target`: Target DOM Element.
     - `instance.store`: Bound Store instance.
     - `instance.scope`: Root lexical scope.
+    - `instance.refs`: Element references map collected via `data-ref`.
     - `instance.active`: Boolean indicating if mount runtime is currently active.
   - **Target ownership**: A target has one active mount owner across all `Engine` instances. Mounting to an occupied target automatically unmounts the prior owner before the new runtime takes control.
 
@@ -417,7 +420,9 @@ import { mount, unmount, render } from 'lime-csr-js';
 - **`render(nodeOrFragment, options)`**:
   Compiles an arbitrary DOM fragment or element in-place without mounting into a container.
   ```js
-  const cleanup = render(fragment, { store, context, handlers, document });
+  const result = render(fragment, { store, context, handlers, document });
+  // result is a callable cleanup function with attached metadata:
+  // result.refs, result.element, result.scope, result.store, result.cleanup()
   ```
 
 ### 5.2 Store & Utility API
@@ -807,6 +812,7 @@ Every element and subtree has a unified cleanup stack:
 | `ctx.attributeName` | `string \| null` | Alias for `ctx.matchedAttribute`. |
 | `ctx.handlers` | `Object \| null` | Handler dictionary passed to `mount()` or `render()`. |
 | `ctx.options` | `Object \| null` | Full options object passed to `mount()` or `render()`. |
+| `ctx.refs` | `Object` | Shared element references map for the active mount/render runtime. |
 | `ctx.target` | `Element \| null` | Mount container target element. |
 | `ctx.onCleanup(fn)` | `(fn) => fn` | Registers a teardown function on the unified LIFO cleanup stack. |
 | `ctx.watch(path, cb, opts?)` | `(path, cb) => unwatch` | Subscribes to store path; auto-registers unwatch on cleanup stack. |
@@ -1128,13 +1134,14 @@ Lime provides 7 standard unprivileged modules.
 - **Handler Execution:**
   Invoked with a single structured object payload:
   ```js
-  handler({ event, element, scope, store, data });
+  handler({ event, element, scope, store, data, refs });
   ```
   - `event`: The native DOM Event object (or `null` when triggered outside an event).
   - `element`: The target element possessing the `data-on-*` attribute.
   - `scope`: The lexical scope of the element (including loop item scope).
   - `store`: The mount reactive store instance.
   - `data`: Resolved data value from companion attribute (`data-on-*-data`), or `null` if omitted or unresolved.
+  - `refs`: The active DOM element references map for the current mount or render instance.
   - **Return values are strictly ignored:** Return values such as `false` or objects do not trigger `preventDefault()`.
   - **Fault Isolation:** Sync throws and async Promise rejections are caught and reported via `MODULE_HANDLER_FAILED` without crashing other handlers or breaking runtime responsiveness.
 - **Explicit Data Passing (`data-on-*-data`):**
@@ -1156,6 +1163,51 @@ Lime provides 7 standard unprivileged modules.
     data-on-keydown-enter="saveTodo"
     data-on-keydown-enter-data="todo.id"
     data-on-keydown-escape="cancelEdit">
+  ```
+
+### 13.8 DOM Element Reference Module (`ref`)
+
+- **Purpose:** Registers direct references to DOM elements onto the mount/render instance and passes them into event handler payloads.
+- **Trigger:** `attr('data-ref')`.
+- **Phase:** `link`.
+- **Reference Resolution:**
+  - **Single Element:** `data-ref="searchInput"` binds the DOM element to `refs.searchInput`.
+  - **Explicit Array Suffix (`[]`):** `data-ref="items[]"` binds an array `[element]` to `refs.items` and `refs['items[]']`. Additional matching elements are appended in DOM order.
+  - **Multiple Elements without Suffix:** If multiple elements declare the same `data-ref="item"`, the first element sets `refs.item = element`. When a second element matches, `refs.item` automatically converts into an array `[firstElement, secondElement]`. Subsequent matches append to that array.
+- **Accessing References:**
+  - **Mount Return Value:** `const app = mount({ target: '#app', ... }); console.log(app.refs.searchInput);`
+  - **Render Return Value:** `const res = render(fragment, { ... }); console.log(res.refs.searchInput);`
+  - **Event Handler Payload:** `handler({ event, element, scope, store, data, refs }) { refs.searchInput.focus(); }`
+- **Automatic Lifecycle Cleanup:**
+  - When an element is unmounted or removed (e.g. inside `<if data-live>` or `<for data-live>`), `ctx.onCleanup` deregisters it from `refs`.
+  - For array references, the unmounted element is removed from the array. If the array becomes empty, the reference key is deleted from `refs`.
+  - For single references, `delete refs[name]` is performed upon unmount.
+- **Errors:**
+  - `REF_MISSING_NAME`: Emitted when `data-ref` attribute is empty or contains only whitespace.
+- **Example:**
+  ```html
+  <div id="app">
+    <input type="text" data-ref="searchBox" data-on-keydown-enter="handleSearch">
+    <button data-on-click="clearInput">Clear</button>
+    <ul>
+      <li data-ref="listItems[]">Item A</li>
+      <li data-ref="listItems[]">Item B</li>
+    </ul>
+  </div>
+  ```
+  ```js
+  const app = mount({
+    target: '#app',
+    handlers: {
+      clearInput({ refs }) {
+        refs.searchBox.value = '';
+        refs.searchBox.focus();
+      },
+      handleSearch({ refs }) {
+        console.log('Items count:', refs.listItems.length);
+      }
+    }
+  });
   ```
 
 ---
@@ -1215,6 +1267,7 @@ Lime never throws runtime exceptions that crash user pages. All issues are dispa
 | `UNKNOWN_EVENT` | Error | Events | `data-on-{event}` is not a supported event. | Typo like `data-on-hover`. Use `mouseenter`. |
 | `UNKNOWN_KEY_MODIFIER` | Error | Events | Unsupported key modifier suffix. | Typo like `data-on-keydown-return`. Use `-enter`. |
 | `HANDLER_NOT_FOUND` | Error | Events | Handler name not found in options or scope. | Handler not passed to `handlers: { ... }`. |
+| `REF_MISSING_NAME` | Error | Ref | `data-ref` attribute is empty or whitespace. | `<button data-ref="">`. |
 | `COMPUTED_MANUAL_SET` | Warn | Store | Manual `store.set()` to computed path. | Writing to a path managed by `store.computed()`. |
 | `IN_PLACE_MUTATION` | Warn | Store | Setting identical reference to store. | Mutating array in-place and passing same reference. |
 | `PATH_CLOBBER` | Warn | Store | Intermediate non-object segment overwritten. | Setting `user.name` when `user` was a string. |

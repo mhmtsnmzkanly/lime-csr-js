@@ -110,16 +110,17 @@ test('documentation: all documented public root exports exist on RootAPI', () =>
     'show',
     'model',
     'events',
+    'ref',
   ];
 
-  assert.equal(documentedRootExports.length, 34);
+  assert.equal(documentedRootExports.length, 35);
   for (const name of documentedRootExports) {
     assert.ok(
       name in RootAPI,
       `Documented export "${name}" must exist on root package index.js`,
     );
   }
-  assert.equal(Object.keys(RootAPI).length, 34);
+  assert.equal(Object.keys(RootAPI).length, 35);
 });
 
 test('documentation: core and modules subpath exports exist as documented', () => {
@@ -128,7 +129,7 @@ test('documentation: core and modules subpath exports exist as documented', () =
     assert.ok(name in CoreAPI, `Core export "${name}" must exist in lime-csr-js/core`);
   }
 
-  const moduleExports = ['partials', 'conditionals', 'loops', 'text', 'show', 'model', 'events'];
+  const moduleExports = ['partials', 'conditionals', 'loops', 'text', 'show', 'model', 'events', 'ref'];
   for (const name of moduleExports) {
     assert.ok(name in ModulesAPI, `Module export "${name}" must exist in lime-csr-js/modules`);
   }

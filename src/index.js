@@ -20,6 +20,7 @@ import {
   show,
   model,
   events,
+  ref,
 } from './modules/index.js';
 
 // ── Default Engine Singleton (Private) ───────────────────────────────────────
@@ -32,6 +33,7 @@ const defaultEngine = createEngine({
     text(),
     show(),
     events(),
+    ref(),
   ],
 });
 
@@ -99,6 +101,7 @@ export function render(nodeOrFragment, contextOrOptions = {}, store = null, hand
   cleanup.element = result.element;
   cleanup.scope = result.scope;
   cleanup.store = result.store;
+  cleanup.refs = result.refs;
   cleanup.cleanup = result.cleanup;
   cleanup.cleanupStack = result.cleanupStack;
 
@@ -124,4 +127,5 @@ export {
   show,
   model,
   events,
+  ref,
 } from './modules/index.js';

@@ -96,6 +96,7 @@ export function runTransform(root, router, options = {}) {
     document = root.ownerDocument || globalThis.document,
     maxIterations = MAX_PIPELINE_ITERATIONS,
     linkedElements = options.linkedElements || new WeakSet(),
+    refs = options.refs || Object.create(null),
   } = options;
 
   let iterations = 0;
@@ -154,6 +155,7 @@ export function runTransform(root, router, options = {}) {
           handlers: options.handlers || null,
           options: options.options || options,
           target: options.target || null,
+          refs,
           transform: (subNode, subScope) => runTransform(subNode, router, {
             store,
             scope: subScope || elementScope,
@@ -164,6 +166,7 @@ export function runTransform(root, router, options = {}) {
             options: options.options || options,
             target: options.target || null,
             linkedElements,
+            refs,
           }),
           deferTransform,
           link: (subNode, subScope, customCleanupStack) => runLink(subNode, router, {
@@ -175,6 +178,7 @@ export function runTransform(root, router, options = {}) {
             options: options.options || options,
             target: options.target || null,
             linkedElements,
+            refs,
           }),
         });
 
@@ -301,6 +305,7 @@ export function runLink(root, router, options = {}) {
     scope = Object.create(null),
     document = root.ownerDocument || globalThis.document,
     linkedElements = options.linkedElements || new WeakSet(),
+    refs = options.refs || Object.create(null),
   } = options;
 
   // Single-pass snapshot of elements in document order
@@ -333,6 +338,7 @@ export function runLink(root, router, options = {}) {
         handlers: options.handlers || null,
         options: options.options || options,
         target: options.target || null,
+        refs,
         transform: (subNode, subScope) => runTransform(subNode, router, {
           store,
           scope: subScope || elementScope,
@@ -342,6 +348,7 @@ export function runLink(root, router, options = {}) {
           options: options.options || options,
           target: options.target || null,
           linkedElements,
+          refs,
         }),
         link: (subNode, subScope, customCleanupStack) => runLink(subNode, router, {
           store,
@@ -352,6 +359,7 @@ export function runLink(root, router, options = {}) {
           options: options.options || options,
           target: options.target || null,
           linkedElements,
+          refs,
         }),
       });
 

@@ -9,7 +9,7 @@ CSP: Compatible with script-src 'self' (Eval-Free)
 
 ## 1. Executive Summary
 
-lime-csr-js is an eval-free, client-side rendering engine built on standard browser APIs. Templates remain native HTML `<template>` elements. An unprivileged Micro-Kernel handles generic routing, lifecycle execution, prototypal scoping, and unified LIFO cleanups. Template composition (`<partial>` and `<slot>`) is built into the runtime, while behavioral features (conditionals, loops, text, visibility, form binding, and event delegation) are discrete extensible modules.
+lime-csr-js is an eval-free, client-side rendering engine built on standard browser APIs. Templates remain native HTML `<template>` elements. An unprivileged Micro-Kernel handles generic routing, lifecycle execution, prototypal scoping, and unified LIFO cleanups. Template composition (`<partial>` and `<slot>`) is built into the runtime, while behavioral features (conditionals, loops, text, visibility, form binding, event delegation, and DOM element references) are discrete extensible modules.
 
 ---
 
@@ -22,17 +22,18 @@ import { mount, unmount, render, createStore, createEngine, defineModule } from 
 // Core: Kernel Primitives only (alternative direct subpath import)
 // import { createEngine, defineModule, attr, attrs, tag, pattern, createScope } from 'lime-csr-js/core';
 
-// Modules: 7 Standard Modules
-import { partials, conditionals, loops, text, show, model, events } from 'lime-csr-js/modules';
+// Modules: 8 Standard Modules
+import { partials, conditionals, loops, text, show, model, events, ref } from 'lime-csr-js/modules';
 
 // Single Module import (alternative granular import)
 // import show from 'lime-csr-js/modules/show';
+// import ref from 'lime-csr-js/modules/ref';
 
 // Browser / CDN distribution (jsDelivr GitHub CDN)
 // Full bundle: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.4/dist/index.min.js'
 // Micro-Kernel: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.4/dist/core.min.js'
 // Standalone Store: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.4/dist/store.min.js'
-// Discrete Modules: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.4/dist/modules/{text,show,events,model,conditionals,loops,partials}.min.js'
+// Discrete Modules: 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.4.4/dist/modules/{text,show,events,model,conditionals,loops,partials,ref}.min.js'
 ```
 
 ---
@@ -47,18 +48,19 @@ const instance = mount({
   store: reactiveStore,
   context: { staticKey: 'value' },  // Read once during transform (${staticKey})
   handlers: {                        // Event handlers for data-on-*
-    handleClick({ event, element, scope, store, data }) { /* application logic */ },
+    handleClick({ event, element, scope, store, data, refs }) { /* application logic */ },
   },
   computed: {                        // Registered automatically on store
     isReady: { deps: ['items'], fn: (items) => items.length > 0 },
   },
 });
+// instance.refs: Map of DOM elements registered via data-ref
 
 // Teardown
 unmount(instance); // or unmount('#app');
 
 // In-place rendering of arbitrary fragments
-const renderCleanup = render(fragment, { store, context, handlers });
+const renderResult = render(fragment, { store, context, handlers }); // renderResult.refs, callable cleanup
 ```
 
 ---
@@ -91,7 +93,7 @@ Security: `__proto__`, `constructor`, and `prototype` are rejected as path segme
 
 ### Kernel vs Module Separation
 - **Kernel = Mechanism:** Triggers, route compilation, precedence, prototypal scope, lifecycle runner, unified cleanup stack, diagnostics. Zero feature semantics.
-- **Module = Behavior:** Conditionals, loops, partials, text, form model, events.
+- **Module = Behavior:** Conditionals, loops, partials, text, form model, events, DOM element references.
 
 ### Defining a Custom Module (`defineModule`)
 
@@ -158,8 +160,8 @@ engine.mount({ target, template: 'app', store });
 2. **Phase 2: Link (Single-Pass Traversal):**
    - Zero structural mutations allowed. Topology is frozen.
    - Visited once in tree order.
-   - Attaches event listeners, store watches (`ctx.watch`), two-way model bindings.
-   - Modules: `model`, `text`, `show`, `events`, live conditional/loop anchors.
+   - Attaches event listeners, store watches (`ctx.watch`), two-way model bindings, element references.
+   - Modules: `model`, `text`, `show`, `events`, `ref`, live conditional/loop anchors.
 
 ---
 
@@ -171,6 +173,7 @@ Available in trigger hooks:
 - `ctx.element`: Current DOM element.
 - `ctx.document`: Owning Document.
 - `ctx.matchedAttribute`: Matched attribute name.
+- `ctx.refs`: Shared DOM element references map for active mount/render runtime.
 - `ctx.onCleanup(fn)`: Registers cleanup callback on unified LIFO stack.
 - `ctx.watch(path, cb, opts?)`: Watches store path; auto-registers cleanup.
 - `ctx.afterConnect(fn)`: Schedules callback after element is connected to DOM.
@@ -179,7 +182,7 @@ Available in trigger hooks:
 
 ---
 
-## 9. The 7 Standard Modules Syntax
+## 9. The 8 Standard Modules Syntax
 
 1. **`partials`** (Transform):
    `<partial name="user-card" data="currentUser" role="admin"><h3 slot="header">Title</h3><p>Body in default slot</p></partial>`
@@ -212,7 +215,11 @@ Available in trigger hooks:
 7. **`events`** (Link):
    `<button data-on-click="handleClick" data-on-click-data="item.id">Save</button>`
    `<input data-on-keydown-enter="submit">`
-   - Delegated on mount target. Receives `{ event, element, scope, store, data }`. Prevents default on submit. Prototype-safe. Isolated async/sync error reporting.
+   - Delegated on mount target. Receives `{ event, element, scope, store, data, refs }`. Prevents default on submit. Prototype-safe. Isolated async/sync error reporting.
+8. **`ref`** (Link):
+   `<input data-ref="searchBox">`
+   `<li data-ref="items[]">Item</li>`
+   - Binds DOM element(s) to `app.refs` and passes `refs` into event handler payloads. Duplicate names without `[]` auto-group into array. Automatically dereferenced on unmount.
 
 ---
 

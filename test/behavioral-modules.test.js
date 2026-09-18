@@ -11,6 +11,7 @@ import {
   show,
   model,
   events,
+  ref,
 } from '../src/modules/index.js';
 import { createStore } from '../src/store.js';
 import { setDevMode, subscribeDiagnostics } from '../src/errors.js';
@@ -36,6 +37,7 @@ function createFullEngine(engineOptions = {}) {
       text(),
       show(),
       events(),
+      ref(),
     ],
     ...engineOptions,
   });

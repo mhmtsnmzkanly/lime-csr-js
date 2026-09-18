@@ -39,6 +39,7 @@ const DIAGNOSTIC_CATEGORIES = Object.freeze({
   BINDING: 'binding',
   SHOW: 'binding',
   MODEL: 'binding',
+  REF: 'binding',
   HANDLER: 'event',
   UNKNOWN_EVENT: 'event',
   UNKNOWN_KEY_MODIFIER: 'event',

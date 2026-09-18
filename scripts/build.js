@@ -95,6 +95,11 @@ async function runBuild() {
       outfile: 'dist/modules/events.min.js',
       external: externalErrors,
     },
+    {
+      entry: 'src/modules/ref.js',
+      outfile: 'dist/modules/ref.min.js',
+      external: externalErrors,
+    },
     // 7. On-demand dev error explanations
     {
       entry: 'src/errors-messages.js',

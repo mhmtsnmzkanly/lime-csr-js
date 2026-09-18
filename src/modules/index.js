@@ -12,6 +12,7 @@
  *   - show: data-show reactive visibility toggle
  *   - model: data-model two-way form binding
  *   - events: data-on-{event} delegated event dispatch
+ *   - ref: data-ref DOM element reference collection
  */
 
 export { partials } from './partials.js';
@@ -21,4 +22,5 @@ export { text } from './text.js';
 export { show } from './show.js';
 export { model } from './model.js';
 export { events } from './events.js';
+export { ref } from './ref.js';
 

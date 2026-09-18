@@ -37,15 +37,15 @@ Precedence vs Execution Order:
 Subpath Exports:
   "lime-csr-js"          -> Public facade, store, diagnostics, kernel primitives, modules
   "lime-csr-js/core"     -> Kernel primitives only
-  "lime-csr-js/modules"  -> 7 standard unprivileged modules
+  "lime-csr-js/modules"  -> 8 standard unprivileged modules
   "lime-csr-js/modules/*"-> Granular single module import (e.g. lime-csr-js/modules/text)
-  "lime-csr-js/dist"     -> Minified ESM production bundle (47.0 kB)
+  "lime-csr-js/dist"     -> Minified ESM production bundle (55.0 kB)
 
-Exact Export Inventory (34 symbols):
+Exact Export Inventory (35 symbols):
   Facade (3):
-    mount({ target, template?, templateName?, store?, ...options }) -> Function { unmount, cleanup, target, scope, store, active }
+    mount({ target, template?, templateName?, store?, ...options }) -> Function { unmount, cleanup, target, scope, store, refs, active }
     unmount(targetOrInstance) -> void
-    render(nodeOrFragment, options) -> Function { element, scope, store, cleanup }
+    render(nodeOrFragment, options) -> Function { element, scope, store, refs, cleanup }
 
   Store & Utilities (3):
     createStore(initialState) -> Store
@@ -79,7 +79,7 @@ Exact Export Inventory (34 symbols):
     pattern(prefixOrRegex: string | RegExp, hooks: TriggerHooks | Function) -> TriggerDefinition
     createScope(parentScope?: Object, localData?: Object) -> Object
 
-  Standard Modules (7):
+  Standard Modules (8):
     partials() -> ModuleDefinition
     conditionals() -> ModuleDefinition
     loops() -> ModuleDefinition
@@ -87,14 +87,15 @@ Exact Export Inventory (34 symbols):
     show() -> ModuleDefinition
     model() -> ModuleDefinition
     events(options?: { handlers?: Object }) -> ModuleDefinition
+    ref() -> ModuleDefinition
 
   Distribution & CDN Files (jsdelivr / unpkg):
-    dist/index.min.js: Full bundle (all 7 modules + engine + store + router) (~47.0 kB)
-    dist/core.min.js: Standalone Micro-Kernel (createEngine, defineModule, triggers, scope) (~28.7 kB)
-    dist/store.min.js: Standalone reactive Store (createStore) (~6.5 kB)
-    dist/router.min.js: Standalone trigger router (createRouter) (~6.2 kB)
-    dist/modules/index.min.js: All 7 standard modules bundled together (~28.0 kB)
-    dist/modules/<name>.min.js: Discrete modules (text: ~3.5 kB, show: ~1.6 kB, events: ~5.8 kB, model: ~2.5 kB, conditionals: ~10.8 kB, loops: ~13.1 kB, partials: ~10.5 kB)
+    dist/index.min.js: Full bundle (all 8 modules + engine + store + router) (~55.0 kB)
+    dist/core.min.js: Standalone Micro-Kernel (createEngine, defineModule, triggers, scope) (~35.0 kB)
+    dist/store.min.js: Standalone reactive Store (createStore) (~9.3 kB)
+    dist/router.min.js: Standalone trigger router (createRouter) (~8.4 kB)
+    dist/modules/index.min.js: All 8 standard modules bundled together (~32.0 kB)
+    dist/modules/<name>.min.js: Discrete modules (text: ~3.8 kB, show: ~2.1 kB, events: ~6.2 kB, model: ~2.6 kB, conditionals: ~14.0 kB, loops: ~17.0 kB, partials: ~13.0 kB, ref: ~1.5 kB)
 
 ================================================================================
 3. MODULE AUTHORING & CONTEXT REFERENCE
@@ -134,6 +135,7 @@ ModuleContext (`ctx`) Specification:
 - `ctx.matchedAttribute`: String name of matched attribute.
 - `ctx.handlers`: Handlers dictionary passed to mount/render.
 - `ctx.options`: Full options object passed to mount/render.
+- `ctx.refs`: Shared element references map for active mount/render runtime.
 - `ctx.target`: Mount target container.
 - `ctx.onCleanup(fn: () => void)`: Registers cleanup callback on unified LIFO stack.
 - `ctx.watch(path: string, cb: (val, prev, path) => void, opts?: { immediate?: boolean })`: Subscribes to store path. Auto-registers cleanup on unmount.
@@ -218,12 +220,19 @@ ModuleContext (`ctx`) Specification:
    - Trigger: `pattern('data-on-')`
    - Phase: Link
    - Syntax: `<button data-on-click="save">Save</button>`
-   - Key Modifiers: `data-on-keydown-enter`, `data-on-keydown-escape`, `space`, `tab`, `up`, `down`, `left`, `right`, `delete`, `backspace`.
-    - Behavior: Delegated on mount target. `data-on-submit` calls `event.preventDefault()`. Handler called with single payload object `{ event, element, scope, store, data }`. Prototype method access blocked via `Object.hasOwn`.
+    - Key Modifiers: `data-on-keydown-enter`, `data-on-keydown-escape`, `space`, `tab`, `up`, `down`, `left`, `right`, `delete`, `backspace`.
+    - Behavior: Delegated on mount target. `data-on-submit` calls `event.preventDefault()`. Handler called with single payload object `{ event, element, scope, store, data, refs }`. Prototype method access blocked via `Object.hasOwn`.
     - Errors: UNKNOWN_EVENT, UNKNOWN_KEY_MODIFIER, HANDLER_NOT_FOUND.
 
+8. ref:
+   - Trigger: `attr('data-ref')`
+   - Phase: Link
+   - Syntax: `<input data-ref="searchBox">`, `<li data-ref="items[]">`
+   - Behavior: Binds DOM element(s) to `refs` map on mount/render instance and passes `refs` to event handlers. Single elements map to `refs[name] = element`. Elements with `[]` suffix map to `refs[name] = [element]`. Duplicate names without `[]` convert to array. Automatically dereferenced on unmount.
+   - Errors: REF_MISSING_NAME.
+
 ================================================================================
-5. COMPLETE DIAGNOSTICS & ERROR CATALOG (46 CODES)
+5. COMPLETE DIAGNOSTICS & ERROR CATALOG (47 CODES)
 ================================================================================
 
 1. BATCH_FLUSH_LIMIT (Error): store.batch() flush reached 100 waves (infinite cycle).
@@ -261,17 +270,18 @@ ModuleContext (`ctx`) Specification:
 33. PARTIAL_NOT_FOUND (Error): Partial template id="tpl-{name}" not found.
 34. PATH_CLOBBER (Warn): Intermediate non-object segment overwritten in store.set().
 35. PIPELINE_DEPTH_LIMIT (Error): Transform phase reached 100 iterations limit.
-36. RESERVED_ATTR_NAME (Error): Reserved name used as {x} attribute placeholder.
-37. SHOW_MISSING_PATH (Error): data-show attribute is empty.
-38. SLOT_NOT_FOUND (Error): Slot name targeted by caller child not found in partial template; content discarded.
-39. TABLE_FOSTER_PARENTING (Warn): HTML parser foster-parented special tags outside <table>.
-40. TEMPLATE_NOT_FOUND (Error): Template element not found.
-41. UNKNOWN_DIFF_STRATEGY (Warn): Unrecognized data-diff value on <for data-live>.
-42. UNKNOWN_EVENT (Error): Unsupported event name in data-on-{event}.
-43. UNKNOWN_KEY_MODIFIER (Error): Unsupported key modifier in data-on-keydown-{key}.
-44. UNKNOWN_OPERATOR (Error): Unrecognized condition operator starting with is-.
-45. UNSAFE_EVENT_ATTR (Error): Reactive binding attempted on on* event attribute.
-46. UNSAFE_URL_ATTR (Warn): Unsafe URL protocol sanitized to empty string.
+36. REF_MISSING_NAME (Error): data-ref attribute is empty or whitespace.
+37. RESERVED_ATTR_NAME (Error): Reserved name used as {x} attribute placeholder.
+38. SHOW_MISSING_PATH (Error): data-show attribute is empty.
+39. SLOT_NOT_FOUND (Error): Slot name targeted by caller child not found in partial template; content discarded.
+40. TABLE_FOSTER_PARENTING (Warn): HTML parser foster-parented special tags outside <table>.
+41. TEMPLATE_NOT_FOUND (Error): Template element not found.
+42. UNKNOWN_DIFF_STRATEGY (Warn): Unrecognized data-diff value on <for data-live>.
+43. UNKNOWN_EVENT (Error): Unsupported event name in data-on-{event}.
+44. UNKNOWN_KEY_MODIFIER (Error): Unsupported key modifier in data-on-keydown-{key}.
+45. UNKNOWN_OPERATOR (Error): Unrecognized condition operator starting with is-.
+46. UNSAFE_EVENT_ATTR (Error): Reactive binding attempted on on* event attribute.
+47. UNSAFE_URL_ATTR (Warn): Unsafe URL protocol sanitized to empty string.
 
 ================================================================================
 6. COMPLETE WORKING PATTERNS
