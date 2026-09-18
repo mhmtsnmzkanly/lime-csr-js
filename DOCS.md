@@ -1062,7 +1062,7 @@ Lime provides 7 standard unprivileged modules.
   - `BINDING_MISSING_DATA_ATTR`: Missing matching `data-{x}` for `{x}` placeholder.
   - `UNSAFE_EVENT_ATTR`: Attribute begins with `on` (e.g. `onclick`).
   - `UNSAFE_URL_ATTR`: URL contains dangerous protocol (`javascript:`, `data:`).
-  - `RESERVED_ATTR_NAME`: Using a reserved name (`text`, `model`, `show`, `live`, `ref`, `diff`, `on-*`) as a placeholder.
+  - `RESERVED_ATTR_NAME`: Using a reserved name (`text`, `model`, `show`, `live`, `diff`, `on-*`) as a placeholder.
 
 ---
 

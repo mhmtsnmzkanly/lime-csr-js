@@ -72,7 +72,7 @@ export default {
     return `Handler not found: "${name}". Registered handlers: ${list}. Is "${name}" defined in the handlers object passed to mount()?`;
   },
   RESERVED_ATTR_NAME: ({ name }) =>
-    `"${name}" is reserved by lime-csr and cannot be used as a {x}/data-x placeholder. Reserved names: text, model, show, live, ref, diff, and any name starting with "on-". Rename the placeholder.`,
+    `"${name}" is reserved by lime-csr and cannot be used as a {x}/data-x placeholder. Reserved names: text, model, show, live, diff, and any name starting with "on-". Rename the placeholder.`,
   INDEXED_MODEL_PATH: ({ path }) =>
     `data-model="${path}" contains a numeric index (e.g. items.0.name). This is unsafe: if the array is mutated, the path drifts to the wrong item. Use a reactive <for data-live key=...> loop and bind to the loop variable instead.`,
   COMPUTED_MANUAL_SET: ({ path }) =>

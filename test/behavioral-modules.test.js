@@ -107,8 +107,7 @@ test('text: {x} attribute template reactively binds and consumes data-x attribut
   // Consumed attributes removed from DOM
   assert.equal(link.hasAttribute('data-id'), false);
   assert.equal(link.hasAttribute('data-tab'), false);
-  // data-ref is added
-  assert.match(link.dataset.ref, /^lcsr-\d+$/);
+  assert.equal(link.dataset.ref, undefined);
 
   store.set('activeTab', 'settings');
   assert.equal(link.getAttribute('href'), '/users/42?tab=settings');

@@ -11,7 +11,7 @@
  *     - textContent does not parse HTML → escapeHtml not needed.
  *     - setAttribute encodes itself; URL attributes sanitized via isSafeUrlProtocol.
  *     - Event handler attributes (onclick, onerror, ...) strictly rejected.
- *     - Reserved placeholder names (text, model, show, live, ref, diff, on-*) emit RESERVED_ATTR_NAME.
+ *     - Reserved placeholder names (text, model, show, live, diff, on-*) emit RESERVED_ATTR_NAME.
  *   - Subscriptions set up once in setup(); updates occur in-place via callbacks without re-running read().
  */
 
@@ -21,15 +21,10 @@ import { isSafeUrlProtocol } from '../utils.js';
 
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'cite', 'poster', 'ping']);
 const EVENT_ATTR_PATTERN = /^on/i;
-const RESERVED_NAMES = new Set(['text', 'model', 'show', 'live', 'ref', 'diff', 'lime-ignore']);
+const RESERVED_NAMES = new Set(['text', 'model', 'show', 'live', 'diff', 'lime-ignore']);
 
 function isReservedName(name) {
   return RESERVED_NAMES.has(name) || name.startsWith('on-');
-}
-
-let refCounter = 0;
-function nextRef() {
-  return `lcsr-${++refCounter}`;
 }
 
 /**
@@ -119,10 +114,6 @@ export function text() {
         setup(el, data, ctx) {
           if (!data) return;
           const { attrName, template, bindings } = data;
-
-          if (!el.dataset.ref) {
-            el.dataset.ref = nextRef();
-          }
 
           // Consume the matched data-x attributes
           for (const key of Object.keys(bindings)) {
