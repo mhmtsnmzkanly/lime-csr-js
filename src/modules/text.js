@@ -79,7 +79,7 @@ export function text() {
         match(el, attrName, attrNode) {
           if (!attrName || attrName.startsWith('data-')) return false;
           const val = attrNode ? attrNode.value : el.getAttribute(attrName);
-          return typeof val === 'string' && /\{[^}]+\}/.test(val);
+          return typeof val === 'string' && val.indexOf('{') !== -1 && /\{[^}]+\}/.test(val);
         },
 
         read(el, ctx) {

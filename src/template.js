@@ -197,14 +197,14 @@ export function resolveStatic(root, context, store = null) {
   );
 
   const resolveNode = (node) => {
-    if (inLiveBlock(node) || inUnexpandedFor(node) || inIgnoredBlock(node)) {
-      return;
-    }
     if (node.nodeType === 3) {
       // ${} in the middle of a text node: "Hello ${user.name}, welcome" is a single node.
-      // Fast-path: only resolve scope and run string replacement if ${ is present
+      // Fast-path: only perform DOM ancestry checks, resolve scope, and run string replacement if ${ is present
       const val = node.nodeValue;
       if (val && val.indexOf('${') !== -1) {
+        if (inLiveBlock(node) || inUnexpandedFor(node) || inIgnoredBlock(node)) {
+          return;
+        }
         const nodeScope = getNodeScope(node, context);
         node.nodeValue = resolveString(val, nodeScope, store);
       }
@@ -213,20 +213,33 @@ export function resolveStatic(root, context, store = null) {
       const attrs = node.attributes;
       const attrCount = attrs ? attrs.length : 0;
       if (attrCount > 0) {
-        let nodeScope = null;
+        let hasPlaceholder = false;
         for (let i = 0; i < attrCount; i++) {
-          const attr = attrs[i];
-          const attrVal = attr.value;
+          const attrVal = attrs[i].value;
           if (attrVal && attrVal.indexOf('${') !== -1) {
-            if (!nodeScope) nodeScope = getNodeScope(node, context);
-            let resolved = resolveString(attrVal, nodeScope, store);
-            if (URL_ATTRS.has(attr.name.toLowerCase())) {
-              if (!isSafeUrlProtocol(resolved)) {
-                if (isDevMode()) error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
-                resolved = "";
+            hasPlaceholder = true;
+            break;
+          }
+        }
+        if (hasPlaceholder) {
+          if (inLiveBlock(node) || inUnexpandedFor(node) || inIgnoredBlock(node)) {
+            return;
+          }
+          let nodeScope = null;
+          for (let i = 0; i < attrCount; i++) {
+            const attr = attrs[i];
+            const attrVal = attr.value;
+            if (attrVal && attrVal.indexOf('${') !== -1) {
+              if (!nodeScope) nodeScope = getNodeScope(node, context);
+              let resolved = resolveString(attrVal, nodeScope, store);
+              if (URL_ATTRS.has(attr.name.toLowerCase())) {
+                if (!isSafeUrlProtocol(resolved)) {
+                  if (isDevMode()) error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
+                  resolved = "";
+                }
               }
+              attr.value = resolved;
             }
-            attr.value = resolved;
           }
         }
       }

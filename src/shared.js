@@ -135,6 +135,15 @@ export function shallowEqual(a, b) {
   const bIsArray = Array.isArray(b);
   if (aIsArray !== bIsArray) return false;
 
+  if (aIsArray) {
+    const len = a.length;
+    if (len !== b.length) return false;
+    for (let i = 0; i < len; i++) {
+      if (!Object.is(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
   const keysA = Object.keys(a);
   const keysB = Object.keys(b);
   if (keysA.length !== keysB.length) return false;

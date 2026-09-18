@@ -56,6 +56,22 @@ function readProperty(curr, key) {
   return undefined;
 }
 
+function getPathSegments(strPath) {
+  let keys = PATH_SEGMENTS_CACHE.get(strPath);
+  if (!keys) {
+    keys = strPath.split('.');
+    for (let i = 0; i < keys.length; i++) {
+      if (UNSAFE_PATH_SEGMENTS.has(keys[i])) return null;
+    }
+    if (PATH_SEGMENTS_CACHE.size >= MAX_PATH_CACHE_SIZE) {
+      const oldestKey = PATH_SEGMENTS_CACHE.keys().next().value;
+      PATH_SEGMENTS_CACHE.delete(oldestKey);
+    }
+    PATH_SEGMENTS_CACHE.set(strPath, keys);
+  }
+  return keys;
+}
+
 /**
  * Reads a value from an object via a dotted path.
  *
@@ -75,18 +91,8 @@ export function getByPath(source, path) {
   }
 
   // Fast-path 2: Dotted path using bounded cache
-  let keys = PATH_SEGMENTS_CACHE.get(strPath);
-  if (!keys) {
-    keys = strPath.split('.');
-    for (let i = 0; i < keys.length; i++) {
-      if (UNSAFE_PATH_SEGMENTS.has(keys[i])) return undefined;
-    }
-    if (PATH_SEGMENTS_CACHE.size >= MAX_PATH_CACHE_SIZE) {
-      const oldestKey = PATH_SEGMENTS_CACHE.keys().next().value;
-      PATH_SEGMENTS_CACHE.delete(oldestKey);
-    }
-    PATH_SEGMENTS_CACHE.set(strPath, keys);
-  }
+  const keys = getPathSegments(strPath);
+  if (!keys) return undefined;
 
   let curr = source;
   for (let i = 0; i < keys.length; i++) {
@@ -197,9 +203,11 @@ export function createStore(initialState = {}) {
   const prefixIndex = new Map();
 
   function indexSubscribedPath(path) {
-    const segments = String(path).split(".");
-    for (let i = 1; i < segments.length; i++) {
-      const prefix = segments.slice(0, i).join(".");
+    if (typeof path !== 'string' || path.indexOf('.') === -1) return;
+    const segments = getPathSegments(path) || path.split('.');
+    let prefix = '';
+    for (let i = 0; i < segments.length - 1; i++) {
+      prefix = i === 0 ? segments[0] : `${prefix}.${segments[i]}`;
       let set = prefixIndex.get(prefix);
       if (!set) {
         set = new Set();
@@ -210,9 +218,11 @@ export function createStore(initialState = {}) {
   }
 
   function unindexSubscribedPath(path) {
-    const segments = String(path).split(".");
-    for (let i = 1; i < segments.length; i++) {
-      const prefix = segments.slice(0, i).join(".");
+    if (typeof path !== 'string' || path.indexOf('.') === -1) return;
+    const segments = getPathSegments(path) || path.split('.');
+    let prefix = '';
+    for (let i = 0; i < segments.length - 1; i++) {
+      prefix = i === 0 ? segments[0] : `${prefix}.${segments[i]}`;
       const set = prefixIndex.get(prefix);
       if (set) {
         set.delete(path);
@@ -262,8 +272,6 @@ export function createStore(initialState = {}) {
    *   of its paths changed. `null` outside a flush — no dedup.
    */
   function notify(path, previousValue, seen = null) {
-    const segments = String(path).split(".");
-
     const invoke = (callback, currentValue, prev) => {
       if (seen) {
         if (seen.has(callback)) return;
@@ -272,19 +280,44 @@ export function createStore(initialState = {}) {
       callback(currentValue, prev, path);
     };
 
-    // Upward: "a.b.c" → notify "a", "a.b", "a.b.c"
-    segments.forEach((_, index) => {
-      const currentPath = segments.slice(0, index + 1).join(".");
+    const strPath = typeof path === 'string' ? path : String(path);
+
+    if (strPath.indexOf('.') === -1) {
+      // Fast-path 1: Single-segment path (no dot). Exact path only, no ancestors.
+      const bucket = subscribers.get(strPath);
+      if (bucket) {
+        const currentValue = readProperty(initialState, strPath);
+        bucket.forEach((callback) => invoke(callback, currentValue, previousValue));
+      }
+
+      // Downward: notify all subscribers whose path starts with `path + "."`
+      const descendants = prefixIndex.get(strPath);
+      if (descendants) {
+        for (const subPath of descendants) {
+          const subBucket = subscribers.get(subPath);
+          if (!subBucket) continue;
+          const currentValue = getByPath(initialState, subPath);
+          subBucket.forEach((callback) => invoke(callback, currentValue, undefined));
+        }
+      }
+      return;
+    }
+
+    // Fast-path 2: Dotted path. Upward notifications using cached segments without slice/join.
+    const segments = getPathSegments(strPath) || strPath.split('.');
+    let currentPath = '';
+    for (let i = 0; i < segments.length; i++) {
+      currentPath = i === 0 ? segments[0] : `${currentPath}.${segments[i]}`;
       const bucket = subscribers.get(currentPath);
-      if (!bucket) return;
+      if (!bucket) continue;
       const currentValue = getByPath(initialState, currentPath);
-      const prev = currentPath === path ? previousValue : undefined;
+      const prev = currentPath === strPath ? previousValue : undefined;
       bucket.forEach((callback) => invoke(callback, currentValue, prev));
-    });
+    }
 
     // Downward: notify all subscribers whose path starts with `path + "."`
     // Looked up via prefixIndex in O(matchingDescendants) instead of linear scan over all subscribers
-    const descendants = prefixIndex.get(path);
+    const descendants = prefixIndex.get(strPath);
     if (descendants) {
       for (const subPath of descendants) {
         const bucket = subscribers.get(subPath);

@@ -20,6 +20,8 @@
 import { warn, isDevMode } from '../errors.js';
 import { TRIGGER_TYPES } from './triggers.js';
 
+const EMPTY_MATCHES = Object.freeze([]);
+
 /**
  * @typedef {Object} RouteRecord
  * @property {string} moduleName - Name of the owning module
@@ -198,29 +200,29 @@ export function createRouter(modules = [], options = {}) {
    * @returns {Array<{ record: RouteRecord, matchedAttribute?: string, anchorIndex: number }>}
    */
   function matchElement(element, phase = 'link') {
-    if (!element || element.nodeType !== 1) return [];
+    if (!element || element.nodeType !== 1) return EMPTY_MATCHES;
 
     const tables = phaseTables[phase];
-    if (!tables) return [];
+    if (!tables) return EMPTY_MATCHES;
 
-    const matches = [];
+    let matches = null;
 
     // 1. Exact Tag Route (expected O(1) hash lookup, anchored at index -1)
     const tagRecord = tables.exactTagRoutes.get(element.tagName);
     if (tagRecord) {
       if (typeof tagRecord.trigger.match !== 'function' || tagRecord.trigger.match(element)) {
-        matches.push({
+        matches = [{
           record: tagRecord,
           matchedAttribute: undefined,
           anchorIndex: -1,
-        });
+        }];
       }
     }
 
     // 2. Direct DOM attribute iteration for deterministic non-mutating traversal (zero allocations)
     const attributes = element.attributes;
     const attrCount = attributes ? attributes.length : 0;
-    if (attrCount === 0) return matches;
+    if (attrCount === 0) return matches || EMPTY_MATCHES;
 
     let matchedMultiAttrs = null; // Lazy allocated only when multi-attr route matches
 
@@ -232,6 +234,7 @@ export function createRouter(modules = [], options = {}) {
       const exactRecord = tables.exactAttrRoutes.get(attrName);
       if (exactRecord) {
         if (typeof exactRecord.trigger.match !== 'function' || exactRecord.trigger.match(element, attrName, attr)) {
+          if (!matches) matches = [];
           matches.push({
             record: exactRecord,
             matchedAttribute: attrName,
@@ -256,6 +259,7 @@ export function createRouter(modules = [], options = {}) {
             if (typeof multiRecord.trigger.match !== 'function' || multiRecord.trigger.match(element, attrName, attr)) {
               if (!matchedMultiAttrs) matchedMultiAttrs = new Set();
               matchedMultiAttrs.add(multiRecord);
+              if (!matches) matches = [];
               matches.push({
                 record: multiRecord,
                 matchedAttribute: attrName,
@@ -283,6 +287,7 @@ export function createRouter(modules = [], options = {}) {
 
         if (isPatternMatch) {
           if (typeof patternRecord.trigger.match !== 'function' || patternRecord.trigger.match(element, attrName, attr)) {
+            if (!matches) matches = [];
             matches.push({
               record: patternRecord,
               matchedAttribute: attrName,
@@ -293,7 +298,7 @@ export function createRouter(modules = [], options = {}) {
       }
     }
 
-    return matches;
+    return matches || EMPTY_MATCHES;
   }
 
   return Object.freeze({
