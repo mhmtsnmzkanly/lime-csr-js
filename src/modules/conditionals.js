@@ -65,6 +65,10 @@ export function evaluateCondition(el, scope, store, ctx) {
     leftValue = store.get(path);
   }
 
+  if (opName === 'is-truthy') {
+    return Boolean(leftValue);
+  }
+
   const rightRaw = el.getAttribute('than') ?? el.getAttribute('to') ?? '';
   return Boolean(OPERATORS[opName](leftValue, rightRaw));
 }

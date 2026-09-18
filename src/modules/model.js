@@ -38,7 +38,7 @@ function classify(el) {
   if (el.tagName === 'TEXTAREA') {
     return 'text';
   }
-  const type = (el.getAttribute('type') || 'text').toLowerCase();
+  const type = (el.type || el.getAttribute('type') || 'text').toLowerCase();
   if (type === 'checkbox') return 'checkbox';
   if (type === 'radio') return 'radio';
   if (type === 'number' || type === 'range') return 'number';

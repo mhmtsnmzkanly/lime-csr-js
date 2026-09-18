@@ -195,6 +195,8 @@ function findElementScope(element, target, fallbackScope) {
   return fallbackScope || Object.create(null);
 }
 
+const PARSED_EVENT_CACHE = new Map();
+
 /**
  * Parses the event name from attribute name (part after data-on-).
  *
@@ -202,24 +204,30 @@ function findElementScope(element, target, fallbackScope) {
  * @returns {{ type: string, requiredKey: (string|null), badModifier?: string }|null}
  */
 function parseEventName(eventName) {
+  let cached = PARSED_EVENT_CACHE.get(eventName);
+  if (cached !== undefined) return cached;
+
+  let result = null;
   if (SUPPORTED_EVENTS.has(eventName)) {
     const domType = DOM_EVENT_MAP.get(eventName) ?? eventName;
-    return { type: domType, requiredKey: null };
-  }
-
-  const dashIndex = eventName.indexOf('-');
-  if (dashIndex > 0) {
-    const base = eventName.slice(0, dashIndex);
-    if (KEYED_EVENTS.has(base)) {
-      const modifier = eventName.slice(dashIndex + 1).toLowerCase();
-      if (KEY_MODIFIERS.has(modifier)) {
-        return { type: base, requiredKey: KEY_MODIFIERS.get(modifier) };
+    result = Object.freeze({ type: domType, requiredKey: null });
+  } else {
+    const dashIndex = eventName.indexOf('-');
+    if (dashIndex > 0) {
+      const base = eventName.slice(0, dashIndex);
+      if (KEYED_EVENTS.has(base)) {
+        const modifier = eventName.slice(dashIndex + 1).toLowerCase();
+        if (KEY_MODIFIERS.has(modifier)) {
+          result = Object.freeze({ type: base, requiredKey: KEY_MODIFIERS.get(modifier) });
+        } else {
+          result = Object.freeze({ type: base, requiredKey: null, badModifier: modifier });
+        }
       }
-      return { type: base, requiredKey: null, badModifier: modifier };
     }
   }
 
-  return null;
+  PARSED_EVENT_CACHE.set(eventName, result);
+  return result;
 }
 
 // Track active delegated event listeners per target to avoid duplicate bindings
@@ -249,7 +257,10 @@ function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
       while (current && current.nodeType === 1) {
         if (inIgnoredBlock(current)) break;
 
-        for (const attr of current.attributes) {
+        const attrs = current.attributes;
+        const attrCount = attrs ? attrs.length : 0;
+        for (let a = 0; a < attrCount; a++) {
+          const attr = attrs[a];
           if (!attr.name.startsWith('data-on-') || attr.name.endsWith('-data')) continue;
           const evName = attr.name.slice(8);
           const parsed = parseEventName(evName);
@@ -274,7 +285,7 @@ function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
           }
 
           const dataAttr = `${attr.name}-data`;
-          const rawData = current.hasAttribute(dataAttr) ? current.getAttribute(dataAttr) : null;
+          const rawData = current.getAttribute(dataAttr);
           const resolvedData = rawData !== null
             ? resolveHandlerData(rawData, elementScope, ctx.store)
             : null;
@@ -386,7 +397,7 @@ export function events(moduleOptions = {}) {
               }
 
               const dataAttr = `${data.attrName}-data`;
-              const rawData = el.hasAttribute(dataAttr) ? el.getAttribute(dataAttr) : null;
+              const rawData = el.getAttribute(dataAttr);
               const resolvedData = rawData !== null
                 ? resolveHandlerData(rawData, ctx.scope, ctx.store)
                 : null;

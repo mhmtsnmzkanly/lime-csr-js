@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.4] - 2026-09-18
+
+### Performance & Memory Optimizations
+- **Bypass Than/To Lookups for `is-truthy` (`src/modules/conditionals.js`)**: Condition evaluation directly evaluates boolean truthiness for `is-truthy` without issuing redundant DOM `getAttribute('than')` and `getAttribute('to')` calls.
+- **Event Parsing Memoization & Zero-Allocation Bubble Traversal (`src/modules/events.js`)**: Memoized event name modifier parsing with `PARSED_EVENT_CACHE` and replaced `for..of` attribute iterator with direct indexed loop; eliminated redundant `hasAttribute` check before `getAttribute`.
+- **In-Memory Style Installation Guard (`src/modules/show.js`)**: Replaced repeated `doc.getElementById` lookups on every `data-show` element with a document-scoped `WeakSet` check.
+- **Direct IDL Property Classification (`src/modules/model.js`)**: Form control classification prioritizes `el.type` IDL property before querying DOM attribute.
+
 ## [0.4.3] - 2026-09-18
 
 ### Performance & Memory Optimizations

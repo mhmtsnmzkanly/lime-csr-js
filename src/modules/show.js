@@ -18,6 +18,7 @@ import { getByPath } from '../store.js';
 const SHOW_ATTR = 'data-show';
 const SHOW_STYLE_ID = 'lime-csr-data-show-style';
 const SHOW_STYLE_RULE = '[data-show][hidden] { display: none !important; }';
+const installedDocuments = new WeakSet();
 
 /**
  * Installs the scoped data-show compatibility style rule in the owning document.
@@ -25,7 +26,11 @@ const SHOW_STYLE_RULE = '[data-show][hidden] { display: none !important; }';
  * @param {Document} doc
  */
 function ensureShowStyle(doc) {
-  if (!doc || doc.getElementById(SHOW_STYLE_ID)) return;
+  if (!doc || installedDocuments.has(doc)) return;
+  if (doc.getElementById(SHOW_STYLE_ID)) {
+    installedDocuments.add(doc);
+    return;
+  }
   const style = doc.createElement('style');
   style.id = SHOW_STYLE_ID;
   style.textContent = SHOW_STYLE_RULE;
@@ -33,6 +38,7 @@ function ensureShowStyle(doc) {
   if (parent && typeof parent.appendChild === 'function') {
     parent.appendChild(style);
   }
+  installedDocuments.add(doc);
 }
 
 /**
