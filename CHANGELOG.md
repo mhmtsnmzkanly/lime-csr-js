@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.3] - 2026-09-18
+
+### Performance & Memory Optimizations
+- **Deferred Static Interpolation Guard (`src/template.js`)**: `resolveStatic` defers `inLiveBlock`, `inUnexpandedFor`, and `inIgnoredBlock` DOM parent climbing checks until a placeholder is confirmed (`indexOf('${') !== -1`), accelerating static tree resolution by up to 10x on large DOM structures.
+- **Store Notification Fast-Path & Segment Traversal (`src/store.js`)**: Single-segment notification dispatching directly queries subscriber sets without string splitting or array slicing. Dotted paths construct ancestor chains iteratively from cached segments without `.slice().join()`.
+- **Array Shallow Equality Fast-Path (`src/shared.js`)**: `shallowEqual` compares array elements via direct length check and index loop, bypassing `Object.keys` string allocations during list reconciliation.
+- **Zero-Allocation Router Non-Matches (`src/core/router.js`)**: `matchElement` returns a shared frozen `EMPTY_MATCHES` singleton when no routes match, eliminating transient empty array allocations across the DOM scan.
+- **Fast String Guard for Attribute Templates (`src/modules/text.js`)**: Pattern attribute trigger checks `val.indexOf('{') !== -1` before executing regex, bypassing regex tests on normal HTML attributes.
+
 ## [0.4.2] - 2026-09-18
 
 ### Performance & Memory Optimizations
