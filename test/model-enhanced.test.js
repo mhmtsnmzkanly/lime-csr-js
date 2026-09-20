@@ -396,4 +396,91 @@ test('model modifiers: combined modifiers (lazy + trim)', () => {
   assert.equal(store.get('profile.title'), 'Senior Architect'); // trimmed on change
 });
 
+// ── MILESTONE 4: CONTENTEDITABLE SUPPORT ────────────────────────────────────
+
+test('model: contenteditable two-way binding with HTML content and loop guard', () => {
+  const dom = createDom(`
+    <div id="root">
+      <div id="editor" contenteditable="true" data-model="doc.body"></div>
+    </div>
+  `);
+  const store = createStore({ doc: { body: '<p>Initial text</p>' } });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const editor = root.querySelector('#editor');
+  assert.equal(editor.innerHTML, '<p>Initial text</p>');
+
+  // DOM -> Store
+  editor.innerHTML = '<p>Updated text</p>';
+  editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('doc.body'), '<p>Updated text</p>');
+
+  // Store -> DOM
+  store.set('doc.body', '<h2>Header</h2>');
+  assert.equal(editor.innerHTML, '<h2>Header</h2>');
+});
+
+test('model: contenteditable initial DOM fallback', () => {
+  const dom = createDom(`
+    <div id="root">
+      <div id="editor" contenteditable="true" data-model="content"><b>Default bold</b></div>
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const editor = root.querySelector('#editor');
+  assert.equal(store.get('content'), '<b>Default bold</b>');
+  assert.equal(editor.innerHTML, '<b>Default bold</b>');
+});
+
+test('model: contenteditable with .text modifier binds textContent', () => {
+  const dom = createDom(`
+    <div id="root">
+      <div id="editor" contenteditable="true" data-model.text="plainText">Hello world</div>
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const editor = root.querySelector('#editor');
+  assert.equal(store.get('plainText'), 'Hello world');
+
+  editor.textContent = 'Changed text';
+  editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('plainText'), 'Changed text');
+});
+
+test('model: contenteditable with .lazy modifier updates on blur', () => {
+  const dom = createDom(`
+    <div id="root">
+      <div id="editor" contenteditable="true" data-model.lazy="doc">Original</div>
+    </div>
+  `);
+  const store = createStore({ doc: 'Original' });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const editor = root.querySelector('#editor');
+
+  editor.innerHTML = 'Drafting...';
+  editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('doc'), 'Original'); // not updated on input
+
+  editor.dispatchEvent(new dom.window.Event('blur', { bubbles: true }));
+  assert.equal(store.get('doc'), 'Drafting...'); // updated on blur
+});
+
+
 

@@ -38,6 +38,21 @@ function classify(el) {
   if (el.tagName === 'TEXTAREA') {
     return 'text';
   }
+  if (el.tagName === 'INPUT') {
+    const type = (el.type || el.getAttribute('type') || 'text').toLowerCase();
+    if (type === 'checkbox') return 'checkbox';
+    if (type === 'radio') return 'radio';
+    if (type === 'number' || type === 'range') return 'number';
+    if (type === 'file') return 'file';
+    return 'text';
+  }
+  const isEditable = el.isContentEditable ||
+    el.getAttribute('contenteditable') === 'true' ||
+    el.getAttribute('contenteditable') === '' ||
+    el.contentEditable === 'true';
+  if (isEditable) {
+    return 'contenteditable';
+  }
   const type = (el.type || el.getAttribute('type') || 'text').toLowerCase();
   if (type === 'checkbox') return 'checkbox';
   if (type === 'radio') return 'radio';
@@ -47,6 +62,20 @@ function classify(el) {
 }
 
 const KIND_HANDLERS = {
+  contenteditable: {
+    event: 'input',
+    read: (el, modifiers) => (modifiers?.text ? (el.textContent || '') : el.innerHTML),
+    write: (el, val, isArray, modifiers) => {
+      const next = val == null ? '' : String(val);
+      if (modifiers?.text) {
+        if (el.textContent === next) return;
+        el.textContent = next;
+      } else {
+        if (el.innerHTML === next) return;
+        el.innerHTML = next;
+      }
+    },
+  },
   file: {
     event: 'change',
     read: (el) => (el.multiple ? Array.from(el.files || []) : (el.files?.[0] || null)),
@@ -153,6 +182,10 @@ function getInitialDomValue(el, kind) {
       }
       return undefined;
     }
+    case 'contenteditable': {
+      const html = el.innerHTML;
+      return html && html.trim() !== '' ? html : undefined;
+    }
     case 'text': {
       if (el.tagName === 'TEXTAREA') {
         if (el.defaultValue && el.defaultValue !== '') return el.value;
@@ -205,6 +238,7 @@ function parseModifiers(el, primaryAttrName) {
     lazy: false,
     trim: false,
     number: false,
+    text: false,
     debounce: null,
   };
 
@@ -217,6 +251,8 @@ function parseModifiers(el, primaryAttrName) {
       modifiers.trim = true;
     } else if (t === 'number') {
       modifiers.number = true;
+    } else if (t === 'text') {
+      modifiers.text = true;
     } else if (t === 'debounce') {
       const ms = val ? parseInt(val, 10) : NaN;
       modifiers.debounce = Number.isFinite(ms) && ms >= 0 ? ms : 300;
@@ -372,10 +408,13 @@ export function model() {
             // Initial state -> DOM or DOM -> Store fallback
             const storeVal = ctx.store.get(data.path);
             if (storeVal !== undefined) {
-              handler.write(el, storeVal);
+              handler.write(el, storeVal, false, modifiers);
             } else {
               let initialDom = getInitialDomValue(el, data.kind);
               if (initialDom !== undefined) {
+                if (data.kind === 'contenteditable' && modifiers.text) {
+                  initialDom = el.textContent || '';
+                }
                 if (modifiers.trim && typeof initialDom === 'string') {
                   initialDom = initialDom.trim();
                 }
@@ -388,9 +427,9 @@ export function model() {
                   }
                 }
                 ctx.store.set(data.path, initialDom);
-                handler.write(el, initialDom);
+                handler.write(el, initialDom, false, modifiers);
               } else {
-                handler.write(el, undefined);
+                handler.write(el, undefined, false, modifiers);
               }
             }
           }
@@ -418,7 +457,9 @@ export function model() {
               }
             }
 
-            let val = handler.read(el);
+            let val = data.kind === 'contenteditable'
+              ? handler.read(el, modifiers)
+              : handler.read(el);
             if (modifiers.trim && typeof val === 'string') {
               val = val.trim();
             }
@@ -450,8 +491,8 @@ export function model() {
             }
           };
 
-          const eventName = (modifiers.lazy && (data.kind === 'text' || data.kind === 'number'))
-            ? 'change'
+          const eventName = modifiers.lazy
+            ? (data.kind === 'contenteditable' ? 'blur' : 'change')
             : handler.event;
 
           el.addEventListener(eventName, onEvent);
@@ -469,7 +510,7 @@ export function model() {
               globalThis.clearTimeout(debounceTimer);
               debounceTimer = null;
             }
-            handler.write(el, val, data.isArray || Array.isArray(val));
+            handler.write(el, val, data.isArray || Array.isArray(val), modifiers);
           });
         },
       }),
