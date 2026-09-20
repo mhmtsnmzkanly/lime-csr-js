@@ -68,7 +68,58 @@ export function isLocalScopeBinding(scope, key) {
   return Object.hasOwn(scope, key);
 }
 
-const elementScopeMap = new WeakMap();
+const ELEMENT_SCOPE_MAP_KEY = Symbol.for('lime.elementScopeMap');
+const SCOPE_ALIASES_KEY = Symbol.for('lime.scopeAliases');
+
+const elementScopeMap = (globalThis[ELEMENT_SCOPE_MAP_KEY] ??= new WeakMap());
+
+function getScopeMap(node) {
+  const win = node?.ownerDocument?.defaultView || globalThis;
+  return (win[ELEMENT_SCOPE_MAP_KEY] ??= elementScopeMap);
+}
+
+/**
+ * Associates an alias with a canonical store path on a scope.
+ *
+ * @param {Object} scope
+ * @param {string} alias - The loop item variable name (e.g. 'item')
+ * @param {string} canonicalPath - The canonical store path (e.g. 'items.0')
+ */
+export function setScopeAlias(scope, alias, canonicalPath) {
+  if (!scope || typeof scope !== 'object' || !alias || !canonicalPath) return;
+  const parentAliases = scope[SCOPE_ALIASES_KEY] || null;
+  const aliases = Object.create(parentAliases);
+  aliases[alias] = canonicalPath;
+  Object.defineProperty(scope, SCOPE_ALIASES_KEY, {
+    value: aliases,
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
+}
+
+/**
+ * Resolves a path against aliases defined in a lexical scope.
+ * E.g. If alias 'item' -> 'items.0', then 'item.name' -> 'items.0.name'.
+ *
+ * @param {Object|null} scope
+ * @param {string} path
+ * @returns {string}
+ */
+export function resolveCanonicalPath(scope, path) {
+  if (!path || typeof path !== 'string' || !scope) return path;
+  const aliases = scope[SCOPE_ALIASES_KEY];
+  if (!aliases) return path;
+
+  const dotIndex = path.indexOf('.');
+  const head = dotIndex === -1 ? path : path.slice(0, dotIndex);
+  const tail = dotIndex === -1 ? '' : path.slice(dotIndex);
+
+  if (aliases[head] !== undefined) {
+    return `${aliases[head]}${tail}`;
+  }
+  return path;
+}
 
 /**
  * Associates a DOM element or fragment's subtree with a lexical scope.
@@ -78,13 +129,36 @@ const elementScopeMap = new WeakMap();
  */
 export function setElementScope(node, scope) {
   if (!node || !scope) return;
+  const map = getScopeMap(node);
+
+  const isChildScope = (parent, child) => {
+    let curr = child ? Object.getPrototypeOf(child) : null;
+    while (curr) {
+      if (curr === parent) return true;
+      curr = Object.getPrototypeOf(curr);
+    }
+    return false;
+  };
+
+  const applyScope = (target) => {
+    const existing = map.get(target);
+    if (existing && existing !== scope && isChildScope(scope, existing)) {
+      // Target already has a deeper child scope derived from this scope; do not overwrite!
+      return;
+    }
+    map.set(target, scope);
+    if (map !== elementScopeMap) {
+      elementScopeMap.set(target, scope);
+    }
+  };
+
   if (node.nodeType === 1 || node.nodeType === 3) {
-    elementScopeMap.set(node, scope);
+    applyScope(node);
   }
   if (typeof node.querySelectorAll === 'function') {
     const els = node.querySelectorAll('*');
     for (let i = 0; i < els.length; i++) {
-      elementScopeMap.set(els[i], scope);
+      applyScope(els[i]);
     }
   }
 }
@@ -97,5 +171,7 @@ export function setElementScope(node, scope) {
  */
 export function getElementScope(element) {
   if (!element || (element.nodeType !== 1 && element.nodeType !== 3)) return null;
-  return elementScopeMap.get(element) || null;
+  const map = getScopeMap(element);
+  return map.get(element) || elementScopeMap.get(element) || null;
 }
+

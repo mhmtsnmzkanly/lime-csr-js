@@ -16,6 +16,7 @@
  */
 
 import { attr, pattern } from '../core/triggers.js';
+import { resolveCanonicalPath } from '../core/scope.js';
 import { getByPath } from '../store.js';
 import { isSafeUrlProtocol } from '../utils.js';
 
@@ -52,15 +53,21 @@ export function text() {
         setup(el, data, ctx) {
           if (!data || !data.path) return;
 
+          const canonicalPath = resolveCanonicalPath(ctx.scope, data.path);
+          const isAliased = canonicalPath !== data.path;
+          const hasLocalScope = !isAliased && ctx.scope != null && (
+            data.path.split('.')[0] in ctx.scope || getByPath(ctx.scope, data.path) !== undefined
+          );
+
           let val = ctx.scope ? getByPath(ctx.scope, data.path) : undefined;
-          if (val === undefined && ctx.store && typeof ctx.store.get === 'function') {
-            val = ctx.store.get(data.path);
+          if (val === undefined && !hasLocalScope && ctx.store && typeof ctx.store.get === 'function') {
+            val = ctx.store.get(canonicalPath);
           }
 
           el.textContent = val ?? '';
 
-          if (ctx.store) {
-            ctx.watch(data.path, (nextVal) => {
+          if (ctx.store && !hasLocalScope) {
+            ctx.watch(canonicalPath, (nextVal) => {
               el.textContent = nextVal ?? '';
             });
           }
@@ -115,16 +122,33 @@ export function text() {
           if (!data) return;
           const { attrName, template, bindings } = data;
 
-          // Consume the matched data-x attributes
+          // Consume matched data-x attributes only if not still needed by another attribute on el (fixes F13)
           for (const key of Object.keys(bindings)) {
-            el.removeAttribute(`data-${key}`);
+            let stillUsed = false;
+            if (el.attributes) {
+              for (let i = 0; i < el.attributes.length; i++) {
+                const a = el.attributes[i];
+                if (a.name !== attrName && !a.name.startsWith('data-') && a.value && a.value.includes(`{${key}}`)) {
+                  stillUsed = true;
+                  break;
+                }
+              }
+            }
+            if (!stillUsed) {
+              el.removeAttribute(`data-${key}`);
+            }
           }
 
           const resolve = () => {
             let resolved = template.replace(/\{([^}]+)\}/g, (_, key) => {
-              const path = bindings[key];
-              let val = ctx.scope ? getByPath(ctx.scope, path) : undefined;
-              if (val === undefined && ctx.store && typeof ctx.store.get === 'function') {
+              const rawPath = bindings[key];
+              const path = resolveCanonicalPath(ctx.scope, rawPath);
+              const isAliased = path !== rawPath;
+              const hasLocal = !isAliased && ctx.scope != null && (
+                rawPath.split('.')[0] in ctx.scope || getByPath(ctx.scope, rawPath) !== undefined
+              );
+              let val = ctx.scope ? getByPath(ctx.scope, rawPath) : undefined;
+              if (val === undefined && !hasLocal && ctx.store && typeof ctx.store.get === 'function') {
                 val = ctx.store.get(path);
               }
               return String(val ?? '');
@@ -139,10 +163,18 @@ export function text() {
 
           resolve();
 
-          const uniquePaths = [...new Set(Object.values(bindings))];
           if (ctx.store) {
-            for (const path of uniquePaths) {
-              ctx.watch(path, resolve);
+            const watchedPaths = new Set();
+            for (const rawPath of Object.values(bindings)) {
+              const path = resolveCanonicalPath(ctx.scope, rawPath);
+              const isAliased = path !== rawPath;
+              const hasLocal = !isAliased && ctx.scope != null && (
+                rawPath.split('.')[0] in ctx.scope || getByPath(ctx.scope, rawPath) !== undefined
+              );
+              if (!hasLocal && !watchedPaths.has(path)) {
+                watchedPaths.add(path);
+                ctx.watch(path, resolve);
+              }
             }
           }
         },

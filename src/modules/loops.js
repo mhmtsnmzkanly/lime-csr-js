@@ -13,7 +13,7 @@
 import { tag } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
 import { createCleanupStack } from '../core/context.js';
-import { createScope, setElementScope } from '../core/scope.js';
+import { createScope, setElementScope, setScopeAlias, resolveCanonicalPath } from '../core/scope.js';
 import { getByPath } from '../store.js';
 import { resolveStatic } from '../template.js';
 import { longestIncreasingSubsequenceIndices, shallowEqual } from '../shared.js';
@@ -47,6 +47,8 @@ function transformLoop(el, data, ctx) {
     return;
   }
 
+  const canonicalEach = resolveCanonicalPath(ctx.scope, each);
+
   if (indexAttr && indexAttr === as) {
     ctx.warn('FOR_INDEX_COLLISION', { as, index: indexAttr }, el);
   }
@@ -58,7 +60,7 @@ function transformLoop(el, data, ctx) {
   if (!isLive) {
     // ── STATIC LOOP ─────────────────────────────────────────────────────────
     const list = getByPath(ctx.scope, each)
-      ?? (ctx.store ? ctx.store.get(each) : undefined);
+      ?? (ctx.store ? ctx.store.get(canonicalEach) : undefined);
 
     if (!Array.isArray(list)) {
       ctx.error('FOR_NOT_ARRAY', { path: each, type: list === null ? 'null' : typeof list }, el);
@@ -79,6 +81,7 @@ function transformLoop(el, data, ctx) {
         [as]: item,
         ...(indexAttr && indexAttr !== as ? { [indexAttr]: i } : {}),
       });
+      setScopeAlias(itemScope, as, `${canonicalEach}.${i}`);
 
       const frag = doc.createDocumentFragment();
       for (const node of templateNodes) {
@@ -147,6 +150,7 @@ function transformLoop(el, data, ctx) {
       [as]: item,
       ...(indexAttr && indexAttr !== as ? { [indexAttr]: idx } : {}),
     });
+    setScopeAlias(itemScope, as, `${canonicalEach}.${idx}`);
 
     const frag = doc.createDocumentFragment();
     for (const node of templateNodes) {
@@ -353,7 +357,7 @@ function transformLoop(el, data, ctx) {
 
   // Initial render during Transform
   const initialList = getByPath(ctx.scope, each)
-    ?? (ctx.store ? ctx.store.get(each) : undefined);
+    ?? (ctx.store ? ctx.store.get(canonicalEach) : undefined);
 
   if (container) {
     el.replaceWith(container);
@@ -368,7 +372,7 @@ function transformLoop(el, data, ctx) {
 
   // Reactive subscription
   if (ctx.store && typeof ctx.store.subscribe === 'function') {
-    const unsubscribe = ctx.store.subscribe(each, (newList) => {
+    const unsubscribe = ctx.store.subscribe(canonicalEach, (newList) => {
       reconcile(newList);
     });
 

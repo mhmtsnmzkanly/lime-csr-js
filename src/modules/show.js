@@ -13,6 +13,7 @@
  */
 
 import { attr } from '../core/triggers.js';
+import { resolveCanonicalPath } from '../core/scope.js';
 import { getByPath } from '../store.js';
 
 const SHOW_ATTR = 'data-show';
@@ -27,12 +28,28 @@ const installedDocuments = new WeakSet();
  */
 function ensureShowStyle(doc) {
   if (!doc || installedDocuments.has(doc)) return;
+  const win = doc.defaultView || globalThis;
+  if (typeof win.CSSStyleSheet === 'function' && Array.isArray(doc.adoptedStyleSheets)) {
+    try {
+      const sheet = new win.CSSStyleSheet();
+      sheet.replaceSync(SHOW_STYLE_RULE);
+      doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+      installedDocuments.add(doc);
+      return;
+    } catch {
+      // Fallback
+    }
+  }
   if (doc.getElementById(SHOW_STYLE_ID)) {
     installedDocuments.add(doc);
     return;
   }
   const style = doc.createElement('style');
   style.id = SHOW_STYLE_ID;
+  const nonce = doc.querySelector?.('script[nonce], style[nonce]')?.getAttribute('nonce');
+  if (nonce) {
+    style.setAttribute('nonce', nonce);
+  }
   style.textContent = SHOW_STYLE_RULE;
   const parent = doc.head || doc.documentElement;
   if (parent && typeof parent.appendChild === 'function') {
@@ -68,17 +85,23 @@ export function show() {
           // Multi-document style isolation: inject style rule into owning document
           ensureShowStyle(ctx.document);
 
+          const canonicalPath = resolveCanonicalPath(ctx.scope, data.path);
+          const isAliased = canonicalPath !== data.path;
+          const hasLocalScope = !isAliased && ctx.scope != null && (
+            data.path.split('.')[0] in ctx.scope || getByPath(ctx.scope, data.path) !== undefined
+          );
+
           // Initial value from scope or store
           let val = ctx.scope ? getByPath(ctx.scope, data.path) : undefined;
-          if (val === undefined && ctx.store && typeof ctx.store.get === 'function') {
-            val = ctx.store.get(data.path);
+          if (val === undefined && !hasLocalScope && ctx.store && typeof ctx.store.get === 'function') {
+            val = ctx.store.get(canonicalPath);
           }
 
           el.hidden = !val;
 
           // Reactive subscription via ModuleContext
-          if (ctx.store) {
-            ctx.watch(data.path, (nextVal) => {
+          if (ctx.store && !hasLocalScope) {
+            ctx.watch(canonicalPath, (nextVal) => {
               el.hidden = !nextVal;
             });
           }

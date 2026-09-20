@@ -21,6 +21,7 @@
  */
 
 import { attr, pattern } from '../core/triggers.js';
+import { resolveCanonicalPath } from '../core/scope.js';
 
 const MODEL_ATTR = 'data-model';
 const GROUP_ATTR = 'data-model-group';
@@ -341,31 +342,32 @@ function hasExplicitModel(el) {
  * @param {import('../core/context.js').ModuleContext} ctx
  */
 function bindModelControl(el, data, ctx) {
+  const targetPath = resolveCanonicalPath(ctx.scope, data.path);
   const handler = KIND_HANDLERS[data.kind];
   const modifiers = data.modifiers || { lazy: false, trim: false, number: false, text: false, debounce: null };
 
   // Checkbox array handling vs standard handling
-  const isCheckboxArray = data.kind === 'checkbox' && (data.isArray || Array.isArray(ctx.store.get(data.path)));
+  const isCheckboxArray = data.kind === 'checkbox' && (data.isArray || Array.isArray(ctx.store.get(targetPath)));
 
   if (isCheckboxArray) {
-    const storeVal = ctx.store.get(data.path);
+    const storeVal = ctx.store.get(targetPath);
     const isChecked = el.hasAttribute('checked') || el.defaultChecked || el.checked;
 
     if (storeVal === undefined) {
-      markDomFallback(ctx.store, data.path);
+      markDomFallback(ctx.store, targetPath);
       if (isChecked) {
-        ctx.store.set(data.path, [el.value]);
+        ctx.store.set(targetPath, [el.value]);
         el.checked = true;
       } else {
-        ctx.store.set(data.path, []);
+        ctx.store.set(targetPath, []);
         el.checked = false;
       }
-    } else if (isDomFallback(ctx.store, data.path)) {
+    } else if (isDomFallback(ctx.store, targetPath)) {
       if (isChecked) {
         const arr = Array.isArray(storeVal) ? [...storeVal] : [];
         if (!arr.map(String).includes(el.value)) {
           arr.push(el.value);
-          ctx.store.set(data.path, arr);
+          ctx.store.set(targetPath, arr);
         }
         el.checked = true;
       } else {
@@ -376,7 +378,7 @@ function bindModelControl(el, data, ctx) {
     }
   } else {
     // Initial state -> DOM or DOM -> Store fallback
-    const storeVal = ctx.store.get(data.path);
+    const storeVal = ctx.store.get(targetPath);
     if (storeVal !== undefined) {
       handler.write(el, storeVal, false, modifiers);
     } else {
@@ -396,7 +398,7 @@ function bindModelControl(el, data, ctx) {
             initialDom = Number.isNaN(n) ? initialDom : n;
           }
         }
-        ctx.store.set(data.path, initialDom);
+        ctx.store.set(targetPath, initialDom);
         handler.write(el, initialDom, false, modifiers);
       } else {
         handler.write(el, undefined, false, modifiers);
@@ -411,7 +413,7 @@ function bindModelControl(el, data, ctx) {
     if (data.kind === 'radio' && !el.checked) return;
 
     if (data.kind === 'checkbox') {
-      const currentVal = ctx.store.get(data.path);
+      const currentVal = ctx.store.get(targetPath);
       const inArrayMode = data.isArray || Array.isArray(currentVal);
       if (inArrayMode) {
         const arr = Array.isArray(currentVal) ? [...currentVal] : [];
@@ -422,7 +424,7 @@ function bindModelControl(el, data, ctx) {
         } else {
           if (idx !== -1) arr.splice(idx, 1);
         }
-        ctx.store.set(data.path, arr);
+        ctx.store.set(targetPath, arr);
         return;
       }
     }
@@ -444,7 +446,7 @@ function bindModelControl(el, data, ctx) {
       }
     }
 
-    ctx.store.set(data.path, val);
+    ctx.store.set(targetPath, val);
   };
 
   const onEvent = () => {
@@ -475,7 +477,7 @@ function bindModelControl(el, data, ctx) {
   });
 
   // State -> DOM subscription
-  ctx.watch(data.path, (val) => {
+  ctx.watch(targetPath, (val) => {
     if (debounceTimer) {
       globalThis.clearTimeout(debounceTimer);
       debounceTimer = null;
