@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2026-09-20
+
+### Fixed
+- **Canonical Scope Aliasing & Store Resolution (`src/core/scope.js`, `src/modules/loops.js`, `src/modules/model.js`, `src/modules/text.js`)**:
+  - **F01**: Bound loop alias `data-model` paths (`item.name`) to their canonical store paths (`items.0.name`), ensuring two-way mutations write back directly to the backing collection.
+  - **F02**: Shared `elementScopeMap` across multiple bundle instances using `Symbol.for('lime.elementScopeMap')` on `globalThis`.
+  - **F08**: Preserved deeper descendant scopes in nested `<for>` structures, preventing outer loops from overwriting inner loop lexical scopes.
+  - **F14**: Ensured local lexical scope takes strict precedence over store updates in text and show bindings.
+- **Lifecycle Isolation & Boundary Containment (`src/core/context.js`, `src/core/lifecycle.js`, `src/modules/conditionals.js`, `src/modules/model.js`, `src/core/router.js`, `src/modules/events.js`)**:
+  - **F03**: Forwarded `customCleanupStack` through `ctx.transform` and `ctx.link`, ensuring nested live subtrees cleanly drop all subscriptions and refs upon branch teardown.
+  - **F04**: Dynamic branch children inside `[data-model-group]` bind cleanly and deregister event listeners when detached.
+  - **F05**: Custom Element bridge state is isolated per mount instance (`_limeCustomElementCtx`) and deactivated on unmount, preventing stale updates or leaks.
+  - **F06**: Event delegation skips elements belonging to inner nested mounts (`closest('[data-lime-mount]')`), preventing outer handlers from capturing inner mount events.
+  - **F12**: Companion modifiers (`data-model-debounce`, `data-model-trim`, `data-model-number`) inside `[data-model-group]` are no longer mistaken for model paths.
+- **Diff Algorithms & Reactive DOM Preservation (`src/modules/loops.js`, `src/core/engine.js`)**:
+  - **F07**: Leaf store path mutations inside keyed loops reliably trigger leaf text binding updates.
+  - **F09**: Fixed LCS and simple diff 0-node block insertions when transitioning from empty blocks to visible content.
+  - **F10**: Prevented double-linking of live branches in `render()` using mount-scoped `linkedElements` tracking.
+  - **F18**: Differentiated `cleanup` from `unmount`: `instance.cleanup()` preserves live DOM elements while disposing reactive subscriptions; `instance.unmount()` clears DOM nodes.
+- **Form Bindings, References, Diagnostics & CSP Hardening (`src/modules/model.js`, `src/modules/ref.js`, `src/modules/text.js`, `src/core/engine.js`, `src/modules/show.js`)**:
+  - **F11**: Checkbox fallback state no longer pollutes or overwrites store values upon remounting.
+  - **F13**: Multiple attributes sharing placeholder companions (e.g. `data-x`) no longer remove companion attributes prematurely before all consumers have resolved.
+  - **F15**: Array reference order (`data-ref="rows[]"`) dynamically maintains DOM order under LCS diff reorderings.
+  - **F16**: Scalar and explicit array refs coexist cleanly; unmounting a scalar ref preserves array type for remaining array refs.
+  - **F17**: Mount-scoped `onError` handlers capture early compilation diagnostics from detached template fragments.
+  - **F19**: `data-show` style rules support strict CSP environments via `CSSStyleSheet` / `adoptedStyleSheets` and document nonces.
+
 ## [0.6.0] - 2026-09-20
 
 ### Added

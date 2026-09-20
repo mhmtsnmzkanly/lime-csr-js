@@ -17,15 +17,15 @@ function readDoc(filename) {
 
 test('documentation: version consistency across all documentation files', () => {
   const pkg = JSON.parse(readDoc('package.json'));
-  assert.equal(pkg.version, '0.6.0');
+  assert.equal(pkg.version, '0.6.1');
 
   const files = ['README.md', 'DOCS.md', 'llms.txt', 'llms-full.txt', 'CHANGELOG.md'];
   for (const file of files) {
     const content = readDoc(file);
     assert.match(
       content,
-      /0\.6\.0/,
-      `File ${file} must reference version 0.6.0`,
+      /0\.6\.1/,
+      `File ${file} must reference version 0.6.1`,
     );
     // In CHANGELOG.md, 0.2.10 can be mentioned in history; in others it should not appear as current version
     if (file !== 'CHANGELOG.md') {
