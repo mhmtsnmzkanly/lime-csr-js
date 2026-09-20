@@ -210,8 +210,9 @@ Available in trigger hooks:
    - Sets native `hidden` property. Does not alter inline `style.display`.
 6. **`model`** (Link):
    `<input type="text" data-model="query">`
-   `<input type="checkbox" data-model="agree">`
-   - Two-way binding with cursor preservation.
+   `<input type="checkbox" data-model="roles[]" value="admin">`
+   `<form data-model-group="user"><input name="name"></form>`
+   - Two-way binding with cursor preservation, checkbox arrays (`path[]`), contenteditable, modifiers (`.lazy`, `.trim`, `.number`, `.debounce-<ms>`), and initial DOM fallback.
 7. **`events`** (Link):
    `<button data-on-click="handleClick" data-on-click-data="item.id">Save</button>`
    `<input data-on-keydown-enter="submit">`

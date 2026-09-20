@@ -311,7 +311,7 @@ Engines are isolated and may run independently on separate target elements. A ta
 | [loops](DOCS.md#133-loops-module-loops) | Transform + Link | `<for each as>`, `<template data-for>` | Renders array items with prototypal child scopes. `data-live key="..."` provides keyed LCS reconciliation. |
 | [text](DOCS.md#134-text--attribute-bindings-module-text) | Link | `data-text="path"`, `{x}` attribute templates | Reactively binds store values to `textContent` and attribute values with URL sanitization. |
 | [show](DOCS.md#135-visibility-module-show) | Link | `data-show="path"` | Toggles element visibility via the native `hidden` attribute without altering inline styles. |
-| [model](DOCS.md#136-two-way-form-binding-module-model) | Link | `data-model="path"` | Two-way binding for inputs (text, number, checkbox, radio, select) with cursor preservation. |
+| [model](DOCS.md#136-two-way-form-binding-module-model) | Link | `data-model="path"`, `data-model-group="prefix"` | Two-way binding for inputs, checkbox arrays (`path[]`), contenteditable, and form groups with modifiers (`.lazy`, `.trim`, `.number`, `.debounce-<ms>`) and initial DOM fallback. |
 | [events](DOCS.md#137-event-delegation-module-events) | Link | `data-on-{event}="handler"`, `data-on-*-data` | Delegated event dispatch with single object payload `{ event, element, scope, store, data, refs }`, companion data attributes, and prototype protection. |
 | [ref](DOCS.md#138-dom-element-reference-module-ref) | Link | `data-ref="name"` | Collects DOM element references into `app.refs` and passes `refs` into event handler payloads. Supports `[]` array suffixes and duplicate grouping. |
 

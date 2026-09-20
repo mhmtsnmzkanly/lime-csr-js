@@ -205,16 +205,21 @@ ModuleContext (`ctx`) Specification:
    - Errors: SHOW_MISSING_PATH.
 
 6. model:
-   - Trigger: `attr('data-model')`
+   - Triggers: `pattern(/^data-model(?:[.-].+)?$/)`, `attr('data-model-group')`
    - Phase: Link
    - Control Matrix:
-     - text, textarea, email, password: event 'input', reads `el.value`, writes `el.value = String(val)` (skips if equal).
-     - number, range: event 'input', reads `Number(el.value)` or null, writes `el.value = String(val)`.
-     - checkbox: event 'change', reads `el.checked`, writes `el.checked = Boolean(val)`.
+     - text, textarea, email, password: event 'input' (or 'change' with .lazy), reads `el.value`, writes `el.value = String(val)` (skips if equal).
+     - number, range: event 'input' (or 'change' with .lazy), reads `Number(el.value)` or null, writes `el.value = String(val)`.
+     - checkbox (boolean): event 'change', reads `el.checked`, writes `el.checked = Boolean(val)`.
+     - checkbox (array: `name[]` or store array): event 'change', checked pushes `el.value`, unchecked removes it, writes `el.checked = val.includes(el.value)`.
      - radio: event 'change', reads `el.value` if checked, writes `el.checked = (String(val) === el.value)`.
      - select (single): event 'change', reads `el.value`, writes `el.value = String(val)`.
      - select (multiple): event 'change', reads array of selected values, writes option selection.
-   - Errors: MODEL_MISSING_PATH, INDEXED_MODEL_PATH.
+     - contenteditable: event 'input' (or 'blur' with .lazy), reads `el.innerHTML` (or `textContent` with .text), writes with loop guard.
+   - Initial Fallback: When store value is undefined, HTML value/checked/selected/innerHTML populates the store.
+   - Modifiers: `.lazy`, `.trim`, `.number`, `.debounce-<ms>`, `.text` via dot notation, dash notation, or companion attributes.
+   - Group Binding: `data-model-group="prefix"` binds descendant inputs with `name="prop"` to `${prefix}.${prop}` unless explicitly overridden.
+   - Errors: MODEL_MISSING_PATH, MODEL_GROUP_MISSING_PREFIX, INDEXED_MODEL_PATH.
 
 7. events:
    - Trigger: `pattern('data-on-')`
@@ -251,37 +256,36 @@ ModuleContext (`ctx`) Specification:
 14. LIVE_IF_MISSING_OP (Error): <if data-live> missing valid condition operator.
 15. MISSING_OPERATOR (Error): <if> tag missing condition operator attribute.
 16. MODEL_MISSING_PATH (Error): data-model attribute is empty.
-17. MODULE_AFTER_CONNECT_FAILED (Error): Exception in ctx.afterConnect() microtask.
-18. MODULE_CLEANUP_FAILED (Error): Exception in module cleanup callback.
-19. MODULE_HANDLER_FAILED (Error): Exception or promise rejection in user handler callback.
-20. MODULE_READ_FAILED (Error): Exception in module read() hook.
-21. MODULE_SETUP_FAILED (Error): Exception in module setup() hook.
-22. MODULE_STORE_REQUIRED (Warn): Module ctx.watch() called without a store.
-23. MODULE_TRIGGER_OVERRIDDEN (Warn): Lower-priority module trigger shadowed.
-24. MODULE_UPDATE_FAILED (Error): Exception in module update() hook.
-25. MODULE_WATCH_FAILED (Error): Exception in reactive watch callback.
-26. MOUNT_ALREADY_MOUNTED (Warn): Duplicate mount on an already mounted target.
-27. MOUNT_HOOK_FAILED (Error): beforeRender or afterRender mount lifecycle hook threw.
-28. MOUNT_INVALID_TARGET (Error): Invalid target element or selector passed to mount().
-29. MOUNT_TARGET_NOT_FOUND (Error): CSS selector in mount() matched zero elements.
-30. MOUNT_TEMPLATE_NOT_FOUND (Error): Template id="tpl-{name}" not found in document.
-31. PARTIAL_DEPTH_LIMIT (Error): Partial recursion depth limit exceeded.
-32. PARTIAL_MISSING_NAME (Error): <partial> tag missing name attribute.
-33. PARTIAL_NOT_FOUND (Error): Partial template id="tpl-{name}" not found.
-34. PATH_CLOBBER (Warn): Intermediate non-object segment overwritten in store.set().
-35. PIPELINE_DEPTH_LIMIT (Error): Transform phase reached 100 iterations limit.
-36. REF_MISSING_NAME (Error): data-ref attribute is empty or whitespace.
-37. RESERVED_ATTR_NAME (Error): Reserved name used as {x} attribute placeholder.
-38. SHOW_MISSING_PATH (Error): data-show attribute is empty.
-39. SLOT_NOT_FOUND (Error): Slot name targeted by caller child not found in partial template; content discarded.
-40. TABLE_FOSTER_PARENTING (Warn): HTML parser foster-parented special tags outside <table>.
-41. TEMPLATE_NOT_FOUND (Error): Template element not found.
-42. UNKNOWN_DIFF_STRATEGY (Warn): Unrecognized data-diff value on <for data-live>.
-43. UNKNOWN_EVENT (Error): Unsupported event name in data-on-{event}.
-44. UNKNOWN_KEY_MODIFIER (Error): Unsupported key modifier in data-on-keydown-{key}.
-45. UNKNOWN_OPERATOR (Error): Unrecognized condition operator starting with is-.
-46. UNSAFE_EVENT_ATTR (Error): Reactive binding attempted on on* event attribute.
-47. UNSAFE_URL_ATTR (Warn): Unsafe URL protocol sanitized to empty string.
+17. MODEL_GROUP_MISSING_PREFIX (Error): data-model-group attribute is empty.
+18. MODULE_AFTER_CONNECT_FAILED (Error): Exception in ctx.afterConnect() microtask.
+19. MODULE_CLEANUP_FAILED (Error): Exception in module cleanup callback.
+20. MODULE_HANDLER_FAILED (Error): Exception or promise rejection in user handler callback.
+21. MODULE_READ_FAILED (Error): Exception in module read() hook.
+22. MODULE_SETUP_FAILED (Error): Exception in module setup() hook.
+23. MODULE_STORE_REQUIRED (Warn): Module ctx.watch() called without a store.
+24. MODULE_TRIGGER_OVERRIDDEN (Warn): Lower-priority module trigger shadowed.
+25. MODULE_UPDATE_FAILED (Error): Exception in module update() hook.
+26. MODULE_WATCH_FAILED (Error): Exception in ctx.watch() subscriber callback.
+27. MOUNT_ALREADY_CONNECTED (Warn): Calling mount() on an already-connected engine.
+28. MOUNT_CONTAINER_UNATTACHED (Warn): Target container is detached from the active document.
+29. MOUNT_INVALID_TARGET (Error): Mount target is null, undefined, or not an Element.
+30. MOUNT_TARGET_NOT_FOUND (Error): CSS selector passed to mount target did not match any element.
+31. MOUNT_TEMPLATE_NOT_FOUND (Error): Template id/name passed to mount() does not exist.
+32. MULTI_ROOT_COMPONENT (Warn): Component partial contains multiple top-level elements.
+33. PARTIAL_CYCLE_DETECTED (Error): Infinite recursion detected in nested partials.
+34. PARTIAL_MISSING_NAME (Error): <partial> tag missing name attribute.
+35. PARTIAL_NOT_FOUND (Error): Named partial template does not exist.
+36. PATH_CLOBBER (Warn): Primitive intermediate path segment clobbered by nested set.
+37. REF_MISSING_NAME (Error): data-ref attribute is empty; reference name required.
+38. RESERVED_ATTR_NAME (Error): Attribute template `{x}` collides with a reserved keyword.
+39. SHOW_MISSING_PATH (Error): data-show attribute is empty.
+40. SLOT_NOT_FOUND (Warn): <slot> element targeted by child does not exist in partial.
+41. UNKNOWN_COMPARISON_OP (Error): <if> condition operator is invalid or unknown.
+42. UNKNOWN_DIFF_STRATEGY (Warn): <for data-diff> specifies an unsupported reconciliation strategy.
+43. UNKNOWN_EVENT (Error): Delegated event in data-on-* is unsupported.
+44. UNKNOWN_KEY_MODIFIER (Error): Key modifier in data-on-keydown-* is unrecognized.
+45. UNSAFE_EVENT_ATTR (Error): Attribute template used on an inline event handler attribute (e.g. onclick).
+46. UNSAFE_URL_ATTR (Warn): Potentially dangerous URL protocol sanitized in href/src attribute.
 
 ================================================================================
 6. COMPLETE WORKING PATTERNS

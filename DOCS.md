@@ -1098,23 +1098,59 @@ Lime provides 7 standard unprivileged modules.
 ### 13.6 Two-Way Form Binding Module (`model`)
 
 - **Purpose:** Synchronizes form inputs bidirectionally with the reactive store.
-- **Trigger:** `attr('data-model')`.
+- **Triggers:**
+  - Input-level: `pattern(/^data-model(?:[.-].+)?$/)` (supports dot, dash, and companion modifiers).
+  - Group-level: `attr('data-model-group')` (automatic form-level scoping).
 - **Phase:** `link`.
 - **Form Control Support Matrix:**
 
 | Control / Type | Event | Store Value | DOM $\to$ Store | Store $\to$ DOM |
 |---|---|---|---|---|
-| `<input type="text">`, email, password | `input` | `string` | `el.value` | `el.value = String(val)` (skips if equal) |
-| `<textarea>` | `input` | `string` | `el.value` | `el.value = String(val)` (skips if equal) |
-| `<input type="number">`, `range` | `input` | `number \| null` | `Number(el.value)` or `null` if empty | `el.value = String(val)` |
-| `<input type="checkbox">` | `change` | `boolean` | `el.checked` | `el.checked = Boolean(val)` |
+| `<input type="text">`, email, password | `input` (or `change` with `.lazy`) | `string` | `el.value` | `el.value = String(val)` (skips if equal) |
+| `<textarea>` | `input` (or `change` with `.lazy`) | `string` | `el.value` | `el.value = String(val)` (skips if equal) |
+| `<input type="number">`, `range` | `input` (or `change` with `.lazy`) | `number \| null` | `Number(el.value)` or `null` if empty | `el.value = String(val)` |
+| `<input type="checkbox">` (boolean) | `change` | `boolean` | `el.checked` | `el.checked = Boolean(val)` |
+| `<input type="checkbox">` (array: `name[]` or store array) | `change` | `string[]` | Checked adds `el.value`; unchecked removes it | `el.checked = val.includes(el.value)` |
 | `<input type="radio">` | `change` | `string` | If checked, `el.value` | `el.checked = (String(val) === el.value)` |
 | `<select>` (single) | `change` | `string` | `el.value` | `el.value = String(val)` |
 | `<select multiple>` | `change` | `string[]` | Array of selected option values | `opt.selected = val.includes(opt.value)` |
+| `<div contenteditable="true">` | `input` (or `blur` with `.lazy`) | `string` | `el.innerHTML` (or `el.textContent` with `.text`) | `el.innerHTML = String(val)` (skips if equal) |
 
-- **Cursor Jump & Feedback Prevention:** `Store -> DOM` assignment is skipped if `el.value === String(val)`, preventing text cursor resets while typing.
-- **Errors:**
-  - `MODEL_MISSING_PATH`: Empty `data-model` attribute.
+- **Initial DOM Value Fallback:**
+  When the store value at the bound path is `undefined`, the module preserves initial HTML values (`value`, `checked`, `selected`, textarea content, or contenteditable innerHTML) and initializes the store with those values instead of wiping the element. If the store already contains a defined value (including `""`, `0`, `false`, `null`), the store takes absolute precedence.
+
+- **Checkbox Array Binding:**
+  Binding checkboxes to an array path (`data-model="roles[]"` or when the store holds an Array) toggles array membership: checking an input appends `el.value`; unchecking removes it. Store updates update each checkbox's `checked` state based on `array.includes(el.value)`. Full backward compatibility with boolean checkboxes is preserved.
+
+- **Modifiers:**
+  Modifiers can be specified via dot syntax (`data-model.trim="path"`), dash syntax (`data-model-trim="path"`), or companion attributes (`<input data-model="path" data-model-trim>`):
+  - `.lazy`: Listens on `change` (or `blur` for contenteditable) instead of `input`.
+  - `.trim`: Automatically trims leading and trailing whitespace from string values before updating state.
+  - `.number`: Casts the input value to a number using `Number()`, converting empty strings to `null`.
+  - `.debounce` / `.debounce-<ms>` / `data-model-debounce="<ms>"`: Delays store update by the specified duration (defaults to 300ms if unspecified). The timer is disposed in LIFO order upon subsequent typing or element teardown to prevent leaks.
+  - `.text`: In `contenteditable` elements, reads and writes plain text via `textContent` rather than `innerHTML`.
+
+- **`contenteditable` Two-Way Binding:**
+  Supports `<div contenteditable="true" data-model="path">` (or `<p>`, `<span>`, etc.). Features a cursor guard that prevents resetting inner content when the incoming store value matches existing DOM content, avoiding cursor jump during active typing.
+
+- **Form-Level Group Binding (`data-model-group="prefix"`):**
+  Containers (e.g. `<form data-model-group="user">` or `<fieldset data-model-group="profile">`) automatically bind all descendant controls with `name="prop"` to `${prefix}.${prop}`:
+  ```html
+  <form data-model-group="user">
+    <input name="firstName" value="Alice">
+    <input name="age" type="number" value="30">
+    <input type="checkbox" name="roles[]" value="admin" checked>
+    <input name="custom" data-model="settings.custom"> <!-- explicit override -->
+  </form>
+  ```
+  - **Explicit Override:** Inputs with their own explicit `data-model` are skipped by the group and maintain their independent binding.
+  - **Scoping & Nesting:** Inner `[data-model-group]` containers scope their own children, preventing conflicts with parent groups.
+  - **Companion Modifiers:** Child inputs inside a group can use companion modifiers (e.g. `<input name="search" data-model-trim data-model-debounce="200">`).
+
+- **Cursor Jump & Feedback Prevention:** `Store -> DOM` assignment is skipped if `el.value === String(val)` (or `innerHTML === String(val)` for contenteditable), preventing cursor jump and infinite feedback loops.
+- **Diagnostics:**
+  - `MODEL_MISSING_PATH`: Empty `data-model` attribute without a valid store path.
+  - `MODEL_GROUP_MISSING_PREFIX`: Empty `data-model-group` attribute without a valid prefix.
   - `INDEXED_MODEL_PATH`: Path contains numeric indices (e.g. `items.0.name`). Recommends binding to keyed loop variables instead.
 
 ---
@@ -1263,6 +1299,7 @@ Lime never throws runtime exceptions that crash user pages. All issues are dispa
 | `RESERVED_ATTR_NAME` | Error | Text | Attribute placeholder uses reserved name. | Using `{model}` or `{show}` as placeholder. |
 | `SHOW_MISSING_PATH` | Error | Show | `data-show` attribute is empty. | `<div data-show=""></div>`. |
 | `MODEL_MISSING_PATH` | Error | Model | `data-model` attribute is empty. | `<input data-model="">`. |
+| `MODEL_GROUP_MISSING_PREFIX` | Error | Model | `data-model-group` attribute is empty. | `<form data-model-group="">`. |
 | `INDEXED_MODEL_PATH` | Warn | Model | `data-model` path contains numeric index. | `data-model="items.0.name"`. Bind to loop variable. |
 | `UNKNOWN_EVENT` | Error | Events | `data-on-{event}` is not a supported event. | Typo like `data-on-hover`. Use `mouseenter`. |
 | `UNKNOWN_KEY_MODIFIER` | Error | Events | Unsupported key modifier suffix. | Typo like `data-on-keydown-return`. Use `-enter`. |
