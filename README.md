@@ -33,7 +33,7 @@ or `google-chrome`), or an explicit `CHROMIUM_BIN` executable path.
 
 ### Subpath Exports
 
-`lime-csr-js@0.6.1` provides clean, dedicated subpaths:
+`lime-csr-js@0.6.2` provides clean, dedicated subpaths:
 
 ```js
 // 1. Root package (Facade, Store, Diagnostics, Standard Modules)
@@ -63,7 +63,7 @@ If you want the complete framework with all directives pre-registered:
 
 ```html
 <script type="module">
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.1/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.2/dist/index.min.js';
 </script>
 ```
 
@@ -72,10 +72,10 @@ If you only need specific directives (e.g. only text and events for a tiny widge
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.1/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.1/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.1/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.1/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.2/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.2/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.2/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.2/dist/modules/events.min.js';
 
   // Assemble a bespoke engine with only the modules you need
   const engine = createEngine({

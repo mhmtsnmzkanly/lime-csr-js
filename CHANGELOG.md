@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.6.2] - 2026-09-20
 
 ### Fixed
 - Retarget model, text, attribute, visibility, and nested structural subscriptions when keyed items move, without replacing unchanged item DOM.
