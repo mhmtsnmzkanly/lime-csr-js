@@ -82,10 +82,15 @@ const KIND_HANDLERS = {
   checkbox: {
     event: 'change',
     read: (el) => el.checked,
-    write: (el, val) => {
-      const next = Boolean(val);
-      if (el.checked === next) return;
-      el.checked = next;
+    write: (el, val, isArray) => {
+      if (isArray || Array.isArray(val)) {
+        const arr = Array.isArray(val) ? val.map(String) : [];
+        const next = arr.includes(el.value);
+        if (el.checked !== next) el.checked = next;
+      } else {
+        const next = Boolean(val);
+        if (el.checked !== next) el.checked = next;
+      }
     },
   },
   'select-single': {
@@ -161,6 +166,21 @@ function getInitialDomValue(el, kind) {
   }
 }
 
+const domFallbackStores = new WeakMap();
+
+function markDomFallback(store, path) {
+  let set = domFallbackStores.get(store);
+  if (!set) {
+    set = new Set();
+    domFallbackStores.set(store, set);
+  }
+  set.add(path);
+}
+
+function isDomFallback(store, path) {
+  return domFallbackStores.get(store)?.has(path) ?? false;
+}
+
 /**
  * Creates the standard `model` module definition.
  *
@@ -180,13 +200,22 @@ export function model() {
             return null;
           }
 
-          const trimmedPath = path.trim();
+          let trimmedPath = path.trim();
+          const isArray = trimmedPath.endsWith('[]');
+          if (isArray) {
+            trimmedPath = trimmedPath.slice(0, -2).trim();
+            if (!trimmedPath) {
+              ctx.error('MODEL_MISSING_PATH', el);
+              return null;
+            }
+          }
+
           if (INDEXED_PATH_RE.test(trimmedPath)) {
             ctx.error('INDEXED_MODEL_PATH', { path: trimmedPath }, el);
           }
 
           const kind = classify(el);
-          return { path: trimmedPath, kind };
+          return { path: trimmedPath, kind, isArray };
         },
 
         setup(el, data, ctx) {
@@ -199,23 +228,73 @@ export function model() {
 
           const handler = KIND_HANDLERS[data.kind];
 
-          // Initial state -> DOM or DOM -> Store fallback
-          const storeVal = ctx.store.get(data.path);
-          if (storeVal !== undefined) {
-            handler.write(el, storeVal);
-          } else {
-            const initialDom = getInitialDomValue(el, data.kind);
-            if (initialDom !== undefined) {
-              ctx.store.set(data.path, initialDom);
-              handler.write(el, initialDom);
+          // Checkbox array handling vs standard handling
+          const isCheckboxArray = data.kind === 'checkbox' && (data.isArray || Array.isArray(ctx.store.get(data.path)));
+
+          if (isCheckboxArray) {
+            const storeVal = ctx.store.get(data.path);
+            const isChecked = el.hasAttribute('checked') || el.defaultChecked || el.checked;
+
+            if (storeVal === undefined) {
+              markDomFallback(ctx.store, data.path);
+              if (isChecked) {
+                ctx.store.set(data.path, [el.value]);
+                el.checked = true;
+              } else {
+                ctx.store.set(data.path, []);
+                el.checked = false;
+              }
+            } else if (isDomFallback(ctx.store, data.path)) {
+              if (isChecked) {
+                const arr = Array.isArray(storeVal) ? [...storeVal] : [];
+                if (!arr.map(String).includes(el.value)) {
+                  arr.push(el.value);
+                  ctx.store.set(data.path, arr);
+                }
+                el.checked = true;
+              } else {
+                el.checked = false;
+              }
             } else {
-              handler.write(el, undefined);
+              handler.write(el, storeVal, true);
+            }
+          } else {
+            // Initial state -> DOM or DOM -> Store fallback
+            const storeVal = ctx.store.get(data.path);
+            if (storeVal !== undefined) {
+              handler.write(el, storeVal);
+            } else {
+              const initialDom = getInitialDomValue(el, data.kind);
+              if (initialDom !== undefined) {
+                ctx.store.set(data.path, initialDom);
+                handler.write(el, initialDom);
+              } else {
+                handler.write(el, undefined);
+              }
             }
           }
 
           // DOM -> State event listener
           const onEvent = () => {
             if (data.kind === 'radio' && !el.checked) return;
+
+            if (data.kind === 'checkbox') {
+              const currentVal = ctx.store.get(data.path);
+              const inArrayMode = data.isArray || Array.isArray(currentVal);
+              if (inArrayMode) {
+                const arr = Array.isArray(currentVal) ? [...currentVal] : [];
+                const val = el.value;
+                const idx = arr.map(String).indexOf(val);
+                if (el.checked) {
+                  if (idx === -1) arr.push(val);
+                } else {
+                  if (idx !== -1) arr.splice(idx, 1);
+                }
+                ctx.store.set(data.path, arr);
+                return;
+              }
+            }
+
             ctx.store.set(data.path, handler.read(el));
           };
 
@@ -226,7 +305,7 @@ export function model() {
 
           // State -> DOM subscription
           ctx.watch(data.path, (val) => {
-            handler.write(el, val);
+            handler.write(el, val, data.isArray || Array.isArray(val));
           });
         },
       }),

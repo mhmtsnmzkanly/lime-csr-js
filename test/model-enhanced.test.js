@@ -147,3 +147,94 @@ test('model: store value takes precedence over DOM initial attributes', () => {
   assert.equal(store.get('user'), 'FromStore');
   assert.equal(store.get('active'), false);
 });
+
+// ── MILESTONE 2: CHECKBOX ARRAYS ────────────────────────────────────────────
+
+test('model: checkbox array with data-model="roles[]" initial DOM fallback', () => {
+  const dom = createDom(`
+    <div id="root">
+      <input type="checkbox" data-model="roles[]" value="admin" checked>
+      <input type="checkbox" data-model="roles[]" value="editor" checked>
+      <input type="checkbox" data-model="roles[]" value="viewer">
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const checkboxes = root.querySelectorAll('input[type="checkbox"]');
+  assert.equal(checkboxes[0].checked, true);
+  assert.equal(checkboxes[1].checked, true);
+  assert.equal(checkboxes[2].checked, false);
+
+  assert.deepEqual(store.get('roles'), ['admin', 'editor']);
+});
+
+test('model: checkbox array two-way toggle (DOM -> Store and Store -> DOM)', () => {
+  const dom = createDom(`
+    <div id="root">
+      <input id="chk-admin" type="checkbox" data-model="roles[]" value="admin">
+      <input id="chk-editor" type="checkbox" data-model="roles[]" value="editor">
+      <input id="chk-viewer" type="checkbox" data-model="roles[]" value="viewer">
+    </div>
+  `);
+  const store = createStore({ roles: ['admin'] });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const admin = root.querySelector('#chk-admin');
+  const editor = root.querySelector('#chk-editor');
+  const viewer = root.querySelector('#chk-viewer');
+
+  assert.equal(admin.checked, true);
+  assert.equal(editor.checked, false);
+  assert.equal(viewer.checked, false);
+
+  // Check 'viewer' -> added to store
+  viewer.checked = true;
+  viewer.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.deepEqual(store.get('roles'), ['admin', 'viewer']);
+  assert.equal(viewer.checked, true);
+
+  // Uncheck 'admin' -> removed from store
+  admin.checked = false;
+  admin.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.deepEqual(store.get('roles'), ['viewer']);
+  assert.equal(admin.checked, false);
+
+  // Store update -> DOM reflects array state
+  store.set('roles', ['editor', 'viewer']);
+  assert.equal(admin.checked, false);
+  assert.equal(editor.checked, true);
+  assert.equal(viewer.checked, true);
+});
+
+test('model: checkbox array implicit mode when store holds array without [] in attribute', () => {
+  const dom = createDom(`
+    <div id="root">
+      <input id="chk-read" type="checkbox" data-model="perms" value="read">
+      <input id="chk-write" type="checkbox" data-model="perms" value="write">
+    </div>
+  `);
+  const store = createStore({ perms: ['read'] });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const read = root.querySelector('#chk-read');
+  const write = root.querySelector('#chk-write');
+
+  assert.equal(read.checked, true);
+  assert.equal(write.checked, false);
+
+  // Check write
+  write.checked = true;
+  write.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.deepEqual(store.get('perms'), ['read', 'write']);
+});
+
