@@ -238,3 +238,162 @@ test('model: checkbox array implicit mode when store holds array without [] in a
   assert.deepEqual(store.get('perms'), ['read', 'write']);
 });
 
+// ── MILESTONE 3: MODIFIERS (.lazy, .trim, .number, .debounce-<ms>) ──────────
+
+test('model modifiers: .trim strips whitespace on dot, dash, and companion syntax', () => {
+  const dom = createDom(`
+    <div id="root">
+      <input id="dot" type="text" data-model.trim="user.name">
+      <input id="dash" type="text" data-model-trim="user.title">
+      <input id="companion" type="text" data-model="user.bio" data-model-trim>
+    </div>
+  `);
+  const store = createStore({ user: {} });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const dot = root.querySelector('#dot');
+  const dash = root.querySelector('#dash');
+  const companion = root.querySelector('#companion');
+
+  dot.value = '   Alice Wonderland   ';
+  dot.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('user.name'), 'Alice Wonderland');
+
+  dash.value = '   Developer   ';
+  dash.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('user.title'), 'Developer');
+
+  companion.value = '   Bio text   ';
+  companion.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('user.bio'), 'Bio text');
+});
+
+test('model modifiers: .number casts values and handles nulls', () => {
+  const dom = createDom(`
+    <div id="root">
+      <input id="price" type="text" data-model.number="price">
+      <input id="qty" type="text" data-model="qty" data-model-number>
+    </div>
+  `);
+  const store = createStore({ price: null, qty: 1 });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const price = root.querySelector('#price');
+  const qty = root.querySelector('#qty');
+
+  price.value = '49.99';
+  price.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('price'), 49.99);
+
+  price.value = '';
+  price.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('price'), null);
+
+  qty.value = '100';
+  qty.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('qty'), 100);
+});
+
+test('model modifiers: .lazy listens on change event instead of input', () => {
+  const dom = createDom(`
+    <div id="root">
+      <input id="search-dot" type="text" data-model.lazy="query">
+      <input id="search-comp" type="text" data-model="term" data-model-lazy>
+    </div>
+  `);
+  const store = createStore({ query: 'initial', term: 'initial' });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const dot = root.querySelector('#search-dot');
+  const comp = root.querySelector('#search-comp');
+
+  // Input event should NOT update store
+  dot.value = 'typing...';
+  dot.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('query'), 'initial');
+
+  // Change event DOES update store
+  dot.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.equal(store.get('query'), 'typing...');
+
+  // Companion lazy
+  comp.value = 'companion typing...';
+  comp.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('term'), 'initial');
+
+  comp.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.equal(store.get('term'), 'companion typing...');
+});
+
+test('model modifiers: .debounce delays store update and cleans up on unmount', async () => {
+  const dom = createDom(`
+    <div id="root">
+      <input id="dot-deb" type="text" data-model.debounce-50="keyword">
+      <input id="comp-deb" type="text" data-model="search" data-model-debounce="50">
+    </div>
+  `);
+  const store = createStore({ keyword: '', search: '' });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  const unmount = engine.mount({ target: root, store, document: dom.window.document });
+
+  const dot = root.querySelector('#dot-deb');
+  const comp = root.querySelector('#comp-deb');
+
+  dot.value = 'quick';
+  dot.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('keyword'), ''); // not updated yet
+
+  comp.value = 'search-term';
+  comp.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('search'), ''); // not updated yet
+
+  // Wait for debounce timer (70ms > 50ms)
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 70));
+
+  assert.equal(store.get('keyword'), 'quick');
+  assert.equal(store.get('search'), 'search-term');
+
+  // Test debounce cleanup on unmount
+  dot.value = 'cancelled';
+  dot.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  unmount();
+
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 70));
+  // Store should NOT have been updated to 'cancelled' because timer was cleaned up
+  assert.equal(store.get('keyword'), 'quick');
+});
+
+test('model modifiers: combined modifiers (lazy + trim)', () => {
+  const dom = createDom(`
+    <div id="root">
+      <input id="combo" type="text" data-model.lazy.trim="profile.title">
+    </div>
+  `);
+  const store = createStore({ profile: { title: 'old' } });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const combo = root.querySelector('#combo');
+
+  combo.value = '   Senior Architect   ';
+  combo.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('profile.title'), 'old'); // lazy ignores input
+
+  combo.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.equal(store.get('profile.title'), 'Senior Architect'); // trimmed on change
+});
+
+

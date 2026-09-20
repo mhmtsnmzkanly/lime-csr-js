@@ -20,7 +20,7 @@
  *   - Cleanups: event listener and watch subscription auto-registered via ModuleContext.
  */
 
-import { attr } from '../core/triggers.js';
+import { pattern } from '../core/triggers.js';
 
 const MODEL_ATTR = 'data-model';
 const INDEXED_PATH_RE = /(?:^|\.)\d+(?:\.|$)/;
@@ -181,6 +181,105 @@ function isDomFallback(store, path) {
   return domFallbackStores.get(store)?.has(path) ?? false;
 }
 
+function getPrimaryModelAttribute(el) {
+  if (!el || !el.attributes) return null;
+  if (el.hasAttribute(MODEL_ATTR)) return MODEL_ATTR;
+  const attrs = el.attributes;
+  for (let i = 0; i < attrs.length; i++) {
+    const name = attrs[i].name;
+    if (/^data-model[.-]/.test(name) && !name.startsWith('data-model-group') && attrs[i].value.trim()) {
+      return name;
+    }
+  }
+  for (let i = 0; i < attrs.length; i++) {
+    const name = attrs[i].name;
+    if (/^data-model[.-]/.test(name) && !name.startsWith('data-model-group')) {
+      return name;
+    }
+  }
+  return null;
+}
+
+function parseModifiers(el, primaryAttrName) {
+  const modifiers = {
+    lazy: false,
+    trim: false,
+    number: false,
+    debounce: null,
+  };
+
+  function applyToken(token, val) {
+    if (!token) return;
+    const t = token.toLowerCase();
+    if (t === 'lazy') {
+      modifiers.lazy = true;
+    } else if (t === 'trim') {
+      modifiers.trim = true;
+    } else if (t === 'number') {
+      modifiers.number = true;
+    } else if (t === 'debounce') {
+      const ms = val ? parseInt(val, 10) : NaN;
+      modifiers.debounce = Number.isFinite(ms) && ms >= 0 ? ms : 300;
+    } else if (t.startsWith('debounce-')) {
+      const ms = parseInt(t.slice(9), 10);
+      modifiers.debounce = Number.isFinite(ms) && ms >= 0 ? ms : 300;
+    }
+  }
+
+  // 1. Primary attribute name tokens
+  if (primaryAttrName) {
+    if (primaryAttrName.includes('.')) {
+      const dotTokens = primaryAttrName.split('.').slice(1);
+      for (const tok of dotTokens) {
+        applyToken(tok);
+      }
+    } else if (primaryAttrName.startsWith('data-model-')) {
+      const suffix = primaryAttrName.slice(11);
+      if (suffix && !suffix.startsWith('group')) {
+        const parts = suffix.split('-');
+        if (parts[0] === 'debounce') {
+          applyToken(suffix);
+        } else {
+          for (const tok of parts) {
+            applyToken(tok);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Companion attributes
+  if (el.attributes) {
+    for (let i = 0; i < el.attributes.length; i++) {
+      const attrNode = el.attributes[i];
+      const name = attrNode.name;
+      if (name === primaryAttrName || name === 'data-model-group' || name.startsWith('data-model-group')) {
+        continue;
+      }
+      if (name.startsWith('data-model.') || name.startsWith('data-model-')) {
+        if (name.includes('.')) {
+          const dotTokens = name.split('.').slice(1);
+          for (const tok of dotTokens) {
+            applyToken(tok, attrNode.value);
+          }
+        } else {
+          const suffix = name.slice(11);
+          const parts = suffix.split('-');
+          if (parts[0] === 'debounce') {
+            applyToken(suffix, attrNode.value);
+          } else {
+            for (const tok of parts) {
+              applyToken(tok, attrNode.value);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return modifiers;
+}
+
 /**
  * Creates the standard `model` module definition.
  *
@@ -190,11 +289,19 @@ export function model() {
   return Object.freeze({
     name: 'model',
     triggers: [
-      attr(MODEL_ATTR, {
+      pattern(/^data-model(?:[.-].+)?$/, {
         phase: 'link',
 
+        match(element, attrName) {
+          if (attrName === 'data-model-group' || attrName.startsWith('data-model-group')) {
+            return false;
+          }
+          return attrName === getPrimaryModelAttribute(element);
+        },
+
         read(el, ctx) {
-          const path = el.getAttribute(MODEL_ATTR);
+          const primaryAttr = ctx.matchedAttribute || getPrimaryModelAttribute(el) || MODEL_ATTR;
+          const path = el.getAttribute(primaryAttr);
           if (!path || !path.trim()) {
             ctx.error('MODEL_MISSING_PATH', el);
             return null;
@@ -215,7 +322,9 @@ export function model() {
           }
 
           const kind = classify(el);
-          return { path: trimmedPath, kind, isArray };
+          const modifiers = parseModifiers(el, primaryAttr);
+
+          return { path: trimmedPath, kind, isArray, modifiers };
         },
 
         setup(el, data, ctx) {
@@ -227,6 +336,7 @@ export function model() {
           }
 
           const handler = KIND_HANDLERS[data.kind];
+          const modifiers = data.modifiers || { lazy: false, trim: false, number: false, debounce: null };
 
           // Checkbox array handling vs standard handling
           const isCheckboxArray = data.kind === 'checkbox' && (data.isArray || Array.isArray(ctx.store.get(data.path)));
@@ -264,8 +374,19 @@ export function model() {
             if (storeVal !== undefined) {
               handler.write(el, storeVal);
             } else {
-              const initialDom = getInitialDomValue(el, data.kind);
+              let initialDom = getInitialDomValue(el, data.kind);
               if (initialDom !== undefined) {
+                if (modifiers.trim && typeof initialDom === 'string') {
+                  initialDom = initialDom.trim();
+                }
+                if (modifiers.number && typeof initialDom === 'string') {
+                  if (initialDom === '') {
+                    initialDom = null;
+                  } else {
+                    const n = Number(initialDom);
+                    initialDom = Number.isNaN(n) ? initialDom : n;
+                  }
+                }
                 ctx.store.set(data.path, initialDom);
                 handler.write(el, initialDom);
               } else {
@@ -274,8 +395,10 @@ export function model() {
             }
           }
 
+          let debounceTimer = null;
+
           // DOM -> State event listener
-          const onEvent = () => {
+          const commit = () => {
             if (data.kind === 'radio' && !el.checked) return;
 
             if (data.kind === 'checkbox') {
@@ -295,16 +418,57 @@ export function model() {
               }
             }
 
-            ctx.store.set(data.path, handler.read(el));
+            let val = handler.read(el);
+            if (modifiers.trim && typeof val === 'string') {
+              val = val.trim();
+            }
+            if (modifiers.number) {
+              if (typeof val === 'string') {
+                if (val === '') {
+                  val = null;
+                } else {
+                  const n = Number(val);
+                  val = Number.isNaN(n) ? val : n;
+                }
+              }
+            }
+
+            ctx.store.set(data.path, val);
           };
 
-          el.addEventListener(handler.event, onEvent);
+          const onEvent = () => {
+            if (modifiers.debounce !== null && modifiers.debounce >= 0) {
+              if (debounceTimer) {
+                globalThis.clearTimeout(debounceTimer);
+              }
+              debounceTimer = globalThis.setTimeout(() => {
+                debounceTimer = null;
+                commit();
+              }, modifiers.debounce);
+            } else {
+              commit();
+            }
+          };
+
+          const eventName = (modifiers.lazy && (data.kind === 'text' || data.kind === 'number'))
+            ? 'change'
+            : handler.event;
+
+          el.addEventListener(eventName, onEvent);
           ctx.onCleanup(() => {
-            el.removeEventListener(handler.event, onEvent);
+            el.removeEventListener(eventName, onEvent);
+            if (debounceTimer) {
+              globalThis.clearTimeout(debounceTimer);
+              debounceTimer = null;
+            }
           });
 
           // State -> DOM subscription
           ctx.watch(data.path, (val) => {
+            if (debounceTimer) {
+              globalThis.clearTimeout(debounceTimer);
+              debounceTimer = null;
+            }
             handler.write(el, val, data.isArray || Array.isArray(val));
           });
         },
