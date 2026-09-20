@@ -243,9 +243,9 @@ export function createModuleContext(options = {}) {
      * @param {Object} [subScope]
      * @returns {number}
      */
-    transform(node, subScope) {
+    transform(node, subScope, customCleanupStack) {
       if (typeof transform === 'function') {
-        return transform(node, subScope);
+        return transform(node, subScope, customCleanupStack);
       }
       return 0;
     },

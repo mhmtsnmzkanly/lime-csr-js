@@ -187,14 +187,20 @@ function transformConditional(el, data, ctx) {
 
     resolveStatic(branchFrag, ctx.scope, ctx.store);
     ctx.transform(branchFrag, ctx.scope, branchStack);
-    ctx.link(branchFrag, ctx.scope, branchStack);
 
     if (container) {
       container.textContent = '';
       container.appendChild(branchFrag);
+      for (const child of Array.from(container.childNodes)) {
+        ctx.link(child, ctx.scope, branchStack);
+      }
     } else {
       clearBetweenAnchors(startAnchor, endAnchor);
+      const nodes = Array.from(branchFrag.childNodes);
       endAnchor.parentNode?.insertBefore(branchFrag, endAnchor);
+      for (const node of nodes) {
+        ctx.link(node, ctx.scope, branchStack);
+      }
     }
   }
 

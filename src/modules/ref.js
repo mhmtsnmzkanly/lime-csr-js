@@ -20,27 +20,42 @@ import { attr } from '../core/triggers.js';
 
 const REF_ATTR = 'data-ref';
 const EXPLICIT_ARRAY_REF_COUNTS = Symbol.for('lime.explicitArrayRefCounts');
+const REFS_STORAGE = Symbol.for('lime.refsStorage');
 
-function insertInDomOrder(arr, el) {
-  if (!arr || arr.includes(el)) return;
-  let inserted = false;
-  for (let i = 0; i < arr.length; i++) {
-    const other = arr[i];
-    if (other && typeof other.compareDocumentPosition === 'function' && typeof el.compareDocumentPosition === 'function') {
-      const pos = other.compareDocumentPosition(el);
-      // Node.DOCUMENT_POSITION_PRECEDING = 2.
-      // If other precedes el (DOCUMENT_POSITION_FOLLOWING = 4), keep going.
-      // If el precedes other (DOCUMENT_POSITION_PRECEDING = 2), insert before other.
-      if (pos & 2) {
-        arr.splice(i, 0, el);
-        inserted = true;
-        break;
-      }
+function sortInDomOrder(arr) {
+  if (!Array.isArray(arr) || arr.length <= 1) return arr;
+  return arr.sort((a, b) => {
+    if (a === b) return 0;
+    if (a?.isConnected && b?.isConnected && typeof a.compareDocumentPosition === 'function') {
+      const pos = a.compareDocumentPosition(b);
+      // Node.DOCUMENT_POSITION_FOLLOWING = 4 (b is after a -> a is first)
+      if (pos & 4) return -1;
+      // Node.DOCUMENT_POSITION_PRECEDING = 2 (b is before a -> b is first)
+      if (pos & 2) return 1;
     }
-  }
-  if (!inserted) {
-    arr.push(el);
-  }
+    return 0;
+  });
+}
+
+function bindRefProperty(refs, prop, storageKey) {
+  const desc = Object.getOwnPropertyDescriptor(refs, prop);
+  if (desc && desc.get) return;
+  Object.defineProperty(refs, prop, {
+    get() {
+      const storage = refs[REFS_STORAGE];
+      const val = storage?.get(storageKey);
+      if (Array.isArray(val)) {
+        return sortInDomOrder(val);
+      }
+      return val;
+    },
+    set(val) {
+      const storage = (refs[REFS_STORAGE] ??= new Map());
+      storage.set(storageKey, val);
+    },
+    enumerable: true,
+    configurable: true,
+  });
 }
 
 /**
@@ -70,62 +85,68 @@ export function ref() {
           const refs = ctx.refs;
           if (!refs) return;
 
+          const storage = (refs[REFS_STORAGE] ??= new Map());
           const explicitKeyCount = (refs[EXPLICIT_ARRAY_REF_COUNTS] ??= new Map());
           const isArrayRef = name.endsWith('[]');
           const key = isArrayRef ? name.slice(0, -2) : name;
 
+          bindRefProperty(refs, key, key);
           if (isArrayRef) {
+            bindRefProperty(refs, name, key);
             explicitKeyCount.set(key, (explicitKeyCount.get(key) || 0) + 1);
 
-            if (!Array.isArray(refs[key])) {
-              const existing = refs[key] !== undefined ? [refs[key]] : [];
-              refs[key] = existing;
+            let arr = storage.get(key);
+            if (!Array.isArray(arr)) {
+              arr = arr !== undefined ? [arr] : [];
+              storage.set(key, arr);
             }
-            insertInDomOrder(refs[key], el);
-            refs[name] = refs[key];
+            if (!arr.includes(el)) {
+              arr.push(el);
+            }
 
             ctx.onCleanup(() => {
               const count = (explicitKeyCount.get(key) || 1) - 1;
               if (count <= 0) explicitKeyCount.delete(key);
               else explicitKeyCount.set(key, count);
 
-              const arr = refs[key];
-              if (Array.isArray(arr)) {
-                const idx = arr.indexOf(el);
-                if (idx !== -1) arr.splice(idx, 1);
-                if (arr.length === 0) {
+              const currentArr = storage.get(key);
+              if (Array.isArray(currentArr)) {
+                const idx = currentArr.indexOf(el);
+                if (idx !== -1) currentArr.splice(idx, 1);
+                if (currentArr.length === 0) {
+                  storage.delete(key);
                   delete refs[key];
                   delete refs[name];
-                } else if (arr.length === 1 && !explicitKeyCount.has(key)) {
-                  refs[key] = arr[0];
+                } else if (currentArr.length === 1 && !explicitKeyCount.has(key)) {
+                  storage.set(key, currentArr[0]);
                   delete refs[name];
                 }
               }
             });
           } else {
-            const previous = refs[key];
+            let previous = storage.get(key);
             if (previous === undefined) {
-              refs[key] = el;
+              storage.set(key, el);
             } else if (Array.isArray(previous)) {
-              insertInDomOrder(previous, el);
+              if (!previous.includes(el)) previous.push(el);
             } else if (previous !== el) {
-              const arr = [previous];
-              insertInDomOrder(arr, el);
-              refs[key] = arr;
+              storage.set(key, [previous, el]);
             }
 
             ctx.onCleanup(() => {
-              const current = refs[key];
+              const current = storage.get(key);
               if (Array.isArray(current)) {
                 const idx = current.indexOf(el);
                 if (idx !== -1) current.splice(idx, 1);
                 if (current.length === 1 && !explicitKeyCount.has(key)) {
-                  refs[key] = current[0];
+                  storage.set(key, current[0]);
                 } else if (current.length === 0) {
+                  storage.delete(key);
                   delete refs[key];
                   delete refs[`${key}[]`];
                 }
               } else if (current === el) {
+                storage.delete(key);
                 delete refs[key];
               }
             });
