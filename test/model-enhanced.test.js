@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import { createEngine } from '../src/core/index.js';
 import { model } from '../src/modules/model.js';
 import { createStore } from '../src/store.js';
+import { setDevMode, subscribeDiagnostics } from '../src/errors.js';
 
 function createDom(html = '') {
   const dom = new JSDOM(`<!doctype html><html><head></head><body>${html}</body></html>`, {
@@ -481,6 +482,191 @@ test('model: contenteditable with .lazy modifier updates on blur', () => {
   editor.dispatchEvent(new dom.window.Event('blur', { bubbles: true }));
   assert.equal(store.get('doc'), 'Drafting...'); // updated on blur
 });
+
+// ── MILESTONE 5: FORM-LEVEL GROUP BINDING (data-model-group) ────────────────
+
+test('model group: binds child inputs with name="prop" to prefix.prop', () => {
+  const dom = createDom(`
+    <div id="root">
+      <form data-model-group="user">
+        <input name="firstName" type="text">
+        <input name="age" type="number">
+        <textarea name="bio"></textarea>
+      </form>
+    </div>
+  `);
+  const store = createStore({ user: { firstName: 'Alice', age: 30, bio: 'Hello' } });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const firstName = root.querySelector('input[name="firstName"]');
+  const age = root.querySelector('input[name="age"]');
+  const bio = root.querySelector('textarea[name="bio"]');
+
+  // Store -> DOM
+  assert.equal(firstName.value, 'Alice');
+  assert.equal(age.value, '30');
+  assert.equal(bio.value, 'Hello');
+
+  // DOM -> Store
+  firstName.value = 'Bob';
+  firstName.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('user.firstName'), 'Bob');
+
+  age.value = '35';
+  age.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('user.age'), 35);
+});
+
+test('model group: initial DOM fallback for inputs in a group', () => {
+  const dom = createDom(`
+    <div id="root">
+      <form data-model-group="profile">
+        <input name="username" type="text" value="DefaultUser">
+        <input name="score" type="number" value="100">
+        <input name="subscribed" type="checkbox" checked>
+        <select name="tier">
+          <option value="basic">Basic</option>
+          <option value="pro" selected>Pro</option>
+        </select>
+      </form>
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  assert.equal(store.get('profile.username'), 'DefaultUser');
+  assert.equal(store.get('profile.score'), 100);
+  assert.equal(store.get('profile.subscribed'), true);
+  assert.equal(store.get('profile.tier'), 'pro');
+});
+
+test('model group: checkbox arrays and radios within group', () => {
+  const dom = createDom(`
+    <div id="root">
+      <form data-model-group="settings">
+        <input type="checkbox" name="tags[]" value="frontend" checked>
+        <input type="checkbox" name="tags[]" value="backend" checked>
+        <input type="checkbox" name="tags[]" value="devops">
+        <input type="radio" name="theme" value="light">
+        <input type="radio" name="theme" value="dark" checked>
+      </form>
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  assert.deepEqual(store.get('settings.tags'), ['frontend', 'backend']);
+  assert.equal(store.get('settings.theme'), 'dark');
+
+  // Toggle checkbox
+  const devops = root.querySelectorAll('input[type="checkbox"]')[2];
+  devops.checked = true;
+  devops.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.deepEqual(store.get('settings.tags'), ['frontend', 'backend', 'devops']);
+});
+
+test('model group: explicit data-model on child overrides group prefix', () => {
+  const dom = createDom(`
+    <div id="root">
+      <form data-model-group="account">
+        <input name="email" value="account@test.com">
+        <input name="override" data-model="globalSetting" value="customVal">
+      </form>
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  assert.equal(store.get('account.email'), 'account@test.com');
+  assert.equal(store.get('globalSetting'), 'customVal');
+  assert.equal(store.get('account.override'), undefined);
+});
+
+test('model group: nested groups maintain independent scoping', () => {
+  const dom = createDom(`
+    <div id="root">
+      <form data-model-group="company">
+        <input name="name" value="Acme Corp">
+        <fieldset data-model-group="address">
+          <input name="city" value="Metropolis">
+        </fieldset>
+      </form>
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  assert.equal(store.get('company.name'), 'Acme Corp');
+  assert.equal(store.get('address.city'), 'Metropolis');
+  assert.equal(store.get('company.city'), undefined);
+});
+
+test('model group: companion modifiers on group inputs (trim, number)', () => {
+  const dom = createDom(`
+    <div id="root">
+      <form data-model-group="item">
+        <input name="label" data-model-trim>
+        <input name="count" data-model-number>
+      </form>
+    </div>
+  `);
+  const store = createStore({ item: {} });
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  const label = root.querySelector('input[name="label"]');
+  const count = root.querySelector('input[name="count"]');
+
+  label.value = '   Product Name   ';
+  label.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('item.label'), 'Product Name');
+
+  count.value = '42';
+  count.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  assert.equal(store.get('item.count'), 42);
+});
+
+test('model group: empty prefix emits MODEL_GROUP_MISSING_PREFIX diagnostic', () => {
+  const diagnostics = [];
+  setDevMode(true);
+  const unsub = subscribeDiagnostics((d) => diagnostics.push(d));
+
+  const dom = createDom(`
+    <div id="root">
+      <form data-model-group="">
+        <input name="test">
+      </form>
+    </div>
+  `);
+  const store = createStore({});
+  const engine = createModelEngine();
+  const root = dom.window.document.getElementById('root');
+
+  engine.mount({ target: root, store, document: dom.window.document });
+
+  unsub();
+  setDevMode(false);
+
+  assert.ok(diagnostics.some((d) => d.code === 'MODEL_GROUP_MISSING_PREFIX'));
+});
+
 
 
 

@@ -20,9 +20,10 @@
  *   - Cleanups: event listener and watch subscription auto-registered via ModuleContext.
  */
 
-import { pattern } from '../core/triggers.js';
+import { attr, pattern } from '../core/triggers.js';
 
 const MODEL_ATTR = 'data-model';
+const GROUP_ATTR = 'data-model-group';
 const INDEXED_PATH_RE = /(?:^|\.)\d+(?:\.|$)/;
 
 /**
@@ -316,6 +317,173 @@ function parseModifiers(el, primaryAttrName) {
   return modifiers;
 }
 
+function hasExplicitModel(el) {
+  if (el.hasAttribute(MODEL_ATTR)) {
+    const val = el.getAttribute(MODEL_ATTR);
+    return val && val.trim().length > 0;
+  }
+  const attrs = el.attributes;
+  if (!attrs) return false;
+  for (let i = 0; i < attrs.length; i++) {
+    const name = attrs[i].name;
+    if (/^data-model[.-]/.test(name) && !name.startsWith(GROUP_ATTR) && attrs[i].value.trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Binds a single control element to a store path.
+ *
+ * @param {Element} el
+ * @param {{ path: string, kind: string, isArray?: boolean, modifiers?: Object }} data
+ * @param {import('../core/context.js').ModuleContext} ctx
+ */
+function bindModelControl(el, data, ctx) {
+  const handler = KIND_HANDLERS[data.kind];
+  const modifiers = data.modifiers || { lazy: false, trim: false, number: false, text: false, debounce: null };
+
+  // Checkbox array handling vs standard handling
+  const isCheckboxArray = data.kind === 'checkbox' && (data.isArray || Array.isArray(ctx.store.get(data.path)));
+
+  if (isCheckboxArray) {
+    const storeVal = ctx.store.get(data.path);
+    const isChecked = el.hasAttribute('checked') || el.defaultChecked || el.checked;
+
+    if (storeVal === undefined) {
+      markDomFallback(ctx.store, data.path);
+      if (isChecked) {
+        ctx.store.set(data.path, [el.value]);
+        el.checked = true;
+      } else {
+        ctx.store.set(data.path, []);
+        el.checked = false;
+      }
+    } else if (isDomFallback(ctx.store, data.path)) {
+      if (isChecked) {
+        const arr = Array.isArray(storeVal) ? [...storeVal] : [];
+        if (!arr.map(String).includes(el.value)) {
+          arr.push(el.value);
+          ctx.store.set(data.path, arr);
+        }
+        el.checked = true;
+      } else {
+        el.checked = false;
+      }
+    } else {
+      handler.write(el, storeVal, true);
+    }
+  } else {
+    // Initial state -> DOM or DOM -> Store fallback
+    const storeVal = ctx.store.get(data.path);
+    if (storeVal !== undefined) {
+      handler.write(el, storeVal, false, modifiers);
+    } else {
+      let initialDom = getInitialDomValue(el, data.kind);
+      if (initialDom !== undefined) {
+        if (data.kind === 'contenteditable' && modifiers.text) {
+          initialDom = el.textContent || '';
+        }
+        if (modifiers.trim && typeof initialDom === 'string') {
+          initialDom = initialDom.trim();
+        }
+        if (modifiers.number && typeof initialDom === 'string') {
+          if (initialDom === '') {
+            initialDom = null;
+          } else {
+            const n = Number(initialDom);
+            initialDom = Number.isNaN(n) ? initialDom : n;
+          }
+        }
+        ctx.store.set(data.path, initialDom);
+        handler.write(el, initialDom, false, modifiers);
+      } else {
+        handler.write(el, undefined, false, modifiers);
+      }
+    }
+  }
+
+  let debounceTimer = null;
+
+  // DOM -> State event listener
+  const commit = () => {
+    if (data.kind === 'radio' && !el.checked) return;
+
+    if (data.kind === 'checkbox') {
+      const currentVal = ctx.store.get(data.path);
+      const inArrayMode = data.isArray || Array.isArray(currentVal);
+      if (inArrayMode) {
+        const arr = Array.isArray(currentVal) ? [...currentVal] : [];
+        const val = el.value;
+        const idx = arr.map(String).indexOf(val);
+        if (el.checked) {
+          if (idx === -1) arr.push(val);
+        } else {
+          if (idx !== -1) arr.splice(idx, 1);
+        }
+        ctx.store.set(data.path, arr);
+        return;
+      }
+    }
+
+    let val = data.kind === 'contenteditable'
+      ? handler.read(el, modifiers)
+      : handler.read(el);
+    if (modifiers.trim && typeof val === 'string') {
+      val = val.trim();
+    }
+    if (modifiers.number) {
+      if (typeof val === 'string') {
+        if (val === '') {
+          val = null;
+        } else {
+          const n = Number(val);
+          val = Number.isNaN(n) ? val : n;
+        }
+      }
+    }
+
+    ctx.store.set(data.path, val);
+  };
+
+  const onEvent = () => {
+    if (modifiers.debounce !== null && modifiers.debounce >= 0) {
+      if (debounceTimer) {
+        globalThis.clearTimeout(debounceTimer);
+      }
+      debounceTimer = globalThis.setTimeout(() => {
+        debounceTimer = null;
+        commit();
+      }, modifiers.debounce);
+    } else {
+      commit();
+    }
+  };
+
+  const eventName = modifiers.lazy
+    ? (data.kind === 'contenteditable' ? 'blur' : 'change')
+    : handler.event;
+
+  el.addEventListener(eventName, onEvent);
+  ctx.onCleanup(() => {
+    el.removeEventListener(eventName, onEvent);
+    if (debounceTimer) {
+      globalThis.clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+  });
+
+  // State -> DOM subscription
+  ctx.watch(data.path, (val) => {
+    if (debounceTimer) {
+      globalThis.clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    handler.write(el, val, data.isArray || Array.isArray(val), modifiers);
+  });
+}
+
 /**
  * Creates the standard `model` module definition.
  *
@@ -329,7 +497,7 @@ export function model() {
         phase: 'link',
 
         match(element, attrName) {
-          if (attrName === 'data-model-group' || attrName.startsWith('data-model-group')) {
+          if (attrName === GROUP_ATTR || attrName.startsWith(GROUP_ATTR)) {
             return false;
           }
           return attrName === getPrimaryModelAttribute(element);
@@ -371,147 +539,61 @@ export function model() {
             return;
           }
 
-          const handler = KIND_HANDLERS[data.kind];
-          const modifiers = data.modifiers || { lazy: false, trim: false, number: false, debounce: null };
+          bindModelControl(el, data, ctx);
+        },
+      }),
 
-          // Checkbox array handling vs standard handling
-          const isCheckboxArray = data.kind === 'checkbox' && (data.isArray || Array.isArray(ctx.store.get(data.path)));
+      attr(GROUP_ATTR, {
+        phase: 'link',
 
-          if (isCheckboxArray) {
-            const storeVal = ctx.store.get(data.path);
-            const isChecked = el.hasAttribute('checked') || el.defaultChecked || el.checked;
+        read(el, ctx) {
+          const prefix = el.getAttribute(GROUP_ATTR);
+          if (!prefix || !prefix.trim()) {
+            ctx.error('MODEL_GROUP_MISSING_PREFIX', el);
+            return null;
+          }
+          const trimmedPrefix = prefix.trim();
+          if (INDEXED_PATH_RE.test(trimmedPrefix)) {
+            ctx.error('INDEXED_MODEL_PATH', { path: trimmedPrefix }, el);
+          }
+          return { prefix: trimmedPrefix };
+        },
 
-            if (storeVal === undefined) {
-              markDomFallback(ctx.store, data.path);
-              if (isChecked) {
-                ctx.store.set(data.path, [el.value]);
-                el.checked = true;
-              } else {
-                ctx.store.set(data.path, []);
-                el.checked = false;
-              }
-            } else if (isDomFallback(ctx.store, data.path)) {
-              if (isChecked) {
-                const arr = Array.isArray(storeVal) ? [...storeVal] : [];
-                if (!arr.map(String).includes(el.value)) {
-                  arr.push(el.value);
-                  ctx.store.set(data.path, arr);
-                }
-                el.checked = true;
-              } else {
-                el.checked = false;
-              }
-            } else {
-              handler.write(el, storeVal, true);
-            }
-          } else {
-            // Initial state -> DOM or DOM -> Store fallback
-            const storeVal = ctx.store.get(data.path);
-            if (storeVal !== undefined) {
-              handler.write(el, storeVal, false, modifiers);
-            } else {
-              let initialDom = getInitialDomValue(el, data.kind);
-              if (initialDom !== undefined) {
-                if (data.kind === 'contenteditable' && modifiers.text) {
-                  initialDom = el.textContent || '';
-                }
-                if (modifiers.trim && typeof initialDom === 'string') {
-                  initialDom = initialDom.trim();
-                }
-                if (modifiers.number && typeof initialDom === 'string') {
-                  if (initialDom === '') {
-                    initialDom = null;
-                  } else {
-                    const n = Number(initialDom);
-                    initialDom = Number.isNaN(n) ? initialDom : n;
-                  }
-                }
-                ctx.store.set(data.path, initialDom);
-                handler.write(el, initialDom, false, modifiers);
-              } else {
-                handler.write(el, undefined, false, modifiers);
-              }
-            }
+        setup(el, data, ctx) {
+          if (!data || !data.prefix) return;
+
+          if (!ctx.store) {
+            ctx.warn('MODULE_STORE_REQUIRED', `Module "model" requires a store to bind group "${data.prefix}".`, el);
+            return;
           }
 
-          let debounceTimer = null;
+          const candidates = el.querySelectorAll('input[name], select[name], textarea[name], [contenteditable][name]');
 
-          // DOM -> State event listener
-          const commit = () => {
-            if (data.kind === 'radio' && !el.checked) return;
+          for (let i = 0; i < candidates.length; i++) {
+            const child = candidates[i];
+            if (child.closest?.(`[${GROUP_ATTR}]`) !== el) continue;
+            if (hasExplicitModel(child)) continue;
 
-            if (data.kind === 'checkbox') {
-              const currentVal = ctx.store.get(data.path);
-              const inArrayMode = data.isArray || Array.isArray(currentVal);
-              if (inArrayMode) {
-                const arr = Array.isArray(currentVal) ? [...currentVal] : [];
-                const val = el.value;
-                const idx = arr.map(String).indexOf(val);
-                if (el.checked) {
-                  if (idx === -1) arr.push(val);
-                } else {
-                  if (idx !== -1) arr.splice(idx, 1);
-                }
-                ctx.store.set(data.path, arr);
-                return;
-              }
+            const rawName = child.getAttribute('name');
+            if (!rawName || !rawName.trim()) continue;
+
+            let trimmedName = rawName.trim();
+            const isArray = trimmedName.endsWith('[]');
+            if (isArray) {
+              trimmedName = trimmedName.slice(0, -2).trim();
+              if (!trimmedName) continue;
             }
 
-            let val = data.kind === 'contenteditable'
-              ? handler.read(el, modifiers)
-              : handler.read(el);
-            if (modifiers.trim && typeof val === 'string') {
-              val = val.trim();
-            }
-            if (modifiers.number) {
-              if (typeof val === 'string') {
-                if (val === '') {
-                  val = null;
-                } else {
-                  const n = Number(val);
-                  val = Number.isNaN(n) ? val : n;
-                }
-              }
+            const path = `${data.prefix}.${trimmedName}`;
+            if (INDEXED_PATH_RE.test(path)) {
+              ctx.error('INDEXED_MODEL_PATH', { path }, child);
             }
 
-            ctx.store.set(data.path, val);
-          };
+            const kind = classify(child);
+            const modifiers = parseModifiers(child, null);
 
-          const onEvent = () => {
-            if (modifiers.debounce !== null && modifiers.debounce >= 0) {
-              if (debounceTimer) {
-                globalThis.clearTimeout(debounceTimer);
-              }
-              debounceTimer = globalThis.setTimeout(() => {
-                debounceTimer = null;
-                commit();
-              }, modifiers.debounce);
-            } else {
-              commit();
-            }
-          };
-
-          const eventName = modifiers.lazy
-            ? (data.kind === 'contenteditable' ? 'blur' : 'change')
-            : handler.event;
-
-          el.addEventListener(eventName, onEvent);
-          ctx.onCleanup(() => {
-            el.removeEventListener(eventName, onEvent);
-            if (debounceTimer) {
-              globalThis.clearTimeout(debounceTimer);
-              debounceTimer = null;
-            }
-          });
-
-          // State -> DOM subscription
-          ctx.watch(data.path, (val) => {
-            if (debounceTimer) {
-              globalThis.clearTimeout(debounceTimer);
-              debounceTimer = null;
-            }
-            handler.write(el, val, data.isArray || Array.isArray(val), modifiers);
-          });
+            bindModelControl(child, { path, kind, isArray, modifiers }, ctx);
+          }
         },
       }),
     ],
