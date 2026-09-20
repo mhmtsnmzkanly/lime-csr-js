@@ -247,13 +247,19 @@ export function createEngine(options = {}) {
     validateDiagnosticCallbacks(options);
   }
 
-  function installMountDiagnostics(options, target, cleanupStack) {
+  function installMountDiagnostics(options, target, cleanupStack, compileFragmentRef = null) {
     if (!options.onDiagnostic && !options.onError) return;
 
     const unsubscribe = subscribeDiagnostics((diagnostic) => {
       const context = diagnostic.context;
       const belongsToMount = context === target
-        || (context?.nodeType != null && target.contains(context));
+        || (context?.nodeType != null && (
+          target.contains(context)
+          || (compileFragmentRef?.current && (
+            compileFragmentRef.current === context
+            || (typeof compileFragmentRef.current.contains === 'function' && compileFragmentRef.current.contains(context))
+          ))
+        ));
       if (!belongsToMount) return;
       if (options.onDiagnostic) options.onDiagnostic(diagnostic);
       if (diagnostic.severity === 'error' && options.onError) {
@@ -394,7 +400,8 @@ export function createEngine(options = {}) {
     const cleanupStack = createCleanupStack();
     const refs = Object.create(null);
 
-    installMountDiagnostics(mountOptions, resolvedTarget, cleanupStack);
+    const compileFragmentRef = { current: fragment };
+    installMountDiagnostics(mountOptions, resolvedTarget, cleanupStack, compileFragmentRef);
 
     // Mount Hook API provided to module lifecycle hooks
     const hookApi = Object.freeze({
@@ -455,6 +462,7 @@ export function createEngine(options = {}) {
       runLink(fragment, router, contextOptions);
       resolvedTarget.textContent = '';
       resolvedTarget.appendChild(fragment);
+      compileFragmentRef.current = null;
     } else {
       // In-place mounting on existing target children
       runTransform(resolvedTarget, router, contextOptions);
