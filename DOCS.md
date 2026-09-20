@@ -1,6 +1,6 @@
 # lime-csr-js — Technical Reference Manual
 
-Version: **0.5.0**
+Version: **0.6.0**
 Architecture: **Unprivileged Micro-Kernel + Discrete Modules**  
 Status: **Production Release**
 
@@ -230,7 +230,7 @@ Use `dist/index.min.js` to get the complete framework with all 7 standard module
 ```html
 <script type="module">
   // Via jsDelivr:
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.5.0/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.0/dist/index.min.js';
 
   // Or via unpkg:
 </script>
@@ -241,10 +241,10 @@ If your application only needs a subset of features (e.g., only reactive text bi
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.5.0/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.5.0/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.5.0/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.5.0/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.0/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.0/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.0/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.0/dist/modules/events.min.js';
 
   // Create an engine configured strictly with text and events
   const engine = createEngine({
@@ -650,64 +650,112 @@ export const autoResizeModule = defineModule({
 
 ## 8. Trigger API
 
-Triggers specify how elements are matched and routed to module handlers.
+Triggers specify how elements are matched and routed to module handlers. All triggers support declarative contracts for required/optional attributes, type coercion, exclusion rules, and zero-boilerplate attribute harvesting.
 
-### 8.1 `attr(name, hooks)`
+### 8.1 `attr(name, hooksOrOptions)`
 
-Matches an exact attribute name:
+Matches an exact attribute name. Can accept companion attribute options:
 
 ```js
 import { attr } from 'lime-csr-js/core';
 
+// Simple exact attribute trigger:
 attr('data-highlight', {
   phase: 'link',
   setup(el, data, ctx) {
     el.style.backgroundColor = 'yellow';
   },
 });
+
+// Attribute trigger with companion requirements & harvesting:
+attr('data-fetch', {
+  phase: 'link',
+  required: ['data-as'],
+  optional: ['data-lazy'],
+  types: { 'data-lazy': Boolean },
+  setup(el, data, ctx) {
+    // data automatically receives harvested attributes:
+    // data['data-as'], data['data-lazy']
+  },
+});
 ```
 
 ### 8.2 `attrs(options, hooks)`
 
-Matches a group of attributes. Requires all `required` attributes to be present:
+Matches a group of attributes. Requires all `required` attributes to be present on the element:
 
 ```js
 import { attrs } from 'lime-csr-js/core';
 
 attrs({
   required: ['data-dialog', 'data-modal'],
-  optional: ['data-backdrop'],
+  optional: ['data-backdrop', 'data-timeout'],
+  types: { 'data-timeout': Number },
   phase: 'link',
 }, {
-  read(el, ctx) {
-    return {
-      backdrop: el.getAttribute('data-backdrop') !== 'false',
-    };
-  },
   setup(el, data, ctx) {
     // Guaranteed that both data-dialog and data-modal exist
+    // data['data-timeout'] is coerced to Number
   },
 });
 ```
 
 - **Anchor Position:** A multi-attribute trigger produces **exactly one match** per element and is anchored to the DOM attribute index of its first required attribute.
 
-### 8.3 `tag(tagName, hooks)`
+### 8.3 `tag(tagName, hooksOrOptions)`
 
-Matches an exact HTML tag name (automatically normalized to uppercase):
+Matches an exact HTML tag name (automatically normalized to uppercase).
 
 ```js
 import { tag } from 'lime-csr-js/core';
 
 tag('CUSTOM-CARD', {
   phase: 'transform',
+  required: ['title'],
+  optional: ['elevation', 'interactive'],
+  types: {
+    elevation: Number,
+    interactive: Boolean,
+  },
   setup(el, data, ctx) {
-    // Replace custom tag with component markup
+    // data.elevation is a number, data.interactive is a boolean
   },
 });
 ```
 
-### 8.4 `pattern(prefixOrRegex, hooks)`
+#### Template Directive Aliases (`templateDirective`)
+When authoring structural custom tags (e.g. `<for>` or `<if>`), browsers may foster-parent custom tags placed directly inside table bodies or select elements. `templateDirective` allows a single `tag()` trigger to automatically match both `<custom-tag>` and `<template directive>` without duplicating route boilerplate:
+
+```js
+tag('FOR', {
+  templateDirective: 'data-for',
+  required: ['each', 'as'],
+  optional: ['index', 'key'],
+  setup(el, data, ctx) {
+    // Routes both <for each="..." as="..."> and <template data-for each="..." as="...">
+  },
+});
+```
+
+#### Native Custom Element Bridge (`customElement`)
+Tags containing a hyphen (`-`) are automatically registered with the browser's native Custom Elements registry (`customElements.define`) at mount/render time (or explicitly requested via `customElement: true`):
+
+```js
+tag('STATUS-BADGE', {
+  phase: 'link',
+  observedAttributes: ['status'],
+  setup(el, data, ctx) {
+    el.textContent = el.getAttribute('status');
+  },
+  update(el, change, ctx) {
+    // change: { name: 'status', oldValue: 'pending', newValue: 'resolved' }
+    el.textContent = change.newValue;
+  },
+});
+```
+- Direct DOM mutations (`el.setAttribute('status', 'resolved')`) invoke the trigger's `update()` hook via the native `attributeChangedCallback`.
+
+### 8.4 `pattern(prefixOrRegex, hooksOrOptions)`
 
 Matches attributes starting with a prefix string or satisfying a regular expression:
 
@@ -722,14 +770,30 @@ pattern('data-on-', {
   },
 });
 
-// Regular expression:
-pattern(/^x-bind:/, {
+// Pattern with declarative exclusion list:
+pattern(/^data-model(?:[.-].+)?$/, {
   phase: 'link',
-  setup(el, data, ctx) { /* ... */ },
+  exclude: ['data-model-group', /^data-model-group-/],
+  setup(el, data, ctx) {
+    // Matches data-model, data-model.number, data-model-trim
+    // But ignores data-model-group or data-model-group-*
+  },
 });
 ```
 
-### 8.5 Matching Semantics
+### 8.5 Declarative Type Coercion & Zero-Boilerplate Harvesting
+
+When `required`, `optional`, or `types` are defined on a trigger:
+1. **Attribute Harvesting (`ctx.attributes`):** The router extracts the declared attributes into a frozen dictionary and attaches it to `ctx.attributes`.
+2. **Default `data` in `setup(el, data, ctx)`:** If a trigger does not provide a `read(el, ctx)` hook, the router automatically passes `ctx.attributes` as the second argument (`data`) to `setup()`.
+3. **Supported Types:**
+   - `Number`: Coerced via `Number(val)`. Returns `null` if empty or `NaN`.
+   - `Boolean`: `true` if attribute is present and value is not `"false"`.
+   - `Array`: Splits comma-separated values into trimmed strings (`"a, b, c"` -> `['a', 'b', 'c']`).
+   - `Object`: Parses JSON string (`JSON.parse(val)`). Returns `null` on syntax error.
+   - `Custom Function`: Invoked with string value: `(val) => transform(val)`.
+
+### 8.6 Matching Semantics
 
 - **Attribute Existence:** An attribute matches if `el.hasAttribute(name)` is true. Empty attributes (e.g. `<div data-active></div>`) match successfully.
 - **Custom `match(el)`:** Optional filter predicate. If provided, the route matches only when `match(el)` returns truthy.
@@ -810,10 +874,13 @@ Every element and subtree has a unified cleanup stack:
 | `ctx.window` | `Window \| null` | Owning DOM Window. |
 | `ctx.matchedAttribute` | `string \| null` | Exact name of the matched attribute (for pattern/attr triggers). |
 | `ctx.attributeName` | `string \| null` | Alias for `ctx.matchedAttribute`. |
+| `ctx.attributes` | `Readonly<Object> \| null` | Harvested required & optional attributes with type coercion applied. |
 | `ctx.handlers` | `Object \| null` | Handler dictionary passed to `mount()` or `render()`. |
 | `ctx.options` | `Object \| null` | Full options object passed to `mount()` or `render()`. |
 | `ctx.refs` | `Object` | Shared element references map for the active mount/render runtime. |
 | `ctx.target` | `Element \| null` | Mount container target element. |
+| `ctx.emit(name, detail?, init?)` | `Function` | Dispatches a bubbling CustomEvent from `ctx.element`. |
+| `ctx.dispatch(name, detail?, init?)` | `Function` | Alias for `ctx.emit`. |
 | `ctx.onCleanup(fn)` | `(fn) => fn` | Registers a teardown function on the unified LIFO cleanup stack. |
 | `ctx.watch(path, cb, opts?)` | `(path, cb) => unwatch` | Subscribes to store path; auto-registers unwatch on cleanup stack. |
 | `ctx.afterConnect(fn)` | `(fn) => void` | Schedules a microtask to run after the element is connected to the DOM document. |

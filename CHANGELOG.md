@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2026-09-20
+
+### Added
+- **Declarative Required & Optional Attribute Validation (`src/core/triggers.js`, `src/core/router.js`)**:
+  - `tag()`, `attr()`, `attrs()`, and `pattern()` triggers declare `required: string[]` and `optional: string[]`.
+  - Elements lacking declared required attributes are rejected at routing time with zero overhead.
+- **Zero-Boilerplate Attribute Harvesting & Type Coercion (`src/core/router.js`, `src/core/context.js`, `src/core/lifecycle.js`)**:
+  - Automatically harvests declared attributes into an immutable dictionary on `ctx.attributes`.
+  - When triggers omit `read(el, ctx)`, `setup(el, data, ctx)` automatically receives `ctx.attributes` as its default `data` payload.
+  - Declarative type coercion via `types: { count: Number, active: Boolean, tags: Array, config: Object }` supporting standard primitives, JSON parsing, and custom transformation functions.
+- **Template Directive Alias Routing (`src/core/triggers.js`, `src/core/router.js`)**:
+  - `tag()` triggers support `templateDirective: 'data-for'`, automatically routing `<template data-for>` with identical semantics, eliminating duplicate trigger boilerplate in modules.
+- **Declarative Exclusion Patterns (`src/core/triggers.js`, `src/core/router.js`)**:
+  - Added `exclude: Array<string | RegExp>` on `pattern` and `attr` triggers to exclude companion or reserved attributes (e.g. `data-model-group-*`).
+- **Native Custom Element Bridge (`src/core/router.js`, `src/core/engine.js`)**:
+  - Tags with hyphens automatically register on `customElements.define` (or explicitly with `customElement: true`).
+  - Supports `observedAttributes: string[]` where native `attributeChangedCallback` routes attribute mutations directly to the trigger's `update(el, { name, oldValue, newValue }, ctx)` hook.
+  - Engine automatically registers and upgrades custom elements at mount and render time.
+- **Direct Event Dispatching API (`src/core/context.js`)**:
+  - Added `ctx.emit(eventName, detail, eventInit)` and its alias `ctx.dispatch` for idiomatic DOM event communication without boilerplate `CustomEvent` instantiation.
+
+### Changed
+- **Consolidated Standard Loops Module (`src/modules/loops.js`)**: Refactored to a single unified `tag('FOR', { templateDirective: 'data-for', required: ['each', 'as'], optional: ['index', 'key'], setup })` trigger with memory-harvested attributes.
+- **Consolidated Standard Conditionals Module (`src/modules/conditionals.js`)**: Refactored to a single unified `tag('IF', { templateDirective: 'data-if', required: ['when'], optional: [...], setup })` trigger.
+- **Refined Form Model Module (`src/modules/model.js`)**: Added declarative `exclude` for model group attributes.
+
 ## [0.5.0] - 2026-09-19
 
 ### Added

@@ -1,6 +1,6 @@
 # lime-csr-js — Comprehensive LLM Reference Manual
 
-Version: 0.5.0
+Version: 0.6.0
 Architecture: Unprivileged Micro-Kernel + Discrete Modules
 Package: lime-csr-js
 Platform: Browser-First Client-Side Rendering (ESM)
@@ -107,15 +107,21 @@ const myModule = defineModule({
   name: 'module-name', // Regex: /^[a-z][a-z0-9-]*$/
   version: '1.0.0',    // Optional
   triggers: [          // Non-empty array of triggers
-    attr('data-attr', {
+    tag('CUSTOM-ELEMENT', {
       phase: 'link',   // 'transform' | 'link'
+      required: ['src'], // Declarative required attributes
+      optional: ['count', 'title'], // Harvested optional attributes
+      types: { count: Number }, // Type coercion (Number, Boolean, Array, Object, custom fn)
+      templateDirective: 'data-custom', // Auto-routes companion <template data-custom>
+      customElement: true, // Native Custom Elements bridge
+      observedAttributes: ['count'], // attributeChangedCallback routes to update()
       match(el) { return true; }, // Optional predicate
-      read(el, ctx) { return { config: el.getAttribute('data-attr') }; }, // Pure read
       setup(el, data, ctx) {
-        // Returns cleanup function or uses ctx.onCleanup()
+        // data defaults to ctx.attributes if read() is omitted
+        ctx.emit('ready', { count: data.count });
         return () => {};
       },
-      update(el, arg, ctx) {}, // Explicit update hook
+      update(el, change, ctx) {}, // Explicit update hook (receives { name, oldValue, newValue })
       cleanup(el, ctx) {},     // Explicit teardown
     }),
   ],
@@ -133,10 +139,13 @@ ModuleContext (`ctx`) Specification:
 - `ctx.document`: Owner DOM Document.
 - `ctx.window`: Owner DOM Window.
 - `ctx.matchedAttribute`: String name of matched attribute.
+- `ctx.attributes`: Frozen object containing harvested required and optional attributes with types applied.
 - `ctx.handlers`: Handlers dictionary passed to mount/render.
 - `ctx.options`: Full options object passed to mount/render.
 - `ctx.refs`: Shared element references map for active mount/render runtime.
 - `ctx.target`: Mount target container.
+- `ctx.emit(eventName: string, detail?: *, eventInit?: CustomEventInit)`: Dispatches bubbling CustomEvent from ctx.element.
+- `ctx.dispatch(eventName: string, detail?: *, eventInit?: CustomEventInit)`: Alias for ctx.emit.
 - `ctx.onCleanup(fn: () => void)`: Registers cleanup callback on unified LIFO stack.
 - `ctx.watch(path: string, cb: (val, prev, path) => void, opts?: { immediate?: boolean })`: Subscribes to store path. Auto-registers cleanup on unmount.
 - `ctx.afterConnect(fn: () => void)`: Enqueues microtask executed after element connects to DOM.
