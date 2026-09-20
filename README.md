@@ -26,6 +26,11 @@ Zero compilation. Zero virtual DOM. Zero `eval` or `new Function`. Strict Conten
 npm install lime-csr-js
 ```
 
+For development, `npm run verify` runs lint, type checks, tests, and the build.
+`npm run test:csp` checks visibility under strict CSP in real Chromium/Chrome
+after building. It requires an installed browser (`chromium`, `chromium-browser`,
+or `google-chrome`), or an explicit `CHROMIUM_BIN` executable path.
+
 ### Subpath Exports
 
 `lime-csr-js@0.6.1` provides clean, dedicated subpaths:

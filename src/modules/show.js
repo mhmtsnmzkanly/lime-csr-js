@@ -13,8 +13,7 @@
  */
 
 import { attr } from '../core/triggers.js';
-import { resolveCanonicalPath } from '../core/scope.js';
-import { getByPath } from '../store.js';
+import { readScopePath, watchScopePath } from '../core/scope.js';
 
 const SHOW_ATTR = 'data-show';
 const SHOW_STYLE_ID = 'lime-csr-data-show-style';
@@ -85,26 +84,10 @@ export function show() {
           // Multi-document style isolation: inject style rule into owning document
           ensureShowStyle(ctx.document);
 
-          const canonicalPath = resolveCanonicalPath(ctx.scope, data.path);
-          const isAliased = canonicalPath !== data.path;
-          const hasLocalScope = !isAliased && ctx.scope != null && (
-            data.path.split('.')[0] in ctx.scope || getByPath(ctx.scope, data.path) !== undefined
-          );
-
-          // Initial value from scope or store
-          let val = ctx.scope ? getByPath(ctx.scope, data.path) : undefined;
-          if (val === undefined && !hasLocalScope && ctx.store && typeof ctx.store.get === 'function') {
-            val = ctx.store.get(canonicalPath);
-          }
-
-          el.hidden = !val;
-
-          // Reactive subscription via ModuleContext
-          if (ctx.store && !hasLocalScope) {
-            ctx.watch(canonicalPath, (nextVal) => {
-              el.hidden = !nextVal;
-            });
-          }
+          el.hidden = !readScopePath(ctx.scope, ctx.store, data.path);
+          watchScopePath(ctx, data.path, (nextVal) => {
+            el.hidden = !nextVal;
+          });
         },
       }),
     ],

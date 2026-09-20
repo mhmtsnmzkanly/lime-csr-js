@@ -1212,13 +1212,17 @@ Lime provides 7 standard unprivileged modules.
   ```
   - **Explicit Override:** Inputs with their own explicit `data-model` are skipped by the group and maintain their independent binding.
   - **Scoping & Nesting:** Inner `[data-model-group]` containers scope their own children, preventing conflicts with parent groups.
+  - **Dynamic controls:** Inputs created by live loops and branches inherit the nearest group even while their fragment is detached. Their listeners and subscriptions are disposed with that item or branch.
   - **Companion Modifiers:** Child inputs inside a group can use companion modifiers (e.g. `<input name="search" data-model-trim data-model-debounce="200">`).
 
 - **Cursor Jump & Feedback Prevention:** `Store -> DOM` assignment is skipped if `el.value === String(val)` (or `innerHTML === String(val)` for contenteditable), preventing cursor jump and infinite feedback loops.
 - **Diagnostics:**
   - `MODEL_MISSING_PATH`: Empty `data-model` attribute without a valid store path.
   - `MODEL_GROUP_MISSING_PREFIX`: Empty `data-model-group` attribute without a valid prefix.
+  - `MODEL_LOCAL_PATH`: The model path resolves to local scope rather than store state. The local value is displayed, but no writeback or store subscription is installed. Use a store-backed list/path for editable data; a same-named store list does not override a local list.
   - `INDEXED_MODEL_PATH`: Path contains numeric indices (e.g. `items.0.name`). Recommends binding to keyed loop variables instead.
+
+Store-backed loop aliases retain their item identity across keyed reordering and deletion. Model writeback and text, attribute, visibility, and nested live bindings follow the item's current canonical store path without replacing unchanged item DOM. Static loops do not reconcile their list structure, but their reactive bindings read the current store value at their bound index.
 
 ---
 
@@ -1367,6 +1371,7 @@ Lime never throws runtime exceptions that crash user pages. All issues are dispa
 | `SHOW_MISSING_PATH` | Error | Show | `data-show` attribute is empty. | `<div data-show=""></div>`. |
 | `MODEL_MISSING_PATH` | Error | Model | `data-model` attribute is empty. | `<input data-model="">`. |
 | `MODEL_GROUP_MISSING_PREFIX` | Error | Model | `data-model-group` attribute is empty. | `<form data-model-group="">`. |
+| `MODEL_LOCAL_PATH` | Error | Model | Model path belongs to local scope; writeback is not installed. | Use a store-backed list/path for editable data. |
 | `INDEXED_MODEL_PATH` | Warn | Model | `data-model` path contains numeric index. | `data-model="items.0.name"`. Bind to loop variable. |
 | `UNKNOWN_EVENT` | Error | Events | `data-on-{event}` is not a supported event. | Typo like `data-on-hover`. Use `mouseenter`. |
 | `UNKNOWN_KEY_MODIFIER` | Error | Events | Unsupported key modifier suffix. | Typo like `data-on-keydown-return`. Use `-enter`. |

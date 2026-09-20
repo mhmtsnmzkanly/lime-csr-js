@@ -14,6 +14,8 @@
  *   4. Partial scopes are completely isolated (null prototype).
  */
 
+import { getByPath } from '../store.js';
+
 /**
  * Creates a nested child scope inheriting from a parent scope.
  * Local bindings shadow parent bindings natively without dictionary cloning.
@@ -79,23 +81,39 @@ function getScopeMap(node) {
 }
 
 /**
- * Associates an alias with a canonical store path on a scope.
+ * Associates an item alias with its source scope, collection path, and index.
  *
  * @param {Object} scope
  * @param {string} alias - The loop item variable name (e.g. 'item')
- * @param {string} canonicalPath - The canonical store path (e.g. 'items.0')
+ * @param {Object} sourceScope
+ * @param {string} sourcePath
+ * @param {number} index
+ * @returns {function(number): void} Retargets subscriptions when the item moves
  */
-export function setScopeAlias(scope, alias, canonicalPath) {
-  if (!scope || typeof scope !== 'object' || !alias || !canonicalPath) return;
-  const parentAliases = scope[SCOPE_ALIASES_KEY] || null;
-  const aliases = Object.create(parentAliases);
-  aliases[alias] = canonicalPath;
-  Object.defineProperty(scope, SCOPE_ALIASES_KEY, {
-    value: aliases,
-    enumerable: false,
-    writable: true,
-    configurable: true,
-  });
+export function setScopeAlias(scope, alias, sourceScope, sourcePath, index) {
+  if (!Object.hasOwn(scope, SCOPE_ALIASES_KEY)) {
+    Object.defineProperty(scope, SCOPE_ALIASES_KEY, { value: Object.create(null) });
+  }
+  const binding = { sourceScope, sourcePath, index, listeners: new Set() };
+  scope[SCOPE_ALIASES_KEY][alias] = binding;
+  return (nextIndex) => {
+    if (binding.index === nextIndex) return;
+    binding.index = nextIndex;
+    for (const listener of [...binding.listeners]) listener();
+  };
+}
+
+function findScopeBinding(scope, head) {
+  for (let current = scope; current; current = Object.getPrototypeOf(current)) {
+    if (Object.hasOwn(current, head)) {
+      return {
+        alias: Object.hasOwn(current, SCOPE_ALIASES_KEY)
+          ? current[SCOPE_ALIASES_KEY][head]
+          : null,
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -104,21 +122,70 @@ export function setScopeAlias(scope, alias, canonicalPath) {
  *
  * @param {Object|null} scope
  * @param {string} path
- * @returns {string}
+ * @returns {string|null} null when the path belongs to local scope, not the store
  */
 export function resolveCanonicalPath(scope, path) {
   if (!path || typeof path !== 'string' || !scope) return path;
-  const aliases = scope[SCOPE_ALIASES_KEY];
-  if (!aliases) return path;
-
   const dotIndex = path.indexOf('.');
   const head = dotIndex === -1 ? path : path.slice(0, dotIndex);
   const tail = dotIndex === -1 ? '' : path.slice(dotIndex);
+  const binding = findScopeBinding(scope, head);
+  if (!binding) return path;
+  if (!binding.alias) return null;
+  const { sourceScope, sourcePath, index } = binding.alias;
+  const source = resolveCanonicalPath(sourceScope, sourcePath);
+  return source === null ? null : `${source}.${index}${tail}`;
+}
 
-  if (aliases[head] !== undefined) {
-    return `${aliases[head]}${tail}`;
+export function readScopePath(scope, store, path) {
+  const canonicalPath = resolveCanonicalPath(scope, path);
+  return canonicalPath === null ? getByPath(scope, path) : store?.get(canonicalPath);
+}
+
+/**
+ * Rebinds a store subscription when any enclosing keyed alias moves.
+ * One cleanup owns all replacement subscriptions, including nested aliases.
+ */
+export function watchScopePath(ctx, path, callback) {
+  if (!ctx.store || resolveCanonicalPath(ctx.scope, path) === null) return () => {};
+  const aliases = new Set();
+  let scope = ctx.scope;
+  let sourcePath = path;
+  while (scope) {
+    const binding = findScopeBinding(scope, sourcePath.split('.')[0]);
+    if (!binding?.alias) break;
+    aliases.add(binding.alias);
+    scope = binding.alias.sourceScope;
+    sourcePath = binding.alias.sourcePath;
   }
-  return path;
+
+  let unsubscribe;
+  let active = true;
+  let generation = 0;
+  function bind(refresh = false) {
+    unsubscribe?.();
+    const currentGeneration = ++generation;
+    const canonicalPath = resolveCanonicalPath(ctx.scope, path);
+    unsubscribe = ctx.store.subscribe(canonicalPath, (value, previous, changedPath) => {
+      if (active && generation === currentGeneration) {
+        ctx.update(() => callback(value, previous, changedPath));
+      }
+    });
+    if (refresh) {
+      ctx.update(() => callback(ctx.store.get(canonicalPath), undefined, canonicalPath));
+    }
+  }
+  const rebind = () => { if (active) bind(true); };
+  for (const alias of aliases) alias.listeners.add(rebind);
+  bind();
+  const cleanup = () => {
+    if (!active) return;
+    active = false;
+    unsubscribe();
+    for (const alias of aliases) alias.listeners.delete(rebind);
+  };
+  ctx.onCleanup(cleanup);
+  return cleanup;
 }
 
 /**
@@ -174,4 +241,3 @@ export function getElementScope(element) {
   const map = getScopeMap(element);
   return map.get(element) || elementScopeMap.get(element) || null;
 }
-

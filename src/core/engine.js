@@ -23,6 +23,7 @@ import { reportError, subscribeDiagnostics, warn } from '../errors.js';
 import { resolveStatic } from '../template.js';
 import { createStore } from '../store.js';
 import { createScope } from './scope.js';
+import { getNodeOwner } from './ownership.js';
 import { createCleanupStack } from './context.js';
 import { createRouter } from './router.js';
 import { runTransform, runLink } from './lifecycle.js';
@@ -252,7 +253,8 @@ export function createEngine(options = {}) {
 
     const unsubscribe = subscribeDiagnostics((diagnostic) => {
       const context = diagnostic.context;
-      const belongsToMount = context === target
+      const owner = getNodeOwner(context);
+      const belongsToMount = owner ? owner === target : context === target
         || (context?.nodeType != null && (
           target.contains(context)
           || (compileFragmentRef?.current && (

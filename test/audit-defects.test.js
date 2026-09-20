@@ -49,23 +49,34 @@ test('F01: loop model alias writes back to canonical store path', () => {
   assert.equal(store.get('item.name'), undefined);
 });
 
-test('F02: shared WeakMap preserves elementScopeMap across instances', async () => {
-  const dom = createDom(`
-    <div id="app">
-      <for each="items" as="item">
-        <span class="user" data-text="item.name"></span>
-      </for>
-    </div>
-  `);
-  const store = createStore({
-    items: [{ name: 'Alice' }],
-  });
-  const engine = createEngine({ modules: [loops(), text()] });
-  const app = dom.window.document.getElementById('app');
-  engine.mount({ target: app, store, document: dom.window.document });
+test('F02: separate core and module bundles share lexical scope', async () => {
+  const core = await import('../dist/core.min.js');
+  const combined = await import('../dist/modules/index.min.js');
+  const discreteLoops = await import('../dist/modules/loops.min.js');
+  const discreteText = await import('../dist/modules/text.min.js');
+  for (const modules of [
+    [combined.loops(), combined.text()],
+    [discreteLoops.default(), discreteText.default()],
+  ]) {
+    const dom = createDom(`
+      <div id="app">
+        <for each="items" as="item">
+          <span class="user" data-text="item.name"></span>
+        </for>
+      </div>
+    `);
+    const store = createStore({
+      items: [{ name: 'Alice' }],
+    });
+    const engine = core.createEngine({ modules });
+    const app = dom.window.document.getElementById('app');
+    const instance = engine.mount({ target: app, store, document: dom.window.document });
 
-  const span = app.querySelector('.user');
-  assert.equal(span.textContent, 'Alice');
+    const span = app.querySelector('.user');
+    assert.equal(span.textContent, 'Alice');
+    instance.unmount();
+    dom.window.close();
+  }
 });
 
 test('F03: nested live subtrees cleanup drops subscriptions and removes refs', () => {
@@ -181,6 +192,25 @@ test('F05: Custom Element bridge does not update after unmount and transfers to 
   // Changing attribute after unmount must NOT trigger update callback
   widget.setAttribute('title', 'Third');
   assert.equal(updateCount, 1);
+
+  const contexts = [];
+  app.innerHTML = '<custom-widget title="New" data-text="label"></custom-widget>';
+  const engine2 = createEngine({ modules: [{
+    name: 'second-widget',
+    triggers: [tag('CUSTOM-WIDGET', {
+      observedAttributes: ['title'],
+      customElement: true,
+      update(el, change, ctx) { contexts.push(ctx.moduleName); },
+    })],
+  }, text()] });
+  const inst2 = engine2.mount({ target: app, store: createStore({ label: 'Widget' }), document: dom.window.document });
+  const second = app.querySelector('custom-widget');
+  second.setAttribute('title', 'Changed');
+  assert.deepEqual(contexts, ['second-widget']);
+  assert.equal(updateCount, 1);
+  inst2.unmount();
+  second.setAttribute('title', 'Late');
+  assert.deepEqual(contexts, ['second-widget']);
 });
 
 test('F06: nested mount events do not bubble into outer mount handlers', () => {
@@ -308,16 +338,33 @@ test('F10: render() links live branch exactly once', () => {
     </div>
   `);
   const store = createStore({ show: true, label: 'Test' });
+  let activeSubscriptions = 0;
+  let notifications = 0;
+  const subscribe = store.subscribe.bind(store);
+  store.subscribe = (path, callback) => {
+    if (path === 'label') activeSubscriptions++;
+    const unsubscribe = subscribe(path, (...args) => {
+      if (path === 'label') notifications++;
+      callback(...args);
+    });
+    return () => {
+      if (path === 'label') activeSubscriptions--;
+      unsubscribe();
+    };
+  };
   const engine = createEngine({ modules: [conditionals(), text()] });
   const container = dom.window.document.getElementById('container');
 
   const result = engine.render(container, { store, document: dom.window.document });
   assert.equal(container.querySelector('.bound')?.textContent, 'Test');
+  assert.equal(activeSubscriptions, 1);
 
   // Verify that updating label updates cleanly without duplicate work
   store.set('label', 'Updated');
   assert.equal(container.querySelector('.bound')?.textContent, 'Updated');
+  assert.equal(notifications, 1);
   result.cleanup();
+  assert.equal(activeSubscriptions, 0);
 });
 
 test('F11: checkbox fallback does not overwrite empty array on remount', () => {
@@ -499,7 +546,7 @@ test('F18: .cleanup() preserves live loop DOM while disposing reactivity', () =>
   assert.equal(span.textContent.trim(), 'Alice');
 });
 
-test('F19: data-show ensures style rule is installed in document for CSP compliance', () => {
+test('F19 fallback: data-show installs a compatibility style when adopted sheets are unavailable', () => {
   const dom = createDom('<div id="app"><div data-show="visible"></div></div>');
   const store = createStore({ visible: false });
   const engine = createEngine({ modules: [show()] });

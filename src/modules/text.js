@@ -16,8 +16,7 @@
  */
 
 import { attr, pattern } from '../core/triggers.js';
-import { resolveCanonicalPath } from '../core/scope.js';
-import { getByPath } from '../store.js';
+import { readScopePath, watchScopePath } from '../core/scope.js';
 import { isSafeUrlProtocol } from '../utils.js';
 
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'cite', 'poster', 'ping']);
@@ -53,24 +52,10 @@ export function text() {
         setup(el, data, ctx) {
           if (!data || !data.path) return;
 
-          const canonicalPath = resolveCanonicalPath(ctx.scope, data.path);
-          const isAliased = canonicalPath !== data.path;
-          const hasLocalScope = !isAliased && ctx.scope != null && (
-            data.path.split('.')[0] in ctx.scope || getByPath(ctx.scope, data.path) !== undefined
-          );
-
-          let val = ctx.scope ? getByPath(ctx.scope, data.path) : undefined;
-          if (val === undefined && !hasLocalScope && ctx.store && typeof ctx.store.get === 'function') {
-            val = ctx.store.get(canonicalPath);
-          }
-
-          el.textContent = val ?? '';
-
-          if (ctx.store && !hasLocalScope) {
-            ctx.watch(canonicalPath, (nextVal) => {
-              el.textContent = nextVal ?? '';
-            });
-          }
+          el.textContent = readScopePath(ctx.scope, ctx.store, data.path) ?? '';
+          watchScopePath(ctx, data.path, (nextVal) => {
+            el.textContent = nextVal ?? '';
+          });
         },
       }),
 
@@ -142,15 +127,7 @@ export function text() {
           const resolve = () => {
             let resolved = template.replace(/\{([^}]+)\}/g, (_, key) => {
               const rawPath = bindings[key];
-              const path = resolveCanonicalPath(ctx.scope, rawPath);
-              const isAliased = path !== rawPath;
-              const hasLocal = !isAliased && ctx.scope != null && (
-                rawPath.split('.')[0] in ctx.scope || getByPath(ctx.scope, rawPath) !== undefined
-              );
-              let val = ctx.scope ? getByPath(ctx.scope, rawPath) : undefined;
-              if (val === undefined && !hasLocal && ctx.store && typeof ctx.store.get === 'function') {
-                val = ctx.store.get(path);
-              }
+              const val = readScopePath(ctx.scope, ctx.store, rawPath);
               return String(val ?? '');
             });
 
@@ -163,19 +140,8 @@ export function text() {
 
           resolve();
 
-          if (ctx.store) {
-            const watchedPaths = new Set();
-            for (const rawPath of Object.values(bindings)) {
-              const path = resolveCanonicalPath(ctx.scope, rawPath);
-              const isAliased = path !== rawPath;
-              const hasLocal = !isAliased && ctx.scope != null && (
-                rawPath.split('.')[0] in ctx.scope || getByPath(ctx.scope, rawPath) !== undefined
-              );
-              if (!hasLocal && !watchedPaths.has(path)) {
-                watchedPaths.add(path);
-                ctx.watch(path, resolve);
-              }
-            }
+          for (const path of new Set(Object.values(bindings))) {
+            watchScopePath(ctx, path, resolve);
           }
         },
       }),

@@ -228,6 +228,8 @@ ModuleContext (`ctx`) Specification:
    - Initial Fallback: When store value is undefined, HTML value/checked/selected/innerHTML populates the store.
    - Modifiers: `.lazy`, `.trim`, `.number`, `.debounce-<ms>`, `.text` via dot notation, dash notation, or companion attributes.
    - Group Binding: `data-model-group="prefix"` binds descendant inputs with `name="prop"` to `${prefix}.${prop}` unless explicitly overridden.
+   - Dynamic group controls retain their nearest group and item/branch cleanup ownership even in detached fragments.
+   - Store-backed loop aliases follow keyed reordering for writeback and subscriptions. Local lists are never mapped to same-named store lists; local-only models display their value and emit MODEL_LOCAL_PATH without writeback.
    - Errors: MODEL_MISSING_PATH, MODEL_GROUP_MISSING_PREFIX, INDEXED_MODEL_PATH.
 
 7. events:

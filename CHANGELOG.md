@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- Retarget model, text, attribute, visibility, and nested structural subscriptions when keyed items move, without replacing unchanged item DOM.
+- Preserve local list ownership instead of aliasing local values to unrelated store paths. Local-only model bindings display their value and report `MODEL_LOCAL_PATH` without writing to the store.
+- Retain logical ancestry for detached structural fragments so model-group inputs bind under the correct item cleanup lifetime, including dynamically inserted items.
+- Route diagnostics from detached nested fragments to their owning mount while preserving the original diagnostic element.
+- Read current canonical store values for alias attribute bindings after item or ancestor replacement.
+
+### Tests
+- Cover reorder, deletion, nested aliases, local shadowing, dynamic model groups, and nested diagnostic isolation.
+- Exercise separate distribution bundles, cross-engine Custom Element ownership, and exact render subscription counts.
+- Add `npm run test:csp`, a real Chromium/Chrome strict-CSP visibility check, and run it in CI after building.
+
 ## [0.6.1] - 2026-09-20
 
 ### Fixed

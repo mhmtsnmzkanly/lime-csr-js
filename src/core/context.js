@@ -15,6 +15,7 @@
  */
 
 import { reportError, warn } from '../errors.js';
+import { setNodeOwner } from './ownership.js';
 
 /**
  * Creates a single, unified LIFO cleanup stack.
@@ -245,6 +246,7 @@ export function createModuleContext(options = {}) {
      */
     transform(node, subScope, customCleanupStack) {
       if (typeof transform === 'function') {
+        setNodeOwner(node, target, element);
         return transform(node, subScope, customCleanupStack);
       }
       return 0;
@@ -252,6 +254,7 @@ export function createModuleContext(options = {}) {
 
     deferTransform(node, subScope) {
       if (typeof deferTransform === 'function') {
+        setNodeOwner(node, target, element);
         deferTransform(node, subScope);
       }
     },
@@ -265,6 +268,7 @@ export function createModuleContext(options = {}) {
      */
     link(node, subScope, customCleanupStack) {
       if (typeof link === 'function') {
+        setNodeOwner(node, target, element);
         return link(node, subScope, customCleanupStack);
       }
       return null;
@@ -389,6 +393,7 @@ export function createModuleContext(options = {}) {
   };
 
   if (element && typeof element === 'object') {
+    setNodeOwner(element, target);
     element._limeCtx = ctx;
     if (trigger?.type === 'tag' || trigger?.customElement) {
       const bridge = { trigger, ctx, active: true };

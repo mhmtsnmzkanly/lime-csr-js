@@ -21,4 +21,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run test:browser
+      - run: node --test test/audit-defects.test.js test/audit-remediation.test.js
+      - run: npm run test:csp
       - run: npm pack --dry-run

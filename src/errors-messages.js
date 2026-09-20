@@ -59,6 +59,8 @@ export default {
     `Reactive <for data-live>: key "${keyVal}" appears on more than one element; keys must be unique. (template: ${templateName ?? '?'})`,
   MODEL_MISSING_PATH: () =>
     `data-model attribute is empty; a store path is required. Use data-model="path.to.value".`,
+  MODEL_LOCAL_PATH: ({ path }) =>
+    `data-model="${path}" refers to local scope, not store state. The local value is displayed without writeback. Bind a store-backed path to enable two-way updates.`,
   TABLE_FOSTER_PARENTING: ({ templateName }) =>
     `<if>/<for>/<partial> cannot be used inside <table> — the HTML parser moves them outside. Solution: move the condition/loop outside the <table>, or treat the tbody as a partial. (template: ${templateName ?? '?'})`,
   SHOW_MISSING_PATH: () =>

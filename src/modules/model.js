@@ -21,11 +21,19 @@
  */
 
 import { attr, pattern } from '../core/triggers.js';
-import { resolveCanonicalPath } from '../core/scope.js';
+import { resolveCanonicalPath, readScopePath, watchScopePath } from '../core/scope.js';
+import { getLogicalParent } from '../core/ownership.js';
 
 const MODEL_ATTR = 'data-model';
 const GROUP_ATTR = 'data-model-group';
 const INDEXED_PATH_RE = /(?:^|\.)\d+(?:\.|$)/;
+
+function findModelGroup(el) {
+  for (let node = getLogicalParent(el); node; node = getLogicalParent(node)) {
+    if (node.nodeType === 1 && node.hasAttribute(GROUP_ATTR)) return node;
+  }
+  return null;
+}
 
 /**
  * Classifies an element into a supported form input kind.
@@ -377,6 +385,11 @@ function bindModelControl(el, data, ctx) {
   const targetPath = resolveCanonicalPath(ctx.scope, data.path);
   const handler = KIND_HANDLERS[data.kind];
   const modifiers = data.modifiers || { lazy: false, trim: false, number: false, text: false, debounce: null };
+  if (targetPath === null) {
+    handler.write(el, readScopePath(ctx.scope, ctx.store, data.path), data.isArray, modifiers);
+    ctx.error('MODEL_LOCAL_PATH', { path: data.path }, el);
+    return;
+  }
 
   // Checkbox array handling vs standard handling
   const isCheckboxArray = data.kind === 'checkbox' && (data.isArray || Array.isArray(ctx.store.get(targetPath)));
@@ -445,6 +458,7 @@ function bindModelControl(el, data, ctx) {
 
   // DOM -> State event listener
   const commit = () => {
+    const targetPath = resolveCanonicalPath(ctx.scope, data.path);
     if (data.kind === 'radio' && !el.checked) return;
 
     if (data.kind === 'checkbox') {
@@ -512,7 +526,7 @@ function bindModelControl(el, data, ctx) {
   });
 
   // State -> DOM subscription
-  ctx.watch(targetPath, (val) => {
+  watchScopePath(ctx, data.path, (val) => {
     if (debounceTimer) {
       globalThis.clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -583,14 +597,15 @@ export function model() {
 
         match(el) {
           if (hasExplicitModel(el)) return false;
-          const groupEl = el.closest?.(`[${GROUP_ATTR}]`);
+          if (!el.matches('input, select, textarea, [contenteditable]')) return false;
+          const groupEl = findModelGroup(el);
           if (!groupEl) return false;
           const rawName = el.getAttribute('name');
           return Boolean(rawName && rawName.trim());
         },
 
         read(el, ctx) {
-          const groupEl = el.closest?.(`[${GROUP_ATTR}]`);
+          const groupEl = findModelGroup(el);
           if (!groupEl) return null;
           const prefix = groupEl.getAttribute(GROUP_ATTR);
           if (!prefix || !prefix.trim()) return null;

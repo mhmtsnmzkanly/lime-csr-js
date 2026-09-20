@@ -345,10 +345,10 @@ export function runLink(root, router, options = {}) {
         options: options.options || options,
         target: options.target || null,
         refs,
-        transform: (subNode, subScope) => runTransform(subNode, router, {
+        transform: (subNode, subScope, customCleanupStack) => runTransform(subNode, router, {
           store,
           scope: subScope || elementScope,
-          cleanupStack,
+          cleanupStack: customCleanupStack || cleanupStack,
           document,
           handlers: options.handlers || null,
           options: options.options || options,

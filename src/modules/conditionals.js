@@ -13,7 +13,7 @@
 import { tag } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
 import { createCleanupStack } from '../core/context.js';
-import { getByPath } from '../store.js';
+import { readScopePath, watchScopePath } from '../core/scope.js';
 import { resolveStatic } from '../template.js';
 
 export const OPERATORS = {
@@ -60,10 +60,7 @@ export function evaluateCondition(el, scope, store, ctx) {
   }
 
   const path = el.getAttribute(opName);
-  let leftValue = getByPath(scope, path);
-  if (leftValue === undefined && store && typeof store.get === 'function') {
-    leftValue = store.get(path);
-  }
+  const leftValue = readScopePath(scope, store, path);
 
   if (opName === 'is-truthy') {
     return Boolean(leftValue);
@@ -221,7 +218,7 @@ function transformConditional(el, data, ctx) {
 
   // Reactive subscription
   if (trackPath && ctx.store && typeof ctx.store.subscribe === 'function') {
-    const unsubscribe = ctx.store.subscribe(trackPath, () => {
+    const unsubscribe = watchScopePath(ctx, trackPath, () => {
       const nextCondition = evaluateCondition(el, ctx.scope, ctx.store, ctx);
       if (nextCondition === currentCondition) return;
       currentCondition = nextCondition;
