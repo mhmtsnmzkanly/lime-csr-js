@@ -119,6 +119,49 @@ const KIND_HANDLERS = {
 };
 
 /**
+ * Reads initial DOM value if an explicit HTML attribute is present.
+ *
+ * @param {Element} el
+ * @param {string} kind
+ * @returns {any} Initial DOM value or undefined if not present.
+ */
+function getInitialDomValue(el, kind) {
+  switch (kind) {
+    case 'checkbox':
+      return (el.hasAttribute('checked') || el.defaultChecked) ? true : undefined;
+    case 'radio':
+      return (el.hasAttribute('checked') || el.defaultChecked || el.checked) ? el.value : undefined;
+    case 'select-single': {
+      const opt = Array.from(el.options).find((o) => o.hasAttribute('selected') || o.defaultSelected);
+      return opt ? opt.value : undefined;
+    }
+    case 'select-multiple': {
+      const opts = Array.from(el.options).filter((o) => o.hasAttribute('selected') || o.defaultSelected);
+      return opts.length > 0 ? opts.map((o) => o.value) : undefined;
+    }
+    case 'number': {
+      if (el.hasAttribute('value')) {
+        const raw = el.value;
+        if (raw === '') return null;
+        const n = Number(raw);
+        return Number.isNaN(n) ? raw : n;
+      }
+      return undefined;
+    }
+    case 'text': {
+      if (el.tagName === 'TEXTAREA') {
+        if (el.defaultValue && el.defaultValue !== '') return el.value;
+        if (el.hasAttribute('value')) return el.value;
+        return undefined;
+      }
+      return el.hasAttribute('value') ? el.value : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Creates the standard `model` module definition.
  *
  * @returns {Object} ModuleDefinition
@@ -156,8 +199,19 @@ export function model() {
 
           const handler = KIND_HANDLERS[data.kind];
 
-          // Initial state -> DOM
-          handler.write(el, ctx.store.get(data.path));
+          // Initial state -> DOM or DOM -> Store fallback
+          const storeVal = ctx.store.get(data.path);
+          if (storeVal !== undefined) {
+            handler.write(el, storeVal);
+          } else {
+            const initialDom = getInitialDomValue(el, data.kind);
+            if (initialDom !== undefined) {
+              ctx.store.set(data.path, initialDom);
+              handler.write(el, initialDom);
+            } else {
+              handler.write(el, undefined);
+            }
+          }
 
           // DOM -> State event listener
           const onEvent = () => {
