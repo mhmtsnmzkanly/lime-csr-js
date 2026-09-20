@@ -55,14 +55,14 @@ export function createCleanupStack() {
    * Executes all registered cleanups in strict LIFO (reverse registration) order.
    * Guaranteed to be idempotent and fault-isolated.
    */
-  function run() {
+  function run(info) {
     if (!activity.active) return;
     activity.active = false;
 
     while (stack.length > 0) {
       const cleanup = stack.pop();
       try {
-        cleanup();
+        cleanup(info);
       } catch (err) {
         reportError('MODULE_CLEANUP_FAILED', { error: err }, { error: err });
       }

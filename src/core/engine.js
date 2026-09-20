@@ -280,13 +280,13 @@ export function createEngine(options = {}) {
     let active = true;
     let instance;
 
-    function cleanupSelf() {
-      if (active) cleanupStack.run();
+    function cleanupSelf(isUnmount = false) {
+      if (active) cleanupStack.run({ unmount: isUnmount });
     }
 
     function unmountSelf() {
       if (!active) return;
-      cleanupSelf();
+      cleanupSelf(true);
       active = false;
       mountedTargets.delete(target);
       if (mountOwners.get(target) === instance) mountOwners.delete(target);
@@ -550,6 +550,7 @@ export function createEngine(options = {}) {
       handlers: options.handlers || null,
       options,
       target: options.target || (nodeOrFragment.nodeType === 1 ? nodeOrFragment : null),
+      linkedElements: options.linkedElements || new WeakSet(),
       refs,
     };
 

@@ -278,7 +278,16 @@ function transformLoop(el, data, ctx) {
             block.cleanupStack?.run();
             const { frag, nodes, cleanupStack } = renderItemNodes(item, idx);
             const firstOld = block.nodes[0];
-            firstOld?.parentNode?.insertBefore(frag, firstOld);
+            if (firstOld && firstOld.parentNode) {
+              firstOld.parentNode.insertBefore(frag, firstOld);
+            } else {
+              if (container) {
+                if (nextPlacedNode) container.insertBefore(frag, nextPlacedNode);
+                else container.appendChild(frag);
+              } else {
+                endAnchor.parentNode?.insertBefore(frag, nextPlacedNode || endAnchor);
+              }
+            }
             for (const oldNode of block.nodes) oldNode.remove();
             block.nodes = nodes;
             block.item = item;
@@ -327,7 +336,11 @@ function transformLoop(el, data, ctx) {
             block.cleanupStack?.run();
             const { frag, nodes, cleanupStack } = renderItemNodes(item, idx);
             const firstOld = block.nodes[0];
-            firstOld?.parentNode?.insertBefore(frag, firstOld);
+            if (firstOld && firstOld.parentNode) {
+              firstOld.parentNode.insertBefore(frag, firstOld);
+            } else {
+              appendNode(frag);
+            }
             for (const oldNode of block.nodes) oldNode.remove();
             block.nodes = nodes;
             block.item = item;
@@ -375,19 +388,23 @@ function transformLoop(el, data, ctx) {
       reconcile(newList);
     });
 
-    ctx.onCleanup(() => {
+    ctx.onCleanup((info) => {
       unsubscribe();
       for (const block of keyedBlocks.values()) {
-        block.cleanupStack?.run();
-        for (const node of block.nodes) node.remove();
+        block.cleanupStack?.run(info);
+        if (info?.unmount) {
+          for (const node of block.nodes) node.remove();
+        }
       }
       keyedBlocks.clear();
     });
   } else {
-    ctx.onCleanup(() => {
+    ctx.onCleanup((info) => {
       for (const block of keyedBlocks.values()) {
-        block.cleanupStack?.run();
-        for (const node of block.nodes) node.remove();
+        block.cleanupStack?.run(info);
+        if (info?.unmount) {
+          for (const node of block.nodes) node.remove();
+        }
       }
       keyedBlocks.clear();
     });
