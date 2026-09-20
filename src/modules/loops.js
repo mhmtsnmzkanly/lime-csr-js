@@ -157,11 +157,10 @@ function transformLoop(el, data, ctx) {
       frag.appendChild(node.cloneNode(true));
     }
 
+    const itemCleanupStack = createCleanupStack();
     resolveStatic(frag, itemScope, ctx.store);
     setElementScope(frag, itemScope);
-    ctx.transform(frag, itemScope);
-
-    const itemCleanupStack = createCleanupStack();
+    ctx.transform(frag, itemScope, itemCleanupStack);
     ctx.link(frag, itemScope, itemCleanupStack);
 
     const nodes = Array.from(frag.childNodes);

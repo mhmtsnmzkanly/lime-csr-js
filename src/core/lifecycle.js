@@ -158,10 +158,10 @@ export function runTransform(root, router, options = {}) {
           options: options.options || options,
           target: options.target || null,
           refs,
-          transform: (subNode, subScope) => runTransform(subNode, router, {
+          transform: (subNode, subScope, customCleanupStack) => runTransform(subNode, router, {
             store,
             scope: subScope || elementScope,
-            cleanupStack,
+            cleanupStack: customCleanupStack || cleanupStack,
             document,
             maxIterations,
             handlers: options.handlers || null,

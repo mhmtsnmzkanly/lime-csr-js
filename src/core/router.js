@@ -369,9 +369,12 @@ export function createRouter(modules = [], options = {}) {
               return observed;
             }
             attributeChangedCallback(name, oldValue, newValue) {
-              if (typeof trigger.update === 'function' && oldValue !== newValue) {
+              const bridge = this._limeCustomElementCtx;
+              if (!bridge || !bridge.active) return;
+              const activeTrigger = bridge.trigger;
+              if (typeof activeTrigger?.update === 'function' && oldValue !== newValue) {
                 try {
-                  trigger.update(this, { name, oldValue, newValue }, this._limeCtx || null);
+                  activeTrigger.update(this, { name, oldValue, newValue }, bridge.ctx);
                 } catch {
                   // Fault isolation
                 }

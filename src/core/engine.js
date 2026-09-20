@@ -290,6 +290,7 @@ export function createEngine(options = {}) {
       active = false;
       mountedTargets.delete(target);
       if (mountOwners.get(target) === instance) mountOwners.delete(target);
+      if (typeof target?.removeAttribute === 'function') target.removeAttribute('data-lime-mount');
       if (ownsContent) target.textContent = '';
     }
 
@@ -312,6 +313,9 @@ export function createEngine(options = {}) {
 
     mountedTargets.set(target, instance);
     mountOwners.set(target, instance);
+    if (typeof target?.setAttribute === 'function') {
+      target.setAttribute('data-lime-mount', '');
+    }
 
     if (options.signal) {
       const onAbort = () => unmountSelf();

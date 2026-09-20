@@ -216,19 +216,45 @@ function isDomFallback(store, path) {
   return domFallbackStores.get(store)?.has(path) ?? false;
 }
 
+const COMPANION_MODIFIER_NAMES = new Set([
+  'data-model-debounce',
+  'data-model-trim',
+  'data-model-lazy',
+  'data-model-number',
+  'data-model-text',
+]);
+
+function isCompanionModifierAttr(name, val) {
+  if (!name) return false;
+  if (name === 'data-model-debounce' || name.startsWith('data-model-debounce-')) return true;
+  if (COMPANION_MODIFIER_NAMES.has(name) && (!val || !val.trim())) return true;
+  return false;
+}
+
 function getPrimaryModelAttribute(el) {
   if (!el || !el.attributes) return null;
   if (el.hasAttribute(MODEL_ATTR)) return MODEL_ATTR;
   const attrs = el.attributes;
   for (let i = 0; i < attrs.length; i++) {
     const name = attrs[i].name;
-    if (/^data-model[.-]/.test(name) && !name.startsWith('data-model-group') && attrs[i].value.trim()) {
+    const val = attrs[i].value;
+    if (
+      /^data-model[.-]/.test(name)
+      && !name.startsWith('data-model-group')
+      && !isCompanionModifierAttr(name, val)
+      && val.trim()
+    ) {
       return name;
     }
   }
   for (let i = 0; i < attrs.length; i++) {
     const name = attrs[i].name;
-    if (/^data-model[.-]/.test(name) && !name.startsWith('data-model-group')) {
+    const val = attrs[i].value;
+    if (
+      /^data-model[.-]/.test(name)
+      && !name.startsWith('data-model-group')
+      && !isCompanionModifierAttr(name, val)
+    ) {
       return name;
     }
   }
@@ -321,13 +347,19 @@ function parseModifiers(el, primaryAttrName) {
 function hasExplicitModel(el) {
   if (el.hasAttribute(MODEL_ATTR)) {
     const val = el.getAttribute(MODEL_ATTR);
-    return val && val.trim().length > 0;
+    return Boolean(val && val.trim().length > 0);
   }
   const attrs = el.attributes;
   if (!attrs) return false;
   for (let i = 0; i < attrs.length; i++) {
     const name = attrs[i].name;
-    if (/^data-model[.-]/.test(name) && !name.startsWith(GROUP_ATTR) && attrs[i].value.trim()) {
+    const val = attrs[i].value;
+    if (
+      /^data-model[.-]/.test(name)
+      && !name.startsWith(GROUP_ATTR)
+      && !isCompanionModifierAttr(name, val)
+      && val.trim()
+    ) {
       return true;
     }
   }
@@ -355,6 +387,9 @@ function bindModelControl(el, data, ctx) {
 
     if (storeVal === undefined) {
       markDomFallback(ctx.store, targetPath);
+      ctx.onCleanup(() => {
+        domFallbackStores.get(ctx.store)?.delete(targetPath);
+      });
       if (isChecked) {
         ctx.store.set(targetPath, [el.value]);
         el.checked = true;
@@ -543,6 +578,56 @@ export function model() {
         },
       }),
 
+      attr('name', {
+        phase: 'link',
+
+        match(el) {
+          if (hasExplicitModel(el)) return false;
+          const groupEl = el.closest?.(`[${GROUP_ATTR}]`);
+          if (!groupEl) return false;
+          const rawName = el.getAttribute('name');
+          return Boolean(rawName && rawName.trim());
+        },
+
+        read(el, ctx) {
+          const groupEl = el.closest?.(`[${GROUP_ATTR}]`);
+          if (!groupEl) return null;
+          const prefix = groupEl.getAttribute(GROUP_ATTR);
+          if (!prefix || !prefix.trim()) return null;
+
+          const rawName = el.getAttribute('name');
+          if (!rawName || !rawName.trim()) return null;
+
+          let trimmedName = rawName.trim();
+          const isArray = trimmedName.endsWith('[]');
+          if (isArray) {
+            trimmedName = trimmedName.slice(0, -2).trim();
+            if (!trimmedName) return null;
+          }
+
+          const path = `${prefix.trim()}.${trimmedName}`;
+          if (INDEXED_PATH_RE.test(path)) {
+            ctx.error('INDEXED_MODEL_PATH', { path }, el);
+          }
+
+          const kind = classify(el);
+          const modifiers = parseModifiers(el, null);
+
+          return { path, kind, isArray, modifiers };
+        },
+
+        setup(el, data, ctx) {
+          if (!data || !data.path) return;
+
+          if (!ctx.store) {
+            ctx.warn('MODULE_STORE_REQUIRED', `Module "model" requires a store to bind "${data.path}".`, el);
+            return;
+          }
+
+          bindModelControl(el, data, ctx);
+        },
+      }),
+
       attr(GROUP_ATTR, {
         phase: 'link',
 
@@ -564,35 +649,6 @@ export function model() {
 
           if (!ctx.store) {
             ctx.warn('MODULE_STORE_REQUIRED', `Module "model" requires a store to bind group "${data.prefix}".`, el);
-            return;
-          }
-
-          const candidates = el.querySelectorAll('input[name], select[name], textarea[name], [contenteditable][name]');
-
-          for (let i = 0; i < candidates.length; i++) {
-            const child = candidates[i];
-            if (child.closest?.(`[${GROUP_ATTR}]`) !== el) continue;
-            if (hasExplicitModel(child)) continue;
-
-            const rawName = child.getAttribute('name');
-            if (!rawName || !rawName.trim()) continue;
-
-            let trimmedName = rawName.trim();
-            const isArray = trimmedName.endsWith('[]');
-            if (isArray) {
-              trimmedName = trimmedName.slice(0, -2).trim();
-              if (!trimmedName) continue;
-            }
-
-            const path = `${data.prefix}.${trimmedName}`;
-            if (INDEXED_PATH_RE.test(path)) {
-              ctx.error('INDEXED_MODEL_PATH', { path }, child);
-            }
-
-            const kind = classify(child);
-            const modifiers = parseModifiers(child, null);
-
-            bindModelControl(child, { path, kind, isArray, modifiers }, ctx);
           }
         },
       }),

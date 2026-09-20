@@ -257,6 +257,16 @@ function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
       while (current && current.nodeType === 1) {
         if (inIgnoredBlock(current)) break;
 
+        // Nested mount boundary isolation (fixes F06):
+        // If current belongs to an inner nested mount inside target, skip past it.
+        if (current !== target) {
+          const innerMount = current.closest?.('[data-lime-mount]');
+          if (innerMount && innerMount !== target && target.contains(innerMount)) {
+            current = innerMount.parentNode;
+            continue;
+          }
+        }
+
         const attrs = current.attributes;
         const attrCount = attrs ? attrs.length : 0;
         for (let a = 0; a < attrCount; a++) {

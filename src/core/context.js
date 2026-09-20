@@ -390,6 +390,15 @@ export function createModuleContext(options = {}) {
 
   if (element && typeof element === 'object') {
     element._limeCtx = ctx;
+    if (trigger?.type === 'tag' || trigger?.customElement) {
+      const bridge = { trigger, ctx, active: true };
+      element._limeCustomElementCtx = bridge;
+      cleanupStack.onCleanup(() => {
+        if (element._limeCustomElementCtx === bridge) {
+          bridge.active = false;
+        }
+      });
+    }
     cleanupStack.onCleanup(() => {
       if (element && element._limeCtx === ctx) {
         delete element._limeCtx;

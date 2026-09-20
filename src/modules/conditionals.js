@@ -186,7 +186,7 @@ function transformConditional(el, data, ctx) {
     }
 
     resolveStatic(branchFrag, ctx.scope, ctx.store);
-    ctx.transform(branchFrag, ctx.scope);
+    ctx.transform(branchFrag, ctx.scope, branchStack);
     ctx.link(branchFrag, ctx.scope, branchStack);
 
     if (container) {
