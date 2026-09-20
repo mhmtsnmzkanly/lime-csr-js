@@ -495,11 +495,9 @@ export function model() {
     triggers: [
       pattern(/^data-model(?:[.-].+)?$/, {
         phase: 'link',
+        exclude: [GROUP_ATTR, /^data-model-group-/],
 
         match(element, attrName) {
-          if (attrName === GROUP_ATTR || attrName.startsWith(GROUP_ATTR)) {
-            return false;
-          }
           return attrName === getPrimaryModelAttribute(element);
         },
 

@@ -10,7 +10,7 @@
  *   - Diagnostics: FOR_MISSING_ATTR, FOR_NOT_ARRAY, FOR_MISSING_KEY, FOR_DUPLICATE_KEY.
  */
 
-import { tag, attr } from '../core/triggers.js';
+import { tag } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
 import { createCleanupStack } from '../core/context.js';
 import { createScope, setElementScope } from '../core/scope.js';
@@ -35,10 +35,11 @@ const RESERVED_FOR_ATTRS = new Set([
  * @param {Object} ctx
  */
 function transformLoop(el, data, ctx) {
-  const each = el.getAttribute('each');
-  const as = el.getAttribute('as');
-  const indexAttr = el.getAttribute('index');
-  const isLive = el.hasAttribute('data-live');
+  const attrs = data || {};
+  const each = attrs.each ?? el.getAttribute('each');
+  const as = attrs.as ?? el.getAttribute('as');
+  const indexAttr = attrs.index ?? el.getAttribute('index');
+  const isLive = 'data-live' in attrs || el.hasAttribute('data-live');
 
   if (!each || !as) {
     ctx.error('FOR_MISSING_ATTR', el);
@@ -402,11 +403,10 @@ export function loops(_options = {}) {
     triggers: [
       tag('FOR', {
         phase: 'transform',
-        setup: transformLoop,
-      }),
-      attr('data-for', {
-        phase: 'transform',
-        match: (el) => el.tagName === 'TEMPLATE',
+        templateDirective: 'data-for',
+        optional: [
+          'each', 'as', 'index', 'key', 'data-live', 'data-diff', 'data-after', 'data-before', 'el',
+        ],
         setup: transformLoop,
       }),
     ],

@@ -374,6 +374,16 @@ export function createEngine(options = {}) {
     }
 
     const win = doc?.defaultView || globalThis.window || null;
+    if (win?.customElements && typeof router.registerCustomElements === 'function') {
+      router.registerCustomElements(win.customElements, doc);
+      if (typeof win.customElements.upgrade === 'function') {
+        try {
+          win.customElements.upgrade(resolvedTarget);
+        } catch {
+          // Fault isolation
+        }
+      }
+    }
     const scope = mountOptions.scope
       ? mountOptions.scope
       : (mountOptions.context ? createScope(null, mountOptions.context) : createScope(null, {}));
@@ -510,6 +520,17 @@ export function createEngine(options = {}) {
     }
 
     const doc = options.document || nodeOrFragment.ownerDocument || globalThis.document;
+    const win = doc?.defaultView || globalThis.window || null;
+    if (win?.customElements && typeof router.registerCustomElements === 'function') {
+      router.registerCustomElements(win.customElements, doc);
+      if (typeof win.customElements.upgrade === 'function') {
+        try {
+          win.customElements.upgrade(nodeOrFragment);
+        } catch {
+          // Fault isolation
+        }
+      }
+    }
     const store = options.store || null;
     const scope = options.scope
       ? options.scope

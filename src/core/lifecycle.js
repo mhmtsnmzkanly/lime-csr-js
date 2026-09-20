@@ -140,7 +140,7 @@ export function runTransform(root, router, options = {}) {
           break;
         }
 
-        const { record, matchedAttribute } = matches[m];
+        const { record, matchedAttribute, attributes } = matches[m];
         const { trigger, moduleName } = record;
         const elementScope = capturedScope || getElementScope(element) || scope;
 
@@ -153,6 +153,7 @@ export function runTransform(root, router, options = {}) {
           cleanupStack,
           document,
           matchedAttribute,
+          attributes,
           handlers: options.handlers || null,
           options: options.options || options,
           target: options.target || null,
@@ -190,6 +191,8 @@ export function runTransform(root, router, options = {}) {
           } catch (err) {
             reportError('MODULE_READ_FAILED', { module: moduleName, error: err }, element);
           }
+        } else if (attributes) {
+          data = attributes;
         }
 
         const transformFn = trigger.setup || trigger.transform;
@@ -325,7 +328,7 @@ export function runLink(root, router, options = {}) {
     const elementScope = getElementScope(el) || scope;
 
     for (let m = 0; m < matches.length; m++) {
-      const { record, matchedAttribute } = matches[m];
+      const { record, matchedAttribute, attributes } = matches[m];
       const { trigger, moduleName } = record;
 
       const { ctx } = createModuleContext({
@@ -337,6 +340,7 @@ export function runLink(root, router, options = {}) {
         cleanupStack,
         document,
         matchedAttribute,
+        attributes,
         handlers: options.handlers || null,
         options: options.options || options,
         target: options.target || null,
@@ -373,6 +377,8 @@ export function runLink(root, router, options = {}) {
         } catch (err) {
           reportError('MODULE_READ_FAILED', { module: moduleName, error: err }, el);
         }
+      } else if (attributes) {
+        data = attributes;
       }
 
       // 2. Setup phase (executed ONCE during Link)

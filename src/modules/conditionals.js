@@ -10,7 +10,7 @@
  *   - Phase: Transform (structural compilation).
  */
 
-import { tag, attr } from '../core/triggers.js';
+import { tag } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
 import { createCleanupStack } from '../core/context.js';
 import { getByPath } from '../store.js';
@@ -245,11 +245,11 @@ export function conditionals(_options = {}) {
     triggers: [
       tag('IF', {
         phase: 'transform',
-        setup: transformConditional,
-      }),
-      attr('data-if', {
-        phase: 'transform',
-        match: (el) => el.tagName === 'TEMPLATE',
+        templateDirective: 'data-if',
+        optional: [
+          ...OPERATOR_NAMES,
+          'than', 'to', 'data-live', 'data-after', 'data-before', 'el',
+        ],
         setup: transformConditional,
       }),
     ],

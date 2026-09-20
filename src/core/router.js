@@ -23,6 +23,108 @@ import { TRIGGER_TYPES } from './triggers.js';
 const EMPTY_MATCHES = Object.freeze([]);
 
 /**
+ * Coerces an attribute string value using a given type or custom function.
+ *
+ * @param {string|null} val
+ * @param {Function} typeFn
+ * @returns {*}
+ */
+function coerceValue(val, typeFn) {
+  if (typeof typeFn !== 'function') return val;
+  if (typeFn === Boolean) {
+    return val !== null && val !== 'false';
+  }
+  if (val == null) return null;
+  if (typeFn === Number) {
+    if (val === '') return null;
+    const num = Number(val);
+    return Number.isNaN(num) ? null : num;
+  }
+  if (typeFn === Array) {
+    if (typeof val !== 'string') return [];
+    return val.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  if (typeFn === Object) {
+    try {
+      return JSON.parse(val);
+    } catch {
+      return null;
+    }
+  }
+  return typeFn(val);
+}
+
+/**
+ * Checks whether an attribute name matches any item in the exclude list.
+ *
+ * @param {string} name
+ * @param {ReadonlyArray<string|RegExp>} [excludeList]
+ * @returns {boolean}
+ */
+function isExcluded(name, excludeList) {
+  if (!excludeList || excludeList.length === 0) return false;
+  for (let i = 0; i < excludeList.length; i++) {
+    const item = excludeList[i];
+    if (typeof item === 'string') {
+      if (name === item) return true;
+    } else if (item instanceof RegExp) {
+      item.lastIndex = 0;
+      const matched = item.test(name);
+      item.lastIndex = 0;
+      if (matched) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Harvests all declared required and optional attributes from an element,
+ * applying type coercion schemas if present.
+ *
+ * @param {Element} element
+ * @param {Object} trigger
+ * @param {string|null} [matchedAttr=null]
+ * @returns {Readonly<Object>|null}
+ */
+function harvestAttributes(element, trigger, matchedAttr = null) {
+  const { required = [], optional = [], types = {} } = trigger;
+  const hasReq = required.length > 0;
+  const hasOpt = optional.length > 0;
+  const hasTypes = Object.keys(types).length > 0;
+
+  if (!hasReq && !hasOpt && !hasTypes && !matchedAttr) {
+    return null;
+  }
+
+  const attrs = {};
+
+  if (matchedAttr) {
+    const raw = element.getAttribute(matchedAttr);
+    attrs[matchedAttr] = types[matchedAttr] ? coerceValue(raw, types[matchedAttr]) : raw;
+  }
+
+  for (let i = 0; i < required.length; i++) {
+    const name = required[i];
+    if (name === matchedAttr) continue;
+    const raw = element.getAttribute(name);
+    attrs[name] = types[name] ? coerceValue(raw, types[name]) : raw;
+  }
+
+  for (let i = 0; i < optional.length; i++) {
+    const name = optional[i];
+    if (name === matchedAttr) continue;
+    if (element.hasAttribute(name)) {
+      const raw = element.getAttribute(name);
+      attrs[name] = types[name] ? coerceValue(raw, types[name]) : raw;
+    } else if (types[name] === Boolean) {
+      attrs[name] = false;
+    }
+  }
+
+  return Object.freeze(attrs);
+}
+
+/**
  * @typedef {Object} RouteRecord
  * @property {string} moduleName - Name of the owning module
  * @property {Object} trigger - TriggerDefinition
@@ -76,6 +178,7 @@ function getTriggerConflictKey(trigger, phase) {
  * @param {Array<Object>} [modules=[]] - List of module definitions
  * @param {Object} [options={}] - Router configuration options
  * @param {boolean} [options.devMode] - Dev mode override for diagnostics
+ * @param {Document} [options.document] - Document context
  * @returns {Object} Compiled Router instance
  */
 export function createRouter(modules = [], options = {}) {
@@ -88,6 +191,10 @@ export function createRouter(modules = [], options = {}) {
   };
 
   const registeredModules = Array.isArray(modules) ? [...modules] : [];
+  const customElementsRegistry = options.document?.defaultView?.customElements
+    || globalThis.customElements
+    || null;
+  const customElementTriggers = [];
 
   // 1. Compile routes and resolve precedence
   for (let m = 0; m < registeredModules.length; m++) {
@@ -99,13 +206,11 @@ export function createRouter(modules = [], options = {}) {
       const phase = trigger.phase || (trigger.type === TRIGGER_TYPES.TAG ? 'transform' : 'link');
 
       if (!phaseTables[phase]) {
-        // Safe fallback for custom phases: map to link
         phaseTables[phase] = createPhaseRouteTables();
       }
 
       const conflictKey = getTriggerConflictKey(trigger, phase);
 
-      // Precedence check: first module claiming conflictKey wins
       if (claimedRoutes.has(conflictKey)) {
         const ownerName = claimedRoutes.get(conflictKey);
         if (emitDiagnostics) {
@@ -132,7 +237,7 @@ export function createRouter(modules = [], options = {}) {
       tables.triggerList.push(record);
 
       switch (trigger.type) {
-        case TRIGGER_TYPES.TAG:
+        case TRIGGER_TYPES.TAG: {
           tables.exactTagRoutes.set(trigger.name, record);
           if (/^[A-Z][A-Z0-9-]*$/.test(trigger.name)) {
             const part = trigger.name.toLowerCase();
@@ -142,7 +247,48 @@ export function createRouter(modules = [], options = {}) {
           } else {
             tables.hasUnselectableCandidates = true;
           }
+
+          // Native Custom Element bridge: collect triggers for registration
+          if (trigger.customElement) {
+            customElementTriggers.push(trigger);
+          }
+
+          // Template directive alias: automatically route companion <template [directive]>
+          if (trigger.templateDirective) {
+            const tplAttr = trigger.templateDirective;
+            const tplConflictKey = `${phase}:ATTR:${tplAttr}`;
+            if (!claimedRoutes.has(tplConflictKey)) {
+              claimedRoutes.set(tplConflictKey, mod.name);
+              const tplRecord = Object.freeze({
+                moduleName: mod.name,
+                trigger: Object.freeze({
+                  ...trigger,
+                  type: TRIGGER_TYPES.ATTR,
+                  name: tplAttr,
+                  match: (el, attrName, attrNode) => {
+                    if (el.tagName !== 'TEMPLATE') return false;
+                    if (typeof trigger.match === 'function') {
+                      return trigger.match(el, attrName, attrNode);
+                    }
+                    return true;
+                  },
+                }),
+                phase,
+                priority: m,
+                routeKey: tplConflictKey,
+              });
+              tables.exactAttrRoutes.set(tplAttr, tplRecord);
+              tables.triggerList.push(tplRecord);
+              if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(tplAttr)) {
+                const part = `template[${tplAttr}]`;
+                if (!tables.candidateSelectorParts.includes(part)) {
+                  tables.candidateSelectorParts.push(part);
+                }
+              }
+            }
+          }
           break;
+        }
 
         case TRIGGER_TYPES.ATTR:
           tables.exactAttrRoutes.set(trigger.name, record);
@@ -192,12 +338,64 @@ export function createRouter(modules = [], options = {}) {
     : transformTables.candidateSelectorParts.join(',');
 
   /**
+   * Registers custom element triggers on a given CustomElementRegistry.
+   *
+   * @param {CustomElementRegistry|null} [registry=null]
+   * @param {Document|null} [doc=null]
+   */
+  function registerCustomElements(registry = null, doc = null) {
+    const reg = registry
+      || doc?.defaultView?.customElements
+      || options.document?.defaultView?.customElements
+      || globalThis.customElements
+      || null;
+
+    if (!reg || typeof reg.define !== 'function') return;
+
+    const BaseHTMLElement = doc?.defaultView?.HTMLElement
+      || options.document?.defaultView?.HTMLElement
+      || globalThis.HTMLElement;
+
+    if (!BaseHTMLElement) return;
+
+    for (let i = 0; i < customElementTriggers.length; i++) {
+      const trigger = customElementTriggers[i];
+      const customTagName = trigger.name.toLowerCase();
+      if (!reg.get(customTagName)) {
+        try {
+          const observed = trigger.observedAttributes || [];
+          class LimeCustomElement extends BaseHTMLElement {
+            static get observedAttributes() {
+              return observed;
+            }
+            attributeChangedCallback(name, oldValue, newValue) {
+              if (typeof trigger.update === 'function' && oldValue !== newValue) {
+                try {
+                  trigger.update(this, { name, oldValue, newValue }, this._limeCtx || null);
+                } catch {
+                  // Fault isolation
+                }
+              }
+            }
+          }
+          reg.define(customTagName, LimeCustomElement);
+        } catch {
+          // Ignore duplicate definition races
+        }
+      }
+    }
+  }
+
+  // Initial registration if registry or document was provided in options or available globally
+  registerCustomElements(customElementsRegistry, options.document);
+
+  /**
    * Matches an element against the compiled routes for a given phase,
    * returning an execution plan ordered strictly by DOM attribute order.
    *
    * @param {Element} element - DOM Element
    * @param {'transform'|'link'} [phase='link'] - Target execution phase
-   * @returns {Array<{ record: RouteRecord, matchedAttribute?: string, anchorIndex: number }>}
+   * @returns {Array<{ record: RouteRecord, matchedAttribute?: string, anchorIndex: number, attributes?: Object }>}
    */
   function matchElement(element, phase = 'link') {
     if (!element || element.nodeType !== 1) return EMPTY_MATCHES;
@@ -210,11 +408,16 @@ export function createRouter(modules = [], options = {}) {
     // 1. Exact Tag Route (expected O(1) hash lookup, anchored at index -1)
     const tagRecord = tables.exactTagRoutes.get(element.tagName);
     if (tagRecord) {
-      if (typeof tagRecord.trigger.match !== 'function' || tagRecord.trigger.match(element)) {
+      const trig = tagRecord.trigger;
+      const reqOk = !trig.required || trig.required.length === 0
+        || trig.required.every((r) => element.hasAttribute(r));
+
+      if (reqOk && (typeof trig.match !== 'function' || trig.match(element))) {
         matches = [{
           record: tagRecord,
           matchedAttribute: undefined,
           anchorIndex: -1,
+          attributes: harvestAttributes(element, trig),
         }];
       }
     }
@@ -233,12 +436,18 @@ export function createRouter(modules = [], options = {}) {
       // a. Exact Attribute Route (expected O(1) hash lookup)
       const exactRecord = tables.exactAttrRoutes.get(attrName);
       if (exactRecord) {
-        if (typeof exactRecord.trigger.match !== 'function' || exactRecord.trigger.match(element, attrName, attr)) {
+        const trig = exactRecord.trigger;
+        const excluded = isExcluded(attrName, trig.exclude);
+        const reqOk = !trig.required || trig.required.length === 0
+          || trig.required.every((r) => element.hasAttribute(r));
+
+        if (!excluded && reqOk && (typeof trig.match !== 'function' || trig.match(element, attrName, attr))) {
           if (!matches) matches = [];
           matches.push({
             record: exactRecord,
             matchedAttribute: attrName,
             anchorIndex: attrIndex,
+            attributes: harvestAttributes(element, trig, attrName),
           });
         }
       }
@@ -250,13 +459,16 @@ export function createRouter(modules = [], options = {}) {
           const multiRecord = multiCandidates[c];
           if (matchedMultiAttrs && matchedMultiAttrs.has(multiRecord)) continue;
 
+          const trig = multiRecord.trigger;
+          if (isExcluded(attrName, trig.exclude)) continue;
+
           // Verify all required attributes exist (existence check)
-          const allRequiredPresent = multiRecord.trigger.required.every(
+          const allRequiredPresent = trig.required.every(
             (reqAttr) => element.hasAttribute(reqAttr),
           );
 
           if (allRequiredPresent) {
-            if (typeof multiRecord.trigger.match !== 'function' || multiRecord.trigger.match(element, attrName, attr)) {
+            if (typeof trig.match !== 'function' || trig.match(element, attrName, attr)) {
               if (!matchedMultiAttrs) matchedMultiAttrs = new Set();
               matchedMultiAttrs.add(multiRecord);
               if (!matches) matches = [];
@@ -264,6 +476,7 @@ export function createRouter(modules = [], options = {}) {
                 record: multiRecord,
                 matchedAttribute: attrName,
                 anchorIndex: attrIndex,
+                attributes: harvestAttributes(element, trig),
               });
             }
           }
@@ -273,7 +486,11 @@ export function createRouter(modules = [], options = {}) {
       // c. Pattern Attribute Candidate Route (O(P))
       for (let p = 0; p < tables.patternRoutes.length; p++) {
         const patternRecord = tables.patternRoutes[p];
-        const { pattern } = patternRecord.trigger;
+        const trig = patternRecord.trigger;
+
+        if (isExcluded(attrName, trig.exclude)) continue;
+
+        const { pattern } = trig;
         let isPatternMatch;
         if (typeof pattern === 'string') {
           isPatternMatch = attrName.startsWith(pattern);
@@ -286,12 +503,16 @@ export function createRouter(modules = [], options = {}) {
         }
 
         if (isPatternMatch) {
-          if (typeof patternRecord.trigger.match !== 'function' || patternRecord.trigger.match(element, attrName, attr)) {
+          const reqOk = !trig.required || trig.required.length === 0
+            || trig.required.every((r) => element.hasAttribute(r));
+
+          if (reqOk && (typeof trig.match !== 'function' || trig.match(element, attrName, attr))) {
             if (!matches) matches = [];
             matches.push({
               record: patternRecord,
               matchedAttribute: attrName,
               anchorIndex: attrIndex,
+              attributes: harvestAttributes(element, trig, attrName),
             });
           }
         }
@@ -303,6 +524,7 @@ export function createRouter(modules = [], options = {}) {
 
   return Object.freeze({
     matchElement,
+    registerCustomElements,
     hasTransformRoutes() {
       return phaseTables.transform.triggerList.length > 0;
     },

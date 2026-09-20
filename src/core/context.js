@@ -146,6 +146,7 @@ export function createModuleContext(options = {}) {
     options: mountOptions = null,
     target = null,
     refs = Object.create(null),
+    attributes = null,
   } = options;
 
   const window = document?.defaultView || globalThis.window || null;
@@ -180,6 +181,9 @@ export function createModuleContext(options = {}) {
     get attributeName() {
       return matchedAttribute;
     },
+    get attributes() {
+      return attributes || {};
+    },
     get handlers() {
       return mountOptions?.handlers ?? handlers;
     },
@@ -191,6 +195,45 @@ export function createModuleContext(options = {}) {
     },
     get refs() {
       return refs;
+    },
+
+    /**
+     * Dispatches a bubbling, cancelable, composed custom event from the element.
+     *
+     * @param {string} eventName - Custom event name
+     * @param {*} [detail] - Event detail payload
+     * @param {CustomEventInit} [eventInit={}] - Optional event init overrides
+     * @returns {boolean} Whether the event was not cancelled
+     */
+    emit(eventName, detail, eventInit = {}) {
+      if (typeof eventName !== 'string' || !eventName.trim()) {
+        throw new TypeError('ctx.emit(eventName) requires a non-empty string event name.');
+      }
+      const targetEl = element || target || document;
+      if (!targetEl || typeof targetEl.dispatchEvent !== 'function') {
+        return false;
+      }
+      const CustomEventCtor = window?.CustomEvent || globalThis.CustomEvent;
+      const evt = new CustomEventCtor(eventName.trim(), {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        detail,
+        ...eventInit,
+      });
+      return targetEl.dispatchEvent(evt);
+    },
+
+    /**
+     * Alias for ctx.emit.
+     *
+     * @param {string} eventName
+     * @param {*} [detail]
+     * @param {CustomEventInit} [eventInit]
+     * @returns {boolean}
+     */
+    dispatch(eventName, detail, eventInit) {
+      return this.emit(eventName, detail, eventInit);
     },
 
     /**
@@ -344,6 +387,15 @@ export function createModuleContext(options = {}) {
       warn(code, message, context);
     },
   };
+
+  if (element && typeof element === 'object') {
+    element._limeCtx = ctx;
+    cleanupStack.onCleanup(() => {
+      if (element && element._limeCtx === ctx) {
+        delete element._limeCtx;
+      }
+    });
+  }
 
   return { ctx, cleanupStack };
 }
