@@ -13,7 +13,7 @@
 import { tag } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
 import { createCleanupStack } from '../core/context.js';
-import { readScopePath, watchScopePath } from '../core/scope.js';
+import { readScopePath, watchScopePath, cloneWithScope } from '../core/scope.js';
 import { resolveStatic } from '../template.js';
 
 export const OPERATORS = {
@@ -134,7 +134,7 @@ function transformConditional(el, data, ctx) {
 
     const frag = el.ownerDocument.createDocumentFragment();
     for (const node of winningNodes) {
-      frag.appendChild(node.cloneNode(true));
+      frag.appendChild(cloneWithScope(node));
     }
 
     // Resolve static expressions and run transform on inner structural nodes
@@ -179,7 +179,7 @@ function transformConditional(el, data, ctx) {
     const winningTemplateNodes = condition ? thenNodes : elseNodes;
     const branchFrag = doc.createDocumentFragment();
     for (const node of winningTemplateNodes) {
-      branchFrag.appendChild(node.cloneNode(true));
+      branchFrag.appendChild(cloneWithScope(node));
     }
 
     resolveStatic(branchFrag, ctx.scope, ctx.store);

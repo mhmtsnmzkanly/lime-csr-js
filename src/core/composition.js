@@ -19,7 +19,7 @@
 
 import { tag } from './triggers.js';
 import { defineModule } from './registry.js';
-import { createIsolatedScope, setElementScope, getElementScope } from './scope.js';
+import { createIsolatedScope, setElementScope, getElementScope, cloneWithScope } from './scope.js';
 import { getByPath } from '../store.js';
 import { resolveStatic } from '../template.js';
 
@@ -230,7 +230,7 @@ export function expandPartial(el, data, ctx) {
 
       const nodesToInsert = times === 0
         ? callerNodes
-        : callerNodes.map((n) => n.cloneNode(true));
+        : callerNodes.map((n) => cloneWithScope(n));
 
       for (let n = 0; n < nodesToInsert.length; n++) {
         const node = nodesToInsert[n];

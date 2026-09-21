@@ -207,11 +207,17 @@ export function setElementScope(node, scope) {
     return false;
   };
 
-  const applyScope = (target) => {
+  const applyScope = (target, isDirect) => {
     const existing = map.get(target);
-    if (existing && existing !== scope && isChildScope(scope, existing)) {
-      // Target already has a deeper child scope derived from this scope; do not overwrite!
-      return;
+    if (existing && existing !== scope) {
+      if (isChildScope(scope, existing)) {
+        // Target already has a deeper child scope derived from this scope; do not overwrite!
+        return;
+      }
+      if (!isDirect && !isChildScope(existing, scope)) {
+        // Descendant already has an independent or non-ancestor scope (e.g. projected caller scope); do not overwrite!
+        return;
+      }
     }
     map.set(target, scope);
     if (map !== elementScopeMap) {
@@ -220,14 +226,66 @@ export function setElementScope(node, scope) {
   };
 
   if (node.nodeType === 1 || node.nodeType === 3) {
-    applyScope(node);
+    applyScope(node, true);
   }
   if (typeof node.querySelectorAll === 'function') {
     const els = node.querySelectorAll('*');
     for (let i = 0; i < els.length; i++) {
-      applyScope(els[i]);
+      applyScope(els[i], false);
     }
   }
+}
+
+/**
+ * Clones a DOM node or fragment while propagating attached lexical scope metadata.
+ *
+ * @param {Node|Element|DocumentFragment} node
+ * @param {boolean} [deep=true]
+ * @returns {Node|Element|DocumentFragment|null}
+ */
+export function cloneWithScope(node, deep = true) {
+  if (!node) return null;
+  const clone = node.cloneNode(deep);
+  if (!deep) {
+    const scope = getElementScope(node);
+    if (scope) {
+      setElementScope(clone, scope);
+    }
+    return clone;
+  }
+
+  const map = getScopeMap(node);
+  const cloneMap = getScopeMap(clone);
+
+  const origNodes = [node];
+  const cloneNodes = [clone];
+
+  while (origNodes.length > 0) {
+    const orig = origNodes.shift();
+    const cln = cloneNodes.shift();
+
+    const scope = map.get(orig) || elementScopeMap.get(orig);
+    if (scope) {
+      cloneMap.set(cln, scope);
+      if (cloneMap !== elementScopeMap) {
+        elementScopeMap.set(cln, scope);
+      }
+    }
+
+    if (orig.nodeType === 1 && orig.tagName === 'TEMPLATE' && orig.content && cln.content) {
+      origNodes.push(orig.content);
+      cloneNodes.push(cln.content);
+    }
+
+    const origChildren = orig.childNodes;
+    const clnChildren = cln.childNodes;
+    for (let i = 0; i < origChildren.length; i++) {
+      origNodes.push(origChildren[i]);
+      cloneNodes.push(clnChildren[i]);
+    }
+  }
+
+  return clone;
 }
 
 /**
