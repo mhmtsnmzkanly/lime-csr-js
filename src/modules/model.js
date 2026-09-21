@@ -177,7 +177,12 @@ function getInitialDomValue(el, kind) {
       return (el.hasAttribute('checked') || el.defaultChecked || el.checked) ? el.value : undefined;
     case 'select-single': {
       const opt = Array.from(el.options).find((o) => o.hasAttribute('selected') || o.defaultSelected);
-      return opt ? opt.value : undefined;
+      if (opt) return opt.value;
+      if (el.options && el.options.length > 0) {
+        const selectedIndex = el.selectedIndex >= 0 ? el.selectedIndex : 0;
+        return el.options[selectedIndex]?.value ?? '';
+      }
+      return undefined;
     }
     case 'select-multiple': {
       const opts = Array.from(el.options).filter((o) => o.hasAttribute('selected') || o.defaultSelected);
@@ -531,8 +536,44 @@ function bindModelControl(el, data, ctx) {
       globalThis.clearTimeout(debounceTimer);
       debounceTimer = null;
     }
+    const isEditing = Boolean(el.ownerDocument && el === el.ownerDocument.activeElement);
+    if (isEditing) {
+      if (modifiers.number && typeof el.value === 'string') {
+        if ((el.value === '' && val === null) || (val !== null && val !== undefined && Number(el.value) === val)) {
+          return;
+        }
+      }
+      if (modifiers.trim && typeof el.value === 'string' && typeof val === 'string') {
+        if (el.value.trim() === val) {
+          return;
+        }
+      }
+    }
     handler.write(el, val, data.isArray || Array.isArray(val), modifiers);
   });
+
+  if (modifiers.trim || modifiers.number) {
+    const onBlur = () => {
+      if (modifiers.trim && typeof el.value === 'string') {
+        const trimmed = el.value.trim();
+        if (el.value !== trimmed) {
+          el.value = trimmed;
+        }
+      }
+      if (modifiers.number && typeof el.value === 'string') {
+        const targetPath = resolveCanonicalPath(ctx.scope, data.path);
+        const storeVal = ctx.store?.get(targetPath);
+        if (storeVal !== undefined) {
+          handler.write(el, storeVal, false, modifiers);
+        }
+      }
+    };
+
+    el.addEventListener('blur', onBlur);
+    ctx.onCleanup(() => {
+      el.removeEventListener('blur', onBlur);
+    });
+  }
 }
 
 /**
