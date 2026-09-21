@@ -19,7 +19,7 @@
  *      - Cleanup runs before DOM detachment.
  */
 
-import { reportError, subscribeDiagnostics, warn } from '../errors.js';
+import { reportError, subscribeDiagnostics, warn, getActiveMount, withActiveMount } from '../errors.js';
 import { resolveStatic } from '../template.js';
 import { createStore } from '../store.js';
 import { createScope } from './scope.js';
@@ -142,6 +142,7 @@ export function createEngine(options = {}) {
     noop.target = target;
     noop.scope = null;
     noop.store = store;
+    noop.refs = Object.freeze(Object.create(null));
     noop.active = false;
     return Object.freeze(noop);
   }
@@ -254,14 +255,17 @@ export function createEngine(options = {}) {
     const unsubscribe = subscribeDiagnostics((diagnostic) => {
       const context = diagnostic.context;
       const owner = getNodeOwner(context);
-      const belongsToMount = owner ? owner === target : context === target
-        || (context?.nodeType != null && (
-          target.contains(context)
-          || (compileFragmentRef?.current && (
-            compileFragmentRef.current === context
-            || (typeof compileFragmentRef.current.contains === 'function' && compileFragmentRef.current.contains(context))
+      const belongsToMount = owner
+        ? owner === target
+        : (context === target
+          || (context?.nodeType != null && (
+            target.contains(context)
+            || (compileFragmentRef?.current && (
+              compileFragmentRef.current === context
+              || (typeof compileFragmentRef.current.contains === 'function' && compileFragmentRef.current.contains(context))
+            ))
           ))
-        ));
+          || getActiveMount() === target);
       if (!belongsToMount) return;
       if (options.onDiagnostic) options.onDiagnostic(diagnostic);
       if (diagnostic.severity === 'error' && options.onError) {
@@ -289,13 +293,17 @@ export function createEngine(options = {}) {
     let instance;
 
     function cleanupSelf(isUnmount = false) {
-      if (active) cleanupStack.run({ unmount: isUnmount });
+      if (active) {
+        active = false;
+        withActiveMount(target, () => {
+          cleanupStack.run({ unmount: isUnmount });
+        });
+        if (typeof target?.removeAttribute === 'function') target.removeAttribute('data-lime-mount');
+      }
     }
 
     function unmountSelf() {
-      if (!active) return;
       cleanupSelf(true);
-      active = false;
       mountedTargets.delete(target);
       if (mountOwners.get(target) === instance) mountOwners.delete(target);
       if (typeof target?.removeAttribute === 'function') target.removeAttribute('data-lime-mount');
@@ -396,102 +404,104 @@ export function createEngine(options = {}) {
         }
       }
     }
-    const scope = mountOptions.scope
-      ? mountOptions.scope
-      : (mountOptions.context ? createScope(null, mountOptions.context) : createScope(null, {}));
-    const cleanupStack = createCleanupStack();
-    const refs = Object.create(null);
+    return withActiveMount(resolvedTarget, () => {
+      const scope = mountOptions.scope
+        ? mountOptions.scope
+        : (mountOptions.context ? createScope(null, mountOptions.context) : createScope(null, {}));
+      const cleanupStack = createCleanupStack();
+      const refs = Object.create(null);
 
-    const compileFragmentRef = { current: fragment };
-    installMountDiagnostics(mountOptions, resolvedTarget, cleanupStack, compileFragmentRef);
+      const compileFragmentRef = { current: fragment };
+      installMountDiagnostics(mountOptions, resolvedTarget, cleanupStack, compileFragmentRef);
 
-    // Mount Hook API provided to module lifecycle hooks
-    const hookApi = Object.freeze({
-      target: resolvedTarget,
-      store: mountStore,
-      scope,
-      refs,
-      document: doc,
-      window: win,
-      get handlers() {
-        return mountOptions.handlers || null;
-      },
-      get options() {
-        return mountOptions;
-      },
-      onCleanup: (cb) => cleanupStack.onCleanup(cb),
-      error: (code, details) => reportError(code, details, resolvedTarget),
-      warn: (code, details) => warn(code, details, resolvedTarget),
+      // Mount Hook API provided to module lifecycle hooks
+      const hookApi = Object.freeze({
+        target: resolvedTarget,
+        store: mountStore,
+        scope,
+        refs,
+        document: doc,
+        window: win,
+        get handlers() {
+          return mountOptions.handlers || null;
+        },
+        get options() {
+          return mountOptions;
+        },
+        onCleanup: (cb) => cleanupStack.onCleanup(cb),
+        error: (code, details) => reportError(code, details, resolvedTarget),
+        warn: (code, details) => warn(code, details, resolvedTarget),
+      });
+
+      runMountHooks('beforeMount', hookApi, cleanupStack, resolvedTarget);
+
+      // Mount-scoped computeds if provided
+      if (mountOptions.computed) {
+        for (const [path, def] of Object.entries(mountOptions.computed)) {
+          const dispose = mountStore.computed(path, def.deps, def.fn);
+          cleanupStack.onCleanup(dispose);
+        }
+      }
+
+      // beforeRender user lifecycle hook
+      if (typeof mountOptions.beforeRender === 'function') {
+        try {
+          mountOptions.beforeRender(scope, mountStore);
+        } catch (err) {
+          reportError('MOUNT_HOOK_FAILED', { hook: 'beforeRender', error: err }, resolvedTarget);
+        }
+      }
+
+      const ownsContent = Boolean(fragment);
+
+      const contextOptions = {
+        store: mountStore,
+        scope,
+        cleanupStack,
+        document: doc,
+        handlers: mountOptions.handlers || null,
+        options: mountOptions,
+        target: resolvedTarget,
+        linkedElements: new WeakSet(),
+        refs,
+      };
+
+      // 6. Execution Pipeline (Transform -> resolveStatic -> Link -> Placement)
+      if (fragment) {
+        runTransform(fragment, router, contextOptions);
+        resolveStatic(fragment, scope, mountStore);
+        runLink(fragment, router, contextOptions);
+        resolvedTarget.textContent = '';
+        resolvedTarget.appendChild(fragment);
+        compileFragmentRef.current = null;
+      } else {
+        // In-place mounting on existing target children
+        runTransform(resolvedTarget, router, contextOptions);
+        resolveStatic(resolvedTarget, scope, mountStore);
+        runLink(resolvedTarget, router, contextOptions);
+      }
+
+      runMountHooks('afterMount', hookApi, cleanupStack, resolvedTarget);
+
+      // afterRender user lifecycle hook
+      if (typeof mountOptions.afterRender === 'function') {
+        try {
+          mountOptions.afterRender(resolvedTarget, mountStore);
+        } catch (err) {
+          reportError('MOUNT_HOOK_FAILED', { hook: 'afterRender', error: err }, resolvedTarget);
+        }
+      }
+
+      return createMountInstance(
+        resolvedTarget,
+        mountStore,
+        scope,
+        cleanupStack,
+        ownsContent,
+        mountOptions,
+        refs,
+      );
     });
-
-    runMountHooks('beforeMount', hookApi, cleanupStack, resolvedTarget);
-
-    // Mount-scoped computeds if provided
-    if (mountOptions.computed) {
-      for (const [path, def] of Object.entries(mountOptions.computed)) {
-        const dispose = mountStore.computed(path, def.deps, def.fn);
-        cleanupStack.onCleanup(dispose);
-      }
-    }
-
-    // beforeRender user lifecycle hook
-    if (typeof mountOptions.beforeRender === 'function') {
-      try {
-        mountOptions.beforeRender(scope, mountStore);
-      } catch (err) {
-        reportError('MOUNT_HOOK_FAILED', { hook: 'beforeRender', error: err }, resolvedTarget);
-      }
-    }
-
-    const ownsContent = Boolean(fragment);
-
-    const contextOptions = {
-      store: mountStore,
-      scope,
-      cleanupStack,
-      document: doc,
-      handlers: mountOptions.handlers || null,
-      options: mountOptions,
-      target: resolvedTarget,
-      linkedElements: new WeakSet(),
-      refs,
-    };
-
-    // 6. Execution Pipeline (Transform -> resolveStatic -> Link -> Placement)
-    if (fragment) {
-      runTransform(fragment, router, contextOptions);
-      resolveStatic(fragment, scope, mountStore);
-      runLink(fragment, router, contextOptions);
-      resolvedTarget.textContent = '';
-      resolvedTarget.appendChild(fragment);
-      compileFragmentRef.current = null;
-    } else {
-      // In-place mounting on existing target children
-      runTransform(resolvedTarget, router, contextOptions);
-      resolveStatic(resolvedTarget, scope, mountStore);
-      runLink(resolvedTarget, router, contextOptions);
-    }
-
-    runMountHooks('afterMount', hookApi, cleanupStack, resolvedTarget);
-
-    // afterRender user lifecycle hook
-    if (typeof mountOptions.afterRender === 'function') {
-      try {
-        mountOptions.afterRender(resolvedTarget, mountStore);
-      } catch (err) {
-        reportError('MOUNT_HOOK_FAILED', { hook: 'afterRender', error: err }, resolvedTarget);
-      }
-    }
-
-    return createMountInstance(
-      resolvedTarget,
-      mountStore,
-      scope,
-      cleanupStack,
-      ownsContent,
-      mountOptions,
-      refs,
-    );
   }
 
   /**
@@ -564,20 +574,22 @@ export function createEngine(options = {}) {
       refs,
     };
 
-    runTransform(nodeOrFragment, router, contextOptions);
-    resolveStatic(nodeOrFragment, scope, store);
-    runLink(nodeOrFragment, router, contextOptions);
+    return withActiveMount(contextOptions.target, () => {
+      runTransform(nodeOrFragment, router, contextOptions);
+      resolveStatic(nodeOrFragment, scope, store);
+      runLink(nodeOrFragment, router, contextOptions);
 
-    const cleanup = () => cleanupStack.run();
+      const cleanup = () => withActiveMount(contextOptions.target, () => cleanupStack.run());
 
-    return {
-      element: nodeOrFragment,
-      scope,
-      store,
-      refs,
-      cleanup,
-      cleanupStack,
-    };
+      return {
+        element: nodeOrFragment,
+        scope,
+        store,
+        refs,
+        cleanup,
+        cleanupStack,
+      };
+    });
   }
 
   return Object.freeze({
