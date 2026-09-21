@@ -16,6 +16,7 @@
 
 import { reportError, warn } from '../errors.js';
 import { setNodeOwner } from './ownership.js';
+import { watchScopePath } from './scope.js';
 
 /**
  * Creates a single, unified LIFO cleanup stack.
@@ -319,14 +320,7 @@ export function createModuleContext(options = {}) {
         }
       };
 
-      const unsubscribe = store.subscribe(path, invoke);
-      cleanupStack.onCleanup(unsubscribe);
-
-      if (opts?.immediate === true) {
-        invoke(store.get(path), undefined, path);
-      }
-
-      return unsubscribe;
+      return watchScopePath(ctx, path, invoke, opts);
     },
 
     /**

@@ -146,7 +146,7 @@ export function readScopePath(scope, store, path) {
  * Rebinds a store subscription when any enclosing keyed alias moves.
  * One cleanup owns all replacement subscriptions, including nested aliases.
  */
-export function watchScopePath(ctx, path, callback) {
+export function watchScopePath(ctx, path, callback, opts = {}) {
   if (!ctx.store || resolveCanonicalPath(ctx.scope, path) === null) return () => {};
   const aliases = new Set();
   let scope = ctx.scope;
@@ -168,20 +168,20 @@ export function watchScopePath(ctx, path, callback) {
     const canonicalPath = resolveCanonicalPath(ctx.scope, path);
     unsubscribe = ctx.store.subscribe(canonicalPath, (value, previous, changedPath) => {
       if (active && generation === currentGeneration) {
-        ctx.update(() => callback(value, previous, changedPath));
+        callback(value, previous, changedPath);
       }
     });
     if (refresh) {
-      ctx.update(() => callback(ctx.store.get(canonicalPath), undefined, canonicalPath));
+      callback(ctx.store.get(canonicalPath), undefined, canonicalPath);
     }
   }
   const rebind = () => { if (active) bind(true); };
   for (const alias of aliases) alias.listeners.add(rebind);
-  bind();
+  bind(opts?.immediate === true);
   const cleanup = () => {
     if (!active) return;
     active = false;
-    unsubscribe();
+    unsubscribe?.();
     for (const alias of aliases) alias.listeners.delete(rebind);
   };
   ctx.onCleanup(cleanup);
