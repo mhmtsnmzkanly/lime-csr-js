@@ -232,6 +232,7 @@ function parseEventName(eventName) {
 
 // Track active delegated event listeners per target to avoid duplicate bindings
 const targetDelegatedMap = new WeakMap();
+const elementContextMap = new WeakMap();
 
 /**
  * Ensures a delegated listener is attached to the mount target for the specified DOM event type.
@@ -242,8 +243,6 @@ const targetDelegatedMap = new WeakMap();
  * @param {Object} moduleOptions
  */
 function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
-  if (!target || target.nodeType !== 1) return;
-
   let delegations = targetDelegatedMap.get(target);
   if (!delegations) {
     delegations = new Map();
@@ -257,13 +256,14 @@ function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
       while (current && current.nodeType === 1) {
         if (inIgnoredBlock(current)) break;
 
-        // Nested mount boundary isolation (fixes F06):
-        // If current belongs to an inner nested mount inside target, skip past it.
+        // Nested mount boundary isolation:
+        // If current belongs to an inner nested mount inside target, skip past inner descendants to the boundary element.
         if (current !== target) {
           const innerMount = current.closest?.('[data-lime-mount]');
           if (innerMount && innerMount !== target && target.contains(innerMount)) {
-            current = innerMount.parentNode;
-            continue;
+            if (current !== innerMount) {
+              current = innerMount;
+            }
           }
         }
 
@@ -284,32 +284,37 @@ function ensureDelegatedListener(target, domType, ctx, moduleOptions) {
             event.preventDefault();
           }
 
+          const activeCtx = elementContextMap.get(current) || ctx;
+          if (activeCtx.target && activeCtx.target !== target) {
+            continue;
+          }
+
           const handlerName = attr.value;
-          const handlers = ctx.handlers || ctx.options?.handlers || moduleOptions.handlers || {};
-          const elementScope = findElementScope(current, target, ctx.scope);
+          const handlers = activeCtx.handlers || activeCtx.options?.handlers || moduleOptions.handlers || {};
+          const elementScope = findElementScope(current, target, activeCtx.scope);
           const handler = lookupHandler(handlerName, handlers, elementScope);
 
           if (typeof handler !== 'function') {
-            ctx.error('HANDLER_NOT_FOUND', { name: handlerName, available: Object.keys(handlers) }, current);
+            activeCtx.error('HANDLER_NOT_FOUND', { name: handlerName, available: Object.keys(handlers) }, current);
             continue;
           }
 
           const dataAttr = `${attr.name}-data`;
           const rawData = current.getAttribute(dataAttr);
           const resolvedData = rawData !== null
-            ? resolveHandlerData(rawData, elementScope, ctx.store)
+            ? resolveHandlerData(rawData, elementScope, activeCtx.store)
             : null;
 
           const payload = {
             event,
             element: current,
             scope: elementScope,
-            store: ctx.store || null,
+            store: activeCtx.store || null,
             data: resolvedData,
-            refs: ctx.refs || Object.create(null),
+            refs: activeCtx.refs || Object.create(null),
           };
 
-          invokeHandler(handler, handlerName, payload, ctx, current);
+          invokeHandler(handler, handlerName, payload, activeCtx, current);
         }
 
         if (current === target || event.cancelBubble) {
@@ -383,6 +388,10 @@ export function events(moduleOptions = {}) {
 
         setup(el, data, ctx) {
           if (!data) return;
+
+          if (el !== ctx.target || !elementContextMap.has(el)) {
+            elementContextMap.set(el, ctx);
+          }
 
           if (ctx.scope) {
             setElementScope(el, ctx.scope);
