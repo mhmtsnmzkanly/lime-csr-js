@@ -214,7 +214,7 @@ function buildInitialState() {
       loggedIn: true,
       user: {
         // A root-relative path: the avatar in the nav is bound reactively via
-        // {x}/data-x, and bindings.js's URL whitelist only allows http(s)/
+        // {x}/data-x, and text.js's URL whitelist only allows http(s)/
         // root-relative/#anchor — data: URIs (like the ${}-static SVGs used
         // for author/comment avatars) are deliberately rejected in a
         // reactive src binding.
@@ -254,7 +254,7 @@ setDevMode(true);
 
 // A real use of store.subscribe(): update the tab title as the comment count
 // changes — a legitimate example of application code subscribing to the
-// store directly, outside of bindings.js.
+// store directly, outside of declarative bindings.
 store.subscribe('commentCount', (count) => {
   document.title = `(${count}) Filtre Kahve Günlüğü — V60 ile evde demleme`;
 });
@@ -458,11 +458,6 @@ function getComposer() {
   return root.querySelector('#comment-draft');
 }
 
-function syncComposerValue() {
-  const composer = getComposer();
-  if (composer) composer.value = store.get('draftText') || '';
-}
-
 function handleAction(action, event) {
   const targetId = event.target.closest('[data-comment-id]')?.getAttribute('data-comment-id') || null;
 
@@ -491,44 +486,28 @@ function handleAction(action, event) {
       } else {
         insertTopLevelComment(draft);
       }
-      syncComposerValue();
       break;
     }
     case 'filter-by-tag':
       // There's no real filter page in this demo; it's enough to show that
-      // the tag is clickable and that the data-action pattern also works
-      // inside partial content.
+      // The tag is clickable inside partial content.
       break;
     default:
       break;
   }
 }
 
-function initComposerListeners() {
-  const composer = getComposer();
-  if (!composer) return;
+const handlers = Object.fromEntries([
+  'toggle-post-like',
+  'toggle-comment-like',
+  'reply-to',
+  'delete-comment',
+  'cancel-reply',
+  'add-comment',
+  'filter-by-tag',
+].map((action) => [action, ({ element }) => handleAction(action, { target: element })]));
 
-  composer.value = store.get('draftText') || '';
-
-  composer.addEventListener('input', (event) => {
-    store.set('draftText', event.currentTarget.value);
-  });
-}
-
-function initActions() {
-  root.addEventListener('click', (event) => {
-    const actionEl = event.target.closest('[data-action]');
-    if (!actionEl || !root.contains(actionEl)) return;
-    const action = actionEl.getAttribute('data-action');
-    handleAction(action, event);
-  });
-}
-
-mount({ target: root, template: 'page', store: store, ...{
-  context: store.get(),
-} });
-initComposerListeners();
-initActions();
+mount({ target: root, template: 'page', store, handlers });
 
 window.coffeeBlog = {
   store,

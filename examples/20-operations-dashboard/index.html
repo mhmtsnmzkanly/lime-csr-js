@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime operations dashboard</title>
+  <style>
+    :root { color: #172033; background: #f8fafc; font: 1rem/1.5 system-ui, sans-serif; }
+    body { max-width: 72rem; margin: 0 auto; padding: 1.5rem; }
+    nav { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    button, input, select { font: inherit; padding: .45rem .65rem; }
+    button { cursor: pointer; }
+    .active { color: white; background: #0f766e; border-color: #0f766e; }
+    .dashboard-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+    .panel { padding: 1rem; background: white; border: 1px solid #cbd5e1; border-radius: .7rem; }
+    .panel > header { display: flex; justify-content: space-between; gap: .75rem; align-items: center; }
+    .metric { font-size: 2rem; font-weight: 700; }
+    .toolbar { display: flex; gap: .6rem; flex-wrap: wrap; align-items: end; margin: 1rem 0; }
+    label { display: grid; gap: .2rem; }
+    table { width: 100%; border-collapse: collapse; background: white; }
+    th, td { padding: .65rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    td input { width: 100%; box-sizing: border-box; }
+    .error { padding: .8rem; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; }
+    .modal { position: fixed; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(15 23 42 / 45%); }
+    .modal > .panel { width: min(32rem, 100%); }
+    .muted { color: #64748b; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+
+  <template id="tpl-operations">
+    <header>
+      <h1>Operations dashboard</h1>
+      <p class="muted">A small dogfood app using current Lime primitives, not a router or application framework.</p>
+      <nav aria-label="Dashboard views">
+        <button type="button" data-on-click="view" data-on-click-data="'overview'">Overview</button>
+        <button type="button" data-on-click="view" data-on-click-data="'records'">Records</button>
+        <button type="button" data-on-click="reload">Reload data</button>
+        <button type="button" data-on-click="fail">Simulate error</button>
+        <button type="button" data-on-click="remount">Remount</button>
+      </nav>
+    </header>
+
+    <p data-show="loading" aria-live="polite">Loading mocked operations data…</p>
+    <if data-live is-truthy="errorMessage">
+      <p class="error" data-text="errorMessage" role="alert"></p>
+    </if>
+
+    <if data-live is-eq="view" to="overview">
+      <section class="dashboard-grid" aria-label="Summary">
+        <partial name="metric-card" data="metrics.open">
+          <span slot="detail">Needs attention this week.</span>
+        </partial>
+        <partial name="metric-card" data="metrics.resolved">
+          <span slot="detail">Resolved by the operations team.</span>
+        </partial>
+        <partial name="metric-card" data="metrics.sla">
+          <span slot="detail">Target is 95% or higher.</span>
+        </partial>
+      </section>
+      <partial name="panel" data="recentPanel">
+        <button slot="actions" type="button" data-on-click="view" data-on-click-data="'records'">Open records</button>
+        <ul>
+          <for each="recent" as="entry">
+            <li><span data-text="entry.label"></span> — <strong data-text="entry.value"></strong></li>
+          </for>
+        </ul>
+      </partial>
+    </if>
+
+    <if data-live is-eq="view" to="records">
+      <section class="panel" aria-labelledby="records-title">
+        <header><h2 id="records-title">Records</h2><span data-text="visibleCount"></span></header>
+        <div class="toolbar">
+          <label>Search <input data-model.trim="search" placeholder="Filter by name"></label>
+          <label>Sort
+            <select data-model="sort">
+              <option value="name">Name</option>
+              <option value="priority">Priority</option>
+            </select>
+          </label>
+          <button type="button" data-on-click="clearSearch">Clear search</button>
+        </div>
+        <table>
+          <thead><tr><th>Name</th><th>Priority</th><th>Owner</th><th>Action</th></tr></thead>
+          <tbody>
+            <for data-live data-diff="lcs" each="visibleRecords" as="record" key="id">
+              <tr>
+                <td><input data-model.trim="record.name" aria-label="Record name"></td>
+                <td data-text="record.priority"></td>
+                <td data-text="record.owner"></td>
+                <td><button type="button" data-on-click="select" data-on-click-data="record.id">Details</button></td>
+              </tr>
+            </for>
+          </tbody>
+        </table>
+        <p data-show="noRecords" class="muted">No records match this search.</p>
+      </section>
+    </if>
+
+    <if data-live is-truthy="selectedId">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+        <partial name="detail" data="selectedRecord">
+          <button slot="actions" type="button" data-on-click="closeDetails">Close</button>
+        </partial>
+      </div>
+    </if>
+  </template>
+
+  <template id="tpl-metric-card">
+    <article class="panel">
+      <header><h2 data-text="label"></h2><span class="metric" data-text="value"></span></header>
+      <slot name="detail"></slot>
+    </article>
+  </template>
+
+  <template id="tpl-panel">
+    <section class="panel">
+      <header><h2 data-text="title"></h2><slot name="actions"></slot></header>
+      <slot></slot>
+    </section>
+  </template>
+
+  <template id="tpl-detail">
+    <article class="panel">
+      <header><h2 id="detail-title" data-text="name"></h2><slot name="actions"></slot></header>
+      <p>Owner: <strong data-text="owner"></strong></p>
+      <p>Priority: <strong data-text="priority"></strong></p>
+      <p data-text="notes"></p>
+      <button type="button" data-on-click="save">Save and close</button>
+    </article>
+  </template>
+
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      loading: true,
+      errorMessage: '',
+      view: 'overview',
+      search: '',
+      sort: 'name',
+      selectedId: null,
+      metrics: {
+        open: { label: 'Open cases', value: '—' },
+        resolved: { label: 'Resolved this month', value: '—' },
+        sla: { label: 'SLA health', value: '—' },
+      },
+      recentPanel: { title: 'Recent activity' },
+      recent: [],
+      records: [],
+    });
+
+    store.computed('visibleRecords', ['records', 'search', 'sort'], (records, search, sort) => {
+      const query = search.toLowerCase();
+      return records
+        .filter((record) => record.name.toLowerCase().includes(query))
+        .sort((left, right) => sort === 'priority'
+          ? right.priority - left.priority
+          : left.name.localeCompare(right.name));
+    });
+    store.computed('visibleCount', ['visibleRecords'], (records) => `${records.length} visible`);
+    store.computed('noRecords', ['visibleRecords'], (records) => records.length === 0);
+    store.computed('selectedRecord', ['records', 'selectedId'], (records, selectedId) =>
+      records.find((record) => record.id === selectedId) || {});
+
+    const mockRecords = [
+      { id: 'r1', name: 'Payment retries', priority: 3, owner: 'Mina', notes: 'Review the latest gateway report.' },
+      { id: 'r2', name: 'Onboarding queue', priority: 2, owner: 'Arda', notes: 'Three accounts need a manual check.' },
+      { id: 'r3', name: 'Export delay', priority: 1, owner: 'Zeynep', notes: 'The export completed after the worker restarted.' },
+    ];
+
+    let instance;
+    const loadData = (shouldFail = false) => {
+      store.batch(() => {
+        store.set('loading', true);
+        store.set('errorMessage', '');
+      });
+      setTimeout(() => {
+        if (shouldFail) {
+          store.batch(() => {
+            store.set('loading', false);
+            store.set('errorMessage', 'The mocked operations service is unavailable. Try Reload data.');
+          });
+          return;
+        }
+        store.batch(() => {
+          store.set('loading', false);
+          store.set('metrics', {
+            open: { label: 'Open cases', value: '12' },
+            resolved: { label: 'Resolved this month', value: '48' },
+            sla: { label: 'SLA health', value: '97%' },
+          });
+          store.set('recent', [
+            { label: 'Payment retries', value: 'updated 2m ago' },
+            { label: 'Onboarding queue', value: 'assigned to Arda' },
+          ]);
+          store.set('records', mockRecords.map((record) => ({ ...record })));
+        });
+      }, 120);
+    };
+
+    const handlers = {
+      view: ({ data }) => store.set('view', data),
+      reload: () => loadData(),
+      fail: () => loadData(true),
+      clearSearch: () => store.set('search', ''),
+      select: ({ data }) => store.set('selectedId', data),
+      closeDetails: () => store.set('selectedId', null),
+      save: () => store.batch(() => {
+        store.set('selectedId', null);
+        store.set('recent', [{ label: 'Record saved', value: 'just now' }, ...store.get('recent')]);
+      }),
+      remount: () => {
+        instance.unmount();
+        instance = mount({ target: document.querySelector('#app'), template: 'operations', store, handlers });
+      },
+    };
+
+    instance = mount({ target: document.querySelector('#app'), template: 'operations', store, handlers });
+    loadData();
+    window.addEventListener('unload', () => instance.unmount(), { once: true });
+  </script>
+</body>
+</html>

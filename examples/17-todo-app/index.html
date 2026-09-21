@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime todo app</title>
+  <style>
+    body { max-width: 48rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    form { display: flex; gap: .5rem; }
+    form input { flex: 1; padding: .55rem; }
+    button, select { padding: .45rem .7rem; }
+    li { display: flex; gap: .5rem; align-items: center; margin: .55rem 0; }
+    li input[type="text"] { flex: 1; padding: .4rem; }
+    .done { text-decoration: line-through; color: #64748b; }
+    .toolbar { display: flex; justify-content: space-between; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-todo">
+    <section aria-labelledby="title">
+      <h1 id="title">A small todo app</h1>
+      <form data-on-submit="add">
+        <label class="sr-only" for="new-todo">New todo</label>
+        <input id="new-todo" data-model.trim="draft" placeholder="What needs doing?">
+        <button type="submit">Add</button>
+      </form>
+      <div class="toolbar">
+        <span><strong data-text="remaining"></strong> remaining</span>
+        <label>Show
+          <select data-model="filter">
+            <option value="all">all</option><option value="open">open</option><option value="done">done</option>
+          </select>
+        </label>
+      </div>
+      <ul>
+        <for data-live data-diff="lcs" each="visibleTodos" as="todo" key="id">
+          <li>
+            <input type="checkbox" data-model="todo.done" aria-label="Complete todo">
+            <input type="text" data-model.trim="todo.title" aria-label="Todo title">
+            <button type="button" data-on-click="remove" data-on-click-data="todo.id">Delete</button>
+          </li>
+        </for>
+      </ul>
+      <p data-show="empty">Nothing matches the filter.</p>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      draft: '',
+      filter: 'all',
+      todos: [
+        { id: 't1', title: 'Read the examples', done: false },
+        { id: 't2', title: 'Try a keyed list', done: true },
+      ],
+    });
+    store.computed('visibleTodos', ['todos', 'filter'], (todos, filter) =>
+      todos.filter((todo) => filter === 'all' || (filter === 'done' ? todo.done : !todo.done)));
+    store.computed('remaining', ['todos'], (todos) => todos.filter((todo) => !todo.done).length);
+    store.computed('empty', ['visibleTodos'], (todos) => todos.length === 0);
+    mount({
+      target: document.querySelector('#app'),
+      template: 'todo',
+      store,
+      handlers: {
+        add({ event }) {
+          event.preventDefault();
+          const title = store.get('draft');
+          if (!title) return;
+          store.batch(() => {
+            store.update('todos', (todos) => [...todos, { id: `t${Date.now()}`, title, done: false }]);
+            store.set('draft', '');
+          });
+        },
+        remove({ data }) {
+          store.update('todos', (todos) => todos.filter((todo) => todo.id !== data));
+        },
+      },
+    });
+  </script>
+</body>
+</html>

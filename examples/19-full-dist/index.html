@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime full distribution</title>
+  <style>
+    body { max-width: 42rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    button { padding: .5rem .8rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-full-dist">
+    <section aria-labelledby="title">
+      <h1 id="title">Full distribution bundle</h1>
+      <p data-text="message"></p>
+      <button type="button" data-on-click="change">Change message</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/dist/index.min.js';
+
+    const store = createStore({ message: 'Loaded the complete standard runtime from dist/index.min.js.' });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'full-dist',
+      store,
+      handlers: { change: () => store.set('message', 'The full distribution bundle is running.') },
+    });
+  </script>
+</body>
+</html>

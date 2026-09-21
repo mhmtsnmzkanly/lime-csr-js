@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime partials and slots</title>
+  <style>
+    body { max-width: 48rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    .card { padding: 1rem; margin: 1rem 0; border: 1px solid #cbd5e1; border-radius: .6rem; }
+    .card > header { display: flex; justify-content: space-between; gap: 1rem; }
+    button { padding: .4rem .7rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-partials">
+    <section aria-labelledby="title">
+      <h1 id="title">Cards from isolated partial data</h1>
+      <partial name="card" data="featured"></partial>
+      <partial name="card" data="secondary">
+        <span slot="actions"><button type="button" data-on-click="selectSecondary">Select</button></span>
+        <p>This projected paragraph reads the caller's <strong data-text="viewer"></strong> scope.</p>
+      </partial>
+    </section>
+  </template>
+  <template id="tpl-card">
+    <article class="card">
+      <header><h2 data-text="title"></h2><slot name="actions"><span>Featured</span></slot></header>
+      <p data-text="description"></p>
+      <if is-truthy="showDetails">
+        <slot></slot>
+      </if>
+    </article>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      viewer: 'a reader',
+      featured: { title: 'First card', description: 'Partial data is isolated.', showDetails: false },
+      secondary: { title: 'Second card', description: 'Slots keep caller scope.', showDetails: true },
+      selected: false,
+    });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'partials',
+      store,
+      handlers: {
+        selectSecondary: () => store.set('selected', true),
+      },
+    });
+  </script>
+</body>
+</html>
+

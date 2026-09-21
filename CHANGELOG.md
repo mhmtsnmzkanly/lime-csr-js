@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.4] - 2026-09-22
+
+### Examples
+- Modernized the repository examples around the current public module API and added an operations-dashboard dogfood application covering async states, filtered and sorted keyed records, editing, modal detail, composition, and remounting.
+- Added static example validation and representative real-Chromium example smoke coverage.
+
+### Testing
+- Added packed-package consumer checks for root, core, modules, granular module, and dist exports.
+- Added an external TypeScript consumer audit for the installed package's JSDoc-driven type surface.
+- Added permanent real-Chromium security regression coverage for executable attributes, `srcdoc`, unsafe URLs, mixed casing, and payload execution.
+- Added informational release benchmarks for Store, model, text, keyed append, reorder, and LCS workloads.
+
+### Tooling
+- Added `verify:release` to orchestrate release-critical checks and integrated examples, security, and package-consumer validation into CI.
+
+### Security / Dependencies
+- Preserved the dependency lockfile hardening that removes the previously reported development-only advisories.
+
+### Documentation
+- Improved examples discoverability, clarified test environments, and documented development versus release verification commands.
+
 ## [0.6.3] - 2026-09-21
 
 ### Fixed

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime dashboard</title>
+  <style>
+    body { max-width: 58rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; background: #f8fafc; }
+    .dashboard { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+    .card { padding: 1rem; background: white; border: 1px solid #cbd5e1; border-radius: .7rem; }
+    .card h2 { margin-top: 0; font-size: 1rem; }
+    .metric { font-size: 2rem; font-weight: 700; }
+    button { padding: .45rem .7rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-dashboard">
+    <section aria-labelledby="title">
+      <h1 id="title">Team dashboard</h1>
+      <p>Local mock data, composed cards, and a live activity list.</p>
+      <div class="dashboard">
+        <partial name="metric" data="metrics.users"></partial>
+        <partial name="metric" data="metrics.revenue"></partial>
+        <partial name="metric" data="metrics.rate"></partial>
+      </div>
+      <section class="card">
+        <h2>Recent activity</h2>
+        <ul>
+          <for data-live data-diff="lcs" each="activity" as="entry" key="id">
+            <li><span data-text="entry.label"></span> — <strong data-text="entry.value"></strong></li>
+          </for>
+        </ul>
+        <button type="button" data-on-click="refresh">Refresh activity</button>
+      </section>
+    </section>
+  </template>
+  <template id="tpl-metric">
+    <article class="card">
+      <h2 data-text="label"></h2>
+      <p class="metric" data-text="value"></p>
+      <if is-truthy="positive"><span>Trending up</span></if>
+    </article>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      metrics: {
+        users: { label: 'Active users', value: '1,284', positive: true },
+        revenue: { label: 'Revenue', value: '$8,420', positive: true },
+        rate: { label: 'Conversion', value: '6.8%', positive: false },
+      },
+      activity: [
+        { id: 'a1', label: 'New signup', value: 'Mina' },
+        { id: 'a2', label: 'Invoice paid', value: '$240' },
+        { id: 'a3', label: 'Trial started', value: 'Arda' },
+      ],
+    });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'dashboard',
+      store,
+      handlers: {
+        refresh: () => store.update('activity', (activity) => [
+          { id: `a${Date.now()}`, label: 'Dashboard refreshed', value: 'just now' },
+          ...activity,
+        ]),
+      },
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime Counter</title>
+  <style>
+    body { max-width: 36rem; margin: 3rem auto; padding: 1rem; font: 1.1rem system-ui, sans-serif; }
+    button { padding: .55rem .9rem; margin-right: .4rem; }
+    output { font-size: 2rem; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-counter">
+    <section aria-labelledby="counter-title">
+      <h1 id="counter-title">A tiny reactive counter</h1>
+      <p>Count: <output data-text="count">0</output></p>
+      <button type="button" data-on-click="decrement">−</button>
+      <button type="button" data-on-click="increment">+</button>
+      <button type="button" data-on-click="reset">Reset</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({ count: 0 });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'counter',
+      store,
+      handlers: {
+        decrement: () => store.update('count', (count) => count - 1),
+        increment: () => store.update('count', (count) => count + 1),
+        reset: () => store.set('count', 0),
+      },
+    });
+  </script>
+</body>
+</html>
+

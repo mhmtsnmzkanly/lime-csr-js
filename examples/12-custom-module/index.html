@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime custom module</title>
+  <style>
+    body { max-width: 46rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    li { margin: .5rem 0; }
+    .status-done { color: #166534; text-decoration: line-through; }
+    button { padding: .45rem .7rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-custom-module">
+    <section aria-labelledby="title">
+      <h1 id="title">A custom status module</h1>
+      <p>The directive watches <code>item.status</code>. In a keyed live loop Lime resolves that alias to the item's canonical Store path.</p>
+      <ul>
+        <for data-live data-diff="lcs" each="items" as="item" key="id">
+          <li data-status-class="item.status">
+            <span data-text="item.label"></span>
+            (<span data-text="item.status"></span>)
+            <button type="button" data-on-click="toggle" data-on-click-data="item.id">Toggle</button>
+          </li>
+        </for>
+      </ul>
+    </section>
+  </template>
+  <script type="module">
+    import { attr, createEngine, createStore, defineModule, events, loops, text } from '/src/index.js';
+
+    const statusModule = defineModule({
+      name: 'status-class',
+      version: '1.0.0',
+      triggers: [attr('data-status-class', {
+        setup(element, _value, ctx) {
+          const path = element.getAttribute('data-status-class');
+          ctx.watch(path, (status) => element.classList.toggle('status-done', status === 'done'), {
+            immediate: true,
+          });
+        },
+      })],
+    });
+    const engine = createEngine({ modules: [statusModule, loops(), text(), events()] });
+    const store = createStore({
+      items: [
+        { id: 'one', label: 'Write documentation', status: 'open' },
+        { id: 'two', label: 'Review examples', status: 'done' },
+      ],
+    });
+    engine.mount({
+      target: document.querySelector('#app'),
+      template: 'custom-module',
+      store,
+      handlers: {
+        toggle({ data }) {
+          const item = store.get('items').find(({ id }) => id === data);
+          const index = store.get('items').findIndex(({ id }) => id === data);
+          store.set(`items.${index}.status`, item.status === 'done' ? 'open' : 'done');
+        },
+      },
+    });
+  </script>
+</body>
+</html>
+

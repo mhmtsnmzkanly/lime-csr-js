@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime events</title>
+  <style>
+    body { max-width: 42rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    button, input { padding: .5rem; margin: .25rem; }
+    output { display: block; min-height: 1.5rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-events">
+    <section aria-labelledby="title">
+      <h1 id="title">Named handlers and event data</h1>
+      <button type="button" data-on-click="choose" data-on-click-data="'primary'">Primary</button>
+      <button type="button" data-on-click="choose" data-on-click-data="42">Number</button>
+      <label>Press Enter <input data-on-keydown-enter="confirm" placeholder="Focus me"></label>
+      <output data-text="message" aria-live="polite"></output>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({ message: 'No event yet.' });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'events',
+      store,
+      handlers: {
+        choose({ data }) { store.set('message', `Clicked with data: ${String(data)}`); },
+        confirm() { store.set('message', 'Enter was pressed.'); },
+      },
+    });
+  </script>
+</body>
+</html>

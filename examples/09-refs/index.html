@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime refs</title>
+  <style>
+    body { max-width: 44rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    label { display: block; margin: .6rem 0; }
+    input { padding: .45rem; }
+    button { padding: .5rem .8rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-refs">
+    <section aria-labelledby="title">
+      <h1 id="title">Refs for imperative edges</h1>
+      <p>Refs are useful when an interaction needs the DOM, such as focusing the first invalid field.</p>
+      <label>First field <input data-ref="fields[]" required></label>
+      <label>Second field <input data-ref="fields[]" required></label>
+      <button type="button" data-on-click="focusFirst">Focus first field</button>
+      <p data-text="message" aria-live="polite"></p>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({ message: 'Two fields are collected in DOM order.' });
+    const app = mount({
+      target: document.querySelector('#app'),
+      template: 'refs',
+      store,
+      handlers: {
+        focusFirst: () => {
+          app.refs.fields?.[0]?.focus();
+          store.set('message', 'Focused the first field through the ref array.');
+        },
+      },
+    });
+  </script>
+</body>
+</html>
+

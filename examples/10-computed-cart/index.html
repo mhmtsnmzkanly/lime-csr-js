@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime computed cart</title>
+  <style>
+    body { max-width: 42rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    li { display: flex; justify-content: space-between; padding: .4rem 0; }
+    .total { margin-top: 1rem; font-weight: 700; }
+    button { padding: .35rem .6rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-cart">
+    <section aria-labelledby="title">
+      <h1 id="title">Computed cart totals</h1>
+      <ul>
+        <for each="items" as="item">
+          <li><span data-text="item.name"></span><span data-text="item.price"></span></li>
+        </for>
+      </ul>
+      <p>Subtotal: <span data-text="subtotal"></span></p>
+      <p>Tax: <span data-text="tax"></span></p>
+      <p class="total">Total: <span data-text="total"></span></p>
+      <button type="button" data-on-click="add">Add coffee</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      items: [
+        { name: 'Tea', price: 3.5 },
+        { name: 'Cake', price: 4 },
+      ],
+    });
+    store.computed('subtotal', ['items'], (items) => items.reduce((sum, item) => sum + item.price, 0));
+    store.computed('tax', ['subtotal'], (subtotal) => subtotal * 0.2);
+    store.computed('total', ['subtotal', 'tax'], (subtotal, tax) => subtotal + tax);
+    mount({
+      target: document.querySelector('#app'),
+      template: 'cart',
+      store,
+      handlers: {
+        add: () => store.update('items', (items) => [...items, { name: 'Coffee', price: 2.5 }]),
+      },
+    });
+  </script>
+</body>
+</html>
+

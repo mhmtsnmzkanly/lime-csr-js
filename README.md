@@ -27,16 +27,37 @@ npm install lime-csr-js
 ```
 
 For development, `npm run verify` runs lint, type checks, tests, and the build.
+For the complete release gate, use `npm run verify:release`; it also validates
+real Chromium, examples, security regressions, the packed npm consumer, and
+the external TypeScript consumer.
+
+### Examples
+
+Start with the [progressive examples guide](examples/README.md) or open the
+[examples index](examples/index.html). Recommended first stops are the
+[Counter](examples/01-counter/), [Forms](examples/05-forms/), [Keyed List](examples/04-keyed-list/),
+[Partials & Slots](examples/07-partials-slots/), [Custom Module](examples/12-custom-module/),
+[Todo](examples/17-todo-app/), and [Operations Dashboard](examples/20-operations-dashboard/).
 
 ### Testing Environments
 
 - **`npm test`**: Runs unit and regression test suites in Node.js using JSDOM.
 - **`npm run test:browser`**: Runs ESM bundle smoke tests in Node.js using JSDOM against built artifacts in `dist/`.
 - **`npm run test:csp`**: Validates runtime execution and DOM visibility under strict CSP (`default-src 'none'; script-src 'self'; style-src 'self'`) in real headless Chromium/Chrome after building. Requires an installed browser (`chromium`, `chromium-browser`, or `google-chrome`), or an explicit `CHROMIUM_BIN` executable path.
+- **`npm run test:examples`**: Discovers examples, parses module scripts, checks local imports/assets/templates, and rejects stale or unsafe patterns.
+- **`npm run test:examples:browser`**: Runs representative examples in real Chromium and checks interaction results and browser errors.
+- **`npm run test:security:browser`**: Runs permanent real-Chromium checks for executable attributes, mixed-case event attributes, `srcdoc`, unsafe URLs, and payload execution.
+- **`npm run test:package`**: Packs the project, installs the tarball in a temporary external project, and checks root, core, modules, granular, and dist exports.
+- **`npm run test:package:types`**: Runs `tsc` against a temporary external TypeScript consumer using the installed tarball and current JSDoc surface.
+- **`npm run benchmark:release`**: Prints informational Store/text/keyed/model workload medians without enforcing unstable hard timing limits.
+
+Chromium is the required real-browser release gate. `npm run test:examples:firefox`
+is an optional exploratory smoke command when a reliable headless Firefox
+installation is available; WebKit is not bundled or required by this release.
 
 ### Subpath Exports
 
-`lime-csr-js@0.6.3` provides clean, dedicated subpaths:
+`lime-csr-js@0.6.4` provides clean, dedicated subpaths:
 
 ```js
 // 1. Root package (Facade, Store, Diagnostics, Standard Modules)
@@ -66,7 +87,7 @@ If you want the complete framework with all directives pre-registered:
 
 ```html
 <script type="module">
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/index.min.js';
 </script>
 ```
 
@@ -75,10 +96,10 @@ If you only need specific directives (e.g. only text and events for a tiny widge
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/modules/events.min.js';
 
   // Assemble a bespoke engine with only the modules you need
   const engine = createEngine({

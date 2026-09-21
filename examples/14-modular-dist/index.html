@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime modular distribution</title>
+  <style>
+    body { max-width: 42rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    button { padding: .5rem .8rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-modular">
+    <section aria-labelledby="title">
+      <h1 id="title">Modular browser distribution</h1>
+      <p data-text="message"></p>
+      <button type="button" data-on-click="change">Use the modular files</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createEngine } from '/dist/core.min.js';
+    import { createStore } from '/dist/store.min.js';
+    import { text } from '/dist/modules/text.min.js';
+    import { events } from '/dist/modules/events.min.js';
+
+    const engine = createEngine({ modules: [text(), events()] });
+    const store = createStore({ message: 'Loaded core, Store, and selected modules from dist/.' });
+    engine.mount({
+      target: document.querySelector('#app'),
+      template: 'modular',
+      store,
+      handlers: { change: () => store.set('message', 'The modular distribution is running.') },
+    });
+  </script>
+</body>
+</html>
+

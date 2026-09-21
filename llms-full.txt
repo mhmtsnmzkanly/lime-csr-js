@@ -1,6 +1,6 @@
 # lime-csr-js — Comprehensive LLM Reference Manual
 
-Version: 0.6.3
+Version: 0.6.4
 Architecture: Unprivileged Micro-Kernel + Discrete Modules
 Package: lime-csr-js
 Platform: Browser-First Client-Side Rendering (ESM)
@@ -31,7 +31,7 @@ Precedence vs Execution Order:
 - Execution Order: Within an element, tag triggers execute first, followed by attribute triggers in exact DOM declaration order.
 
 ================================================================================
-2. COMPLETE PUBLIC API SURFACE (34 ROOT EXPORTS)
+2. COMPLETE PUBLIC API SURFACE (35 ROOT EXPORTS)
 ================================================================================
 
 Subpath Exports:

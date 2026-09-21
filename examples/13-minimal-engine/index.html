@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime minimal engine</title>
+  <style>
+    body { max-width: 40rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    button { padding: .5rem .8rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-minimal">
+    <section aria-labelledby="title">
+      <h1 id="title">A deliberately small engine</h1>
+      <p data-text="message"></p>
+      <button type="button" data-on-click="change">Change message</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createEngine, createStore, events, text } from '/src/index.js';
+
+    const engine = createEngine({ modules: [text(), events()] });
+    const store = createStore({ message: 'This engine includes only text and events.' });
+    engine.mount({
+      target: document.querySelector('#app'),
+      template: 'minimal',
+      store,
+      handlers: { change: () => store.set('message', 'A custom engine is useful for constrained runtimes.') },
+    });
+  </script>
+</body>
+</html>
+

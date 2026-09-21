@@ -1,6 +1,6 @@
 {
   "name": "lime-csr-js",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "An HTML-first client-side rendering engine built with standard browser APIs.",
   "type": "module",
   "main": "src/index.js",
@@ -55,7 +55,15 @@
     "test": "node --test",
     "test:browser": "node --test test/browser-smoke.test.js",
     "test:csp": "node scripts/check-csp.js",
+    "test:examples": "node scripts/check-examples.js",
+    "test:examples:browser": "node scripts/check-examples-browser.js",
+    "test:examples:firefox": "node scripts/check-examples-browser.js --browser firefox",
+    "test:security:browser": "node scripts/check-security-chromium.js",
+    "test:package": "node scripts/check-package-consumer.js",
+    "test:package:types": "node scripts/check-package-types.js",
+    "verify:release": "node scripts/verify-release.js",
     "benchmark": "node scripts/benchmark.js",
+    "benchmark:release": "node scripts/benchmark-release.js",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
     "prepublishOnly": "npm run verify"
   },

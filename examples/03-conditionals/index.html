@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime conditionals</title>
+  <style>
+    body { max-width: 44rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    .panel { padding: 1rem; margin: 1rem 0; border-radius: .6rem; background: #ecfeff; }
+    button { padding: .5rem .8rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-conditionals">
+    <section aria-labelledby="title">
+      <h1 id="title">Static and live conditionals</h1>
+      <p>The first branch is decided during mount. The second follows Store changes.</p>
+      <if is-truthy="always">
+        <div class="panel">This static branch was selected once.</div>
+      </if>
+      <if data-live is-truthy="detailsOpen">
+        <div class="panel">The live branch is currently open.</div>
+        <else><div class="panel">The live branch is currently closed.</div></else>
+      </if>
+      <button type="button" data-on-click="toggle">Toggle live branch</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({ always: true, detailsOpen: false });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'conditionals',
+      store,
+      handlers: {
+        toggle: () => store.update('detailsOpen', (open) => !open),
+      },
+    });
+  </script>
+</body>
+</html>
+

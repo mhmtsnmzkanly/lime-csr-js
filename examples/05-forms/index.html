@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime forms</title>
+  <style>
+    body { max-width: 48rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    label, fieldset { display: block; margin: .8rem 0; }
+    input, select { margin-left: .4rem; padding: .4rem; }
+    output { display: block; padding: .8rem; background: #f1f5f9; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-forms">
+    <form data-on-submit="save">
+      <h1>Practical form bindings</h1>
+      <label>Name <input data-model.trim="form.name"></label>
+      <label>Age <input type="number" data-model.number="form.age"></label>
+      <label><input type="checkbox" data-model="form.newsletter"> Receive updates</label>
+      <fieldset>
+        <legend>Plan</legend>
+        <label><input type="radio" name="plan" value="free" data-model="form.plan"> Free</label>
+        <label><input type="radio" name="plan" value="pro" data-model="form.plan"> Pro</label>
+      </fieldset>
+      <label>Country
+        <select data-model="form.country">
+          <option value="de">Germany</option>
+          <option value="tr">Türkiye</option>
+          <option value="us">United States</option>
+        </select>
+      </label>
+      <button type="submit">Save</button>
+      <output data-text="summary" aria-live="polite"></output>
+    </form>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      form: { name: 'Sam', age: 30, newsletter: true, plan: 'pro', country: 'tr' },
+      summary: 'Change a field and choose Save.',
+    });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'forms',
+      store,
+      handlers: {
+        save({ event }) {
+          event.preventDefault();
+          store.set('summary', `Saved ${store.get('form.name')} (${store.get('form.age')})`);
+        },
+      },
+    });
+  </script>
+</body>
+</html>
+

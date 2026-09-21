@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime batch updates</title>
+  <style>
+    body { max-width: 42rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    .summary { padding: 1rem; background: #f1f5f9; }
+    button { padding: .5rem .8rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-batch">
+    <section aria-labelledby="title">
+      <h1 id="title">Coordinated updates</h1>
+      <p>Account: <strong data-text="account.name"></strong></p>
+      <p class="summary" data-text="summary"></p>
+      <button type="button" data-on-click="checkout">Complete checkout</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      account: { name: 'Mina', balance: 50 },
+      cart: { count: 2, total: 18 },
+      summary: 'Cart ready.',
+    });
+    store.computed('summary', ['account', 'cart'], (account, cart) =>
+      `${account.name} has ${cart.count} item(s), total ${cart.total}. Balance: ${account.balance}.`);
+    mount({
+      target: document.querySelector('#app'),
+      template: 'batch',
+      store,
+      handlers: {
+        checkout: () => store.batch(() => {
+          store.update('account.balance', (balance) => balance - store.get('cart.total'));
+          store.set('cart.count', 0);
+          store.set('cart.total', 0);
+        }),
+      },
+    });
+  </script>
+</body>
+</html>

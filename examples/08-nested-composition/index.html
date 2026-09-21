@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime nested composition</title>
+  <style>
+    body { max-width: 44rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    .box { padding: 1rem; margin: .8rem 0; border: 1px solid #94a3b8; border-radius: .6rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-nested">
+    <partial name="outer" data="account">
+      <p slot="content" class="box">Caller scope: <strong data-text="callerLabel"></strong></p>
+    </partial>
+  </template>
+  <template id="tpl-outer">
+    <div class="box">
+      <h1 data-text="name"></h1>
+      <partial name="inner" data="preferences"></partial>
+      <slot name="content"></slot>
+    </div>
+  </template>
+  <template id="tpl-inner">
+    <div class="box">Theme: <strong data-text="theme"></strong></div>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    mount({
+      target: document.querySelector('#app'),
+      template: 'nested',
+      store: createStore({
+        callerLabel: 'the outer caller',
+        account: { name: 'Nested composition', preferences: { theme: 'light' } },
+      }),
+    });
+  </script>
+</body>
+</html>
+

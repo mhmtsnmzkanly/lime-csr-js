@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime keyed live list</title>
+  <style>
+    body { max-width: 48rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    .row { display: flex; gap: .6rem; align-items: center; margin: .45rem 0; }
+    input { flex: 1; padding: .45rem; }
+    button { padding: .45rem .7rem; }
+    .hint { color: #475569; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-keyed-list">
+    <section aria-labelledby="title">
+      <h1 id="title">Keyed live list</h1>
+      <p class="hint">Focus an input, then reorder. LCS keeps stay-put keyed rows and editing state.</p>
+      <div class="row">
+        <button type="button" data-on-click="prepend">Prepend</button>
+        <button type="button" data-on-click="reverse">Reverse</button>
+        <button type="button" data-on-click="replace">Immutable update</button>
+        <button type="button" data-on-click="removeLast">Remove last</button>
+      </div>
+      <ul aria-label="People">
+        <for data-live data-diff="lcs" each="people" as="person" key="id">
+          <li class="row" data-key="${person.id}">
+            <input data-model.trim="person.name" aria-label="Name">
+            <span data-text="person.name"></span>
+          </li>
+        </for>
+      </ul>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      nextId: 4,
+      people: [
+        { id: 'a', name: 'Ada' },
+        { id: 'b', name: 'Grace' },
+        { id: 'c', name: 'Linus' },
+      ],
+    });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'keyed-list',
+      store,
+      handlers: {
+        prepend: () => {
+          const id = String.fromCharCode(96 + store.get('nextId'));
+          store.batch(() => {
+            store.update('nextId', (value) => value + 1);
+            store.update('people', (people) => [{ id, name: 'New person' }, ...people]);
+          });
+        },
+        reverse: () => store.update('people', (people) => [...people].reverse()),
+        replace: () => store.update('people', (people) => people.map((person) => ({ ...person, name: person.name }))),
+        removeLast: () => store.update('people', (people) => people.slice(0, -1)),
+      },
+    });
+  </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # lime-csr-js — Technical Reference Manual
 
-Version: **0.6.3**
+Version: **0.6.4**
 Architecture: **Unprivileged Micro-Kernel + Discrete Modules**  
 Status: **Production Release**
 
@@ -230,7 +230,7 @@ Use `dist/index.min.js` to get the complete framework with all 7 standard module
 ```html
 <script type="module">
   // Via jsDelivr:
-  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/index.min.js';
+  import { createStore, mount } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/index.min.js';
 
   // Or via unpkg:
 </script>
@@ -241,10 +241,10 @@ If your application only needs a subset of features (e.g., only reactive text bi
 
 ```html
 <script type="module">
-  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/core.min.js';
-  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/store.min.js';
-  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/modules/text.min.js';
-  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.3/dist/modules/events.min.js';
+  import { createEngine } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/core.min.js';
+  import { createStore } from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/store.min.js';
+  import text from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/modules/text.min.js';
+  import events from 'https://cdn.jsdelivr.net/gh/mhmtsnmzkanly/lime-csr-js@v0.6.4/dist/modules/events.min.js';
 
   // Create an engine configured strictly with text and events
   const engine = createEngine({
@@ -1484,11 +1484,11 @@ store.update('todos', (list) => [...list, newTodo]);
 ```
 
 ### Q: How do I access loop variables in an event handler?
-**A:** Event handlers receive `(event, el, ctx)` as arguments. The item data is accessible on `ctx.scope`:
+**A:** Event handlers receive one payload object. The item data is accessible on `scope`:
 ```js
 handlers: {
-  deleteItem(event, el, ctx) {
-    const item = ctx.scope.todo;
+  deleteItem({ event, element, scope, store, data, refs }) {
+    const item = scope.todo;
     console.log('Deleting:', item.id);
   },
 }
@@ -1503,4 +1503,6 @@ Lime CSR uses distinct test environments tailored to specific verification level
 - **Unit and Integration Tests (`npm test`):** Executes all test suites in Node.js with JSDOM. Tests reactive primitives, module compilation, DOM transformations, event delegation, and diagnostics.
 - **Built Bundle Smoke Tests (`npm run test:browser`):** Executes `test/browser-smoke.test.js` in Node.js with JSDOM against production-built artifacts in `dist/` (`dist/index.min.js`, `dist/core.min.js`, etc.) to verify distribution integrity, subpath exports, and zero-build consumption.
 - **Real Browser & CSP Tests (`npm run test:csp`):** Launches a real headless Chromium/Chrome instance (`chromium`, `chromium-browser`, or `google-chrome`, configurable via `CHROMIUM_BIN`) to enforce strict Content Security Policy (`default-src 'none'; script-src 'self'; style-src 'self'`) and ensure zero `eval()` / dynamic code execution in a real browser rendering engine.
-
+- **Example Checks (`npm run test:examples` and `npm run test:examples:browser`):** The first validates all repository examples statically with JSDOM and Node module parsing; the second runs representative examples in real Chromium.
+- **Release Consumer Checks (`npm run test:package` and `npm run test:package:types`):** Pack and install the actual npm artifact in temporary external projects, then validate package exports and the current JSDoc-driven TypeScript surface.
+- **Cross-browser qualification:** Chromium is the required release browser. `npm run test:examples:firefox` is an optional smoke command for environments with a reliable headless Firefox; WebKit is not bundled or required.

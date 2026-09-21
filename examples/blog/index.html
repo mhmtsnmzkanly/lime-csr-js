@@ -85,7 +85,7 @@
 
   <!-- ═══════════════ Tag pill (also used for the category) ═══════════════ -->
   <template id="tpl-tag">
-    <span class="tag" data-action="filter-by-tag" data-tag-slug="${slug}">${label}</span>
+    <button class="tag" type="button" data-on-click="filter-by-tag" data-tag-slug="${slug}">${label}</button>
   </template>
 
   <!-- ═══════════════ Similar-post card: static <for> + <partial> showcase ═══════════════ -->
@@ -98,10 +98,10 @@
 
   <!-- ═══════════════ Like button: shared partial for both the post and comments ═══════════════ -->
   <template id="tpl-like-button">
-    <button class="like-button {stateclass}" type="button"
-            data-action="${action}" data-target-id="${targetId}"
+    <button class="like-button" type="button"
+            data-on-click="${action}" data-target-id="${targetId}"
             title="{status}" aria-label="{status}"
-            data-stateclass="${stateClassPath}" data-status="${statusPath}">
+            data-status="${statusPath}">
       <if is-truthy="${likedPath}" data-live="${likedPath}">
         <span class="heart is-on">♥</span>
         <else>
@@ -133,10 +133,10 @@
       <p class="comment-body">${body}</p>
       <div class="comment-actions">
         <partial name="like-button" data="likeButton"></partial>
-        <button class="reply-trigger" type="button" data-action="reply-to" data-comment-id="${id}">
+        <button class="reply-trigger" type="button" data-on-click="reply-to" data-comment-id="${id}">
           Yanıtla
         </button>
-        <button class="delete-trigger" type="button" data-action="delete-comment" data-comment-id="${id}">
+        <button class="delete-trigger" type="button" data-on-click="delete-comment" data-comment-id="${id}">
           Sil
         </button>
       </div>
@@ -199,13 +199,13 @@
             <p class="composer-hint">Yazarken diğer etkileşimler input'u bozmaz — dener misin?</p>
           </div>
           <textarea
-            id="comment-draft"
+            id="comment-draft" data-model.trim="draftText"
             class="composer-input"
             rows="4"
             placeholder="Demlemenle ilgili görüşünü yaz..."></textarea>
           <div class="composer-actions">
-            <button class="submit-button" type="button" data-action="add-comment">Yorum ekle</button>
-            <button class="cancel-button" type="button" data-action="cancel-reply">Yanıt modunu kapat</button>
+            <button class="submit-button" type="button" data-on-click="add-comment">Yorum ekle</button>
+            <button class="cancel-button" type="button" data-on-click="cancel-reply">Yanıt modunu kapat</button>
           </div>
           <p class="reply-target">
             <if is-truthy="replyTargetId" data-live="replyTargetId">
@@ -241,7 +241,7 @@
         <!--
           NOTE: passing a loop item to a partial inside a static
           (non-data-live) <for> — now safe thanks to the inUnexpandedFor()
-          guard in src/partials.js. <for> here is deliberately NOT data-live:
+          guard in src/modules/partials.js. <for> here is deliberately NOT data-live:
           what's actually being showcased is that a plain static <for> +
           <partial data="item"> combination now works correctly.
         -->

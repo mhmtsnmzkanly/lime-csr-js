@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime reactive profile</title>
+  <style>
+    body { max-width: 42rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    .card { padding: 1.25rem; border: 1px solid #cbd5e1; border-radius: .75rem; }
+    label { display: block; margin: .75rem 0; }
+    input { padding: .45rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-profile">
+    <section class="card" aria-labelledby="profile-title">
+      <h1 id="profile-title" title="{name}" data-name="profile.name">Profile</h1>
+      <p data-text="profile.bio"></p>
+      <p data-show="profile.online">Online now</p>
+      <label>Name <input data-model.trim="profile.name"></label>
+      <label>Bio <input data-model.trim="profile.bio"></label>
+      <button type="button" data-on-click="toggleOnline">Toggle online</button>
+    </section>
+  </template>
+  <script type="module">
+    import { createStore, mount } from '/src/index.js';
+
+    const store = createStore({
+      profile: { name: 'Ada', bio: 'I enjoy small, clear interfaces.', online: true },
+    });
+    mount({
+      target: document.querySelector('#app'),
+      template: 'profile',
+      store,
+      handlers: {
+        toggleOnline: () => store.update('profile.online', (online) => !online),
+      },
+    });
+  </script>
+</body>
+</html>
+

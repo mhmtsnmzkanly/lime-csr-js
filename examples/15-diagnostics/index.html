@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lime diagnostics</title>
+  <style>
+    body { max-width: 48rem; margin: 3rem auto; padding: 1rem; font: 1rem/1.5 system-ui, sans-serif; }
+    pre { min-height: 4rem; padding: 1rem; background: #f1f5f9; white-space: pre-wrap; }
+    button { padding: .5rem .8rem; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <template id="tpl-diagnostics">
+    <section aria-labelledby="title">
+      <h1 id="title">Recoverable diagnostics</h1>
+      <p>Development diagnostics help locate mistakes without executing unsafe code.</p>
+      <button type="button" data-on-click="acknowledge">Acknowledge diagnostic</button>
+      <pre data-text="report" aria-live="polite"></pre>
+    </section>
+  </template>
+  <template id="tpl-bad-condition">
+    <if data-live><span>This branch has no operator.</span></if>
+  </template>
+  <script type="module">
+    import {
+      createStore, mount, setDevMode, subscribeDiagnostics,
+    } from '/src/index.js';
+
+    setDevMode(true);
+    const store = createStore({ report: 'No diagnostic yet.' });
+    const record = (diagnostic) => {
+      store.set('report', `${diagnostic.code}: ${diagnostic.message}`);
+    };
+    const app = mount({
+      target: document.querySelector('#app'),
+      template: 'diagnostics',
+      store,
+      handlers: { acknowledge: () => store.set('report', 'The diagnostic above was handled safely.') },
+      onDiagnostic: record,
+      onError: record,
+    });
+    const unsubscribe = subscribeDiagnostics(record);
+    window.addEventListener('unload', unsubscribe, { once: true });
+  </script>
+</body>
+</html>

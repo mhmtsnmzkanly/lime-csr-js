@@ -18,8 +18,12 @@ const html = `<!doctype html>
 <div id="app">
   <button id="btn-static" onclick="\${payload}">Static</button>
   <button id="btn-reactive" onclick="{payload}" data-payload="reactivePayload">Reactive</button>
+  <img id="img-onerror" OnErRoR="\${payload}" alt="">
+  <img id="img-onload" onload="{reactivepayload}" data-reactivepayload="reactivepayload" alt="">
   <iframe id="frame-static" srcdoc="\${srcdocPayload}"></iframe>
   <iframe id="frame-reactive" srcdoc="{srcdocPayload}" data-srcdoc-payload="reactiveSrcdoc"></iframe>
+  <a id="link-static" href="\${javascriptUrl}">Static URL</a>
+  <a id="link-reactive" href="{reactiveurl}" data-reactiveurl="reactiveurl">Reactive URL</a>
 </div>
 <script type="module" src="/test.js"></script>
 </body>
@@ -32,9 +36,11 @@ window.__PWNED__ = false;
 
 const store = createStore({
   payload: "window.__PWNED__ = true",
-  reactivePayload: "window.__PWNED__ = true",
+  reactivepayload: "window.__PWNED__ = true",
   srcdocPayload: "<script>window.top.__PWNED__ = true</script>",
   reactiveSrcdoc: "<script>window.top.__PWNED__ = true</script>",
+  javascriptUrl: "javascript:window.__PWNED__ = true",
+  reactiveurl: "javascript:window.__PWNED__ = true",
 });
 
 const engine = createEngine({ modules: [text()] });
@@ -47,6 +53,10 @@ const btnStatic = document.getElementById('btn-static');
 const btnReactive = document.getElementById('btn-reactive');
 const frameStatic = document.getElementById('frame-static');
 const frameReactive = document.getElementById('frame-reactive');
+const imgOnerror = document.getElementById('img-onerror');
+const imgOnload = document.getElementById('img-onload');
+const linkStatic = document.getElementById('link-static');
+const linkReactive = document.getElementById('link-reactive');
 
 // Attempt clicks
 btnStatic.click();
@@ -57,8 +67,12 @@ setTimeout(() => {
     pwned: window.__PWNED__,
     btnStaticHasOnclick: btnStatic.hasAttribute('onclick'),
     btnReactiveHasOnclick: btnReactive.hasAttribute('onclick'),
+    imgOnerrorHasHandler: imgOnerror.hasAttribute('onerror'),
+    imgOnloadHasHandler: imgOnload.hasAttribute('onload'),
     frameStaticHasSrcdoc: frameStatic.hasAttribute('srcdoc'),
     frameReactiveHasSrcdoc: frameReactive.hasAttribute('srcdoc'),
+    staticUrl: linkStatic.getAttribute('href'),
+    reactiveUrl: linkReactive.getAttribute('href'),
   };
   const pre = document.createElement('pre');
   pre.id = 'result';
@@ -98,8 +112,12 @@ try {
   assert.equal(result.pwned, false, 'Payload must not execute');
   assert.equal(result.btnStaticHasOnclick, false, 'Static onclick must be removed');
   assert.equal(result.btnReactiveHasOnclick, false, 'Reactive onclick must be removed');
+  assert.equal(result.imgOnerrorHasHandler, false, 'Mixed-case onerror must be removed');
+  assert.equal(result.imgOnloadHasHandler, false, 'onload must be removed');
   assert.equal(result.frameStaticHasSrcdoc, false, 'Static srcdoc must be removed');
   assert.equal(result.frameReactiveHasSrcdoc, false, 'Reactive srcdoc must be removed');
+  assert.equal(result.staticUrl, '', 'Static javascript: URL must be neutralized');
+  assert.equal(result.reactiveUrl, '', 'Reactive javascript: URL must be neutralized');
 
   console.log('Real Chromium security check passed: unsafe attribute bindings rejected without execution.');
 } finally {
