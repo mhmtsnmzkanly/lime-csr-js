@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.3] - 2026-09-21
+
+### Fixed
+- **Slot Scope Preservation Through Structural Clones (`src/core/scope.js`, `src/core/composition.js`, `src/modules/conditionals.js`)**: Attached lexical scopes are recursively preserved across node clones via `cloneWithScope()`, ensuring caller lexical scopes survive within projected partial slot branches containing structural `<if>` or `<for>` modules.
+- **Unified Modular Diagnostics State (`src/errors.js`, `src/core/index.js`)**: Modular dist bundles (`dist/core.min.js`, `dist/modules/*.min.js`) share runtime diagnostics listeners and devMode state via `globalThis[Symbol.for('lime.diagnostics')]`. Re-exported `setDevMode` and `subscribeDiagnostics` from `lime-csr-js/core`.
+- **Attribute Interpolation Security Hardening (`src/shared.js`, `src/template.js`, `src/modules/text.js`)**: Rejection of executable attribute bindings (`on*`, `srcdoc`, `action`, `formaction`, `xlink:href`, `data-on*`). Prohibited attributes are stripped and emit `UNSAFE_EVENT_ATTR` or `UNSAFE_URL_ATTR` diagnostics.
+- **Keyed Loops Reconciler Integrity (`src/modules/loops.js`)**: Invalid keys (`null`, `undefined`, empty string, and duplicates) emit `FOR_INVALID_KEY` and `FOR_DUPLICATE_KEY` diagnostics rather than silently dropping elements. Shallow-equal item replacements update `block.itemScope[as]` and `block.item` directly, eliminating stale lexical scope references on immutable updates.
+- **Alias-Aware Context Watchers (`src/core/scope.js`, `src/core/context.js`)**: `ctx.watch()` in custom modules routes through `watchScopePath()`, correctly resolving canonical store dot-paths from lexical scope aliases and supporting `{ immediate: true }`.
+- **Mount Diagnostics Attribution (`src/core/engine.js`, `src/errors.js`)**: Pre-ownership initialization errors and cleanup diagnostics automatically resolve and attribute to the active mount target element via `withActiveMount()`.
+- **Event Boundary Isolation & Dynamic Handlers (`src/modules/events.js`)**: Delegated listener traversal preserves outer boundary handlers on nested mount elements. Handlers and execution contexts for newly linked elements (e.g. from `engine.render()`) resolve dynamically from the element's actual compilation context.
+- **Inactive Mount Contract & Cleanup Transitions (`src/core/engine.js`)**: Inactive mount instances consistently expose frozen empty `refs: Object.freeze({})` and `active: false`. `instance.cleanup()` transitions `active` to `false` and removes `data-lime-mount`.
+- **Form Controls & Mid-Edit Input Stability (`src/modules/model.js`)**: `<select data-model>` preserves default selected `<option>` when store value is `undefined`. `.number` and `.trim` modifiers defer text reformatting during active user keystrokes until `blur`.
+- **Store Destructuring Context Safety (`src/store.js`)**: All Store methods (`get`, `set`, `update`, `batch`, `subscribe`, `computed`) implemented as pure closures with zero `this` dependencies, making them 100% safe to destructure.
+
+### Documentation
+- Documented index alias reordering semantics in `DOCS.md` Section 13.3.
+- Documented testing execution environments (JSDOM smoke vs real headless Chromium CSP tests) in `README.md` and `DOCS.md` Section 18.
+
 ## [0.6.2] - 2026-09-20
 
 ### Fixed
