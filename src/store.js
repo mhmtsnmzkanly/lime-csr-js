@@ -377,207 +377,208 @@ export function createStore(initialState = {}) {
     }
   }
 
-  return {
-    /**
-     * Returns the value at path.
-     *
-     * @param {string} [path=""] - If empty, returns the entire state object.
-     * @returns {*}
-     */
-    get(path = "") {
-      return path ? getByPath(initialState, path) : initialState;
-    },
+  /**
+   * Returns the value at path.
+   *
+   * @param {string} [path=""] - If empty, returns the entire state object.
+   * @returns {*}
+   */
+  function get(path = "") {
+    return path ? getByPath(initialState, path) : initialState;
+  }
 
-    /**
-     * Writes value to path; notifies subscribers if the value changed.
-     * Dev-mode warnings:
-     *   - Computed path: warns that computed paths should not be set directly.
-     *   - In-place mutation: if value is an object/array and the reference is
-     *     identical to the stored value, warns about same-reference mutation.
-     *
-     * @param {string} path
-     * @param {*}      value
-     * @returns {boolean} `true` if a change occurred.
-     */
-    set(path, value) {
-      // Dev-mode: warn about direct writes to computed paths
-      if (computedPaths.has(path) && !computedUpdating.has(path)) {
-        warn('COMPUTED_MANUAL_SET',
-          `Path "${path}" is managed by store.computed(). Manual store.set() will be ` +
-          `overwritten on next dep change. Use store.computed() or a different path.`);
+  /**
+   * Writes value to path; notifies subscribers if the value changed.
+   * Dev-mode warnings:
+   *   - Computed path: warns that computed paths should not be set directly.
+   *   - In-place mutation: if value is an object/array and the reference is
+   *     identical to the stored value, warns about same-reference mutation.
+   *
+   * @param {string} path
+   * @param {*}      value
+   * @returns {boolean} `true` if a change occurred.
+   */
+  function set(path, value) {
+    // Dev-mode: warn about direct writes to computed paths
+    if (computedPaths.has(path) && !computedUpdating.has(path)) {
+      warn('COMPUTED_MANUAL_SET',
+        `Path "${path}" is managed by store.computed(). Manual store.set() will be ` +
+        `overwritten on next dep change. Use store.computed() or a different path.`);
+    }
+
+    // Dev-mode: warn about in-place mutation (same object/array reference)
+    const existing = getByPath(initialState, path);
+    if (value !== null && typeof value === 'object' && Object.is(existing, value)) {
+      warn('IN_PLACE_MUTATION',
+        `store.set("${path}", value): value is the SAME reference as the stored object/array. ` +
+        `In-place mutation detected — subscriber will NOT fire. Pass a new reference: ` +
+        `e.g. store.set("${path}", [...arr]) or store.set("${path}", {...obj}).`);
+      return false;
+    }
+
+    const result = setByPath(initialState, path, value);
+    if (result.changed) scheduleNotify(path, result.previousValue);
+    return result.changed;
+  }
+
+  /**
+   * Runs `fn` with notification batching: every store.set() inside it
+   * queues its notification instead of firing immediately, and the queue is
+   * flushed as ONE deduplicated wave (one notify per changed path) when
+   * `fn` returns. Repeated sets to the same path keep the FIRST
+   * previousValue, so subscribers see the batch as a single before→after
+   * transition. Nested batch() calls are safe — only the outermost flushes.
+   * `fn` throwing still flushes (the error propagates after).
+   *
+   * Note: batching is synchronous — sets after an `await` inside `fn` are
+   * NOT batched, because `fn` has already returned by then.
+   *
+   * @param {function(): void} fn - Synchronous function containing the sets.
+   * @returns {void}
+   */
+  function batch(fn) {
+    batchDepth++;
+    try {
+      fn();
+    } finally {
+      batchDepth--;
+      if (batchDepth === 0) flushNotifies();
+    }
+  }
+
+  /**
+   * Passes the current value to `updater`, sets the return value.
+   *
+   * @param {string}            path
+   * @param {function(*): *}    updater
+   * @returns {boolean}
+   */
+  function update(path, updater) {
+    return set(path, updater(get(path)));
+  }
+
+  /**
+   * Subscribes to path. The returned function cancels the subscription.
+   * When the last subscriber for a path is removed, its Map entry is deleted (no leak).
+   *
+   * previousValue is only passed when `changedPath` equals the subscribed
+   * path (exact match); on ancestor/descendant notifications it is
+   * `undefined` — the changed path's old value would be misleading there.
+   *
+   * @param {string}   path
+   * @param {function(currentValue: *, previousValue: *, changedPath: string): void} callback
+   * @returns {function(): void} Cleanup — removes the subscription.
+   */
+  function subscribe(path, callback) {
+    if (!subscribers.has(path)) {
+      subscribers.set(path, new Set());
+      indexSubscribedPath(path);
+    }
+    subscribers.get(path).add(callback);
+    return () => {
+      const bucket = subscribers.get(path);
+      if (!bucket) return;
+      bucket.delete(callback);
+      if (bucket.size === 0) {
+        subscribers.delete(path);
+        unindexSubscribedPath(path);
       }
+    };
+  }
 
-      // Dev-mode: warn about in-place mutation (same object/array reference)
-      const existing = getByPath(initialState, path);
-      if (value !== null && typeof value === 'object' && Object.is(existing, value)) {
-        warn('IN_PLACE_MUTATION',
-          `store.set("${path}", value): value is the SAME reference as the stored object/array. ` +
-          `In-place mutation detected — subscriber will NOT fire. Pass a new reference: ` +
-          `e.g. store.set("${path}", [...arr]) or store.set("${path}", {...obj}).`);
-        return false;
-      }
+  /**
+   * Registers a computed (derived) value at `path`.
+   * Immediately computes and sets the initial value, then re-computes
+   * whenever any of the `deps` paths change.
+   *
+   * Chaining: a computed path can itself be a dep of another computed.
+   * Loop prevention: if a dep change triggers the same computed recursively,
+   * the re-entry is swallowed.
+   *
+   * Dev-mode: calling store.set(path) on a computed path warns the developer.
+   *
+   * @param {string}            path   - Destination path in the store (ordinary path).
+   * @param {string[]}          deps   - Array of store paths to watch.
+   * @param {function(...*): *} fn     - Pure function receiving dependency values in `deps`
+   *                                      order; return value is written to path.
+   * @returns {function(): void}        dispose — cancels all dep subscriptions AND
+   *   deletes the computed value from state, so no ghost value remains
+   *   (store.get(path) → undefined afterwards). The deletion itself emits
+   *   no notification — disposal is teardown, not a state change.
+   */
+  function computed(path, deps, fn) {
+    if (
+      typeof path !== 'string'
+      || !path.trim()
+      || String(path).split('.').some((key) => UNSAFE_PATH_SEGMENTS.has(key))
+    ) {
+      throw new TypeError('store.computed(path, deps, fn) requires a safe, non-empty string path.');
+    }
+    if (
+      !Array.isArray(deps)
+      || !deps.every(
+        (dep) => typeof dep === 'string'
+          && dep.trim()
+          && !dep.split('.').some((key) => UNSAFE_PATH_SEGMENTS.has(key)),
+      )
+    ) {
+      throw new TypeError('store.computed(path, deps, fn) requires an array of safe, non-empty string dependency paths.');
+    }
+    if (typeof fn !== 'function') {
+      throw new TypeError('store.computed(path, deps, fn) requires a calculation function.');
+    }
 
-      const result = setByPath(initialState, path, value);
-      if (result.changed) scheduleNotify(path, result.previousValue);
-      return result.changed;
-    },
+    const previousDispose = computedDisposers.get(path);
+    if (previousDispose) {
+      previousDispose();
+    }
 
-    /**
-     * Runs `fn` with notification batching: every store.set() inside it
-     * queues its notification instead of firing immediately, and the queue is
-     * flushed as ONE deduplicated wave (one notify per changed path) when
-     * `fn` returns. Repeated sets to the same path keep the FIRST
-     * previousValue, so subscribers see the batch as a single before→after
-     * transition. Nested batch() calls are safe — only the outermost flushes.
-     * `fn` throwing still flushes (the error propagates after).
-     *
-     * Note: batching is synchronous — sets after an `await` inside `fn` are
-     * NOT batched, because `fn` has already returned by then.
-     *
-     * @param {function(): void} fn - Synchronous function containing the sets.
-     * @returns {void}
-     */
-    batch(fn) {
-      batchDepth++;
+    computedPaths.add(path);
+
+    const recompute = () => {
+      if (computedUpdating.has(path)) return; // loop guard
+      computedUpdating.add(path);
       try {
-        fn();
+        const newVal = fn(...deps.map((dep) => getByPath(initialState, dep)));
+        // Bypass the computed-path warning by going through setByPath directly
+        const result = setByPath(initialState, path, newVal);
+        if (result.changed) scheduleNotify(path, result.previousValue);
       } finally {
-        batchDepth--;
-        if (batchDepth === 0) flushNotifies();
+        computedUpdating.delete(path);
       }
-    },
+    };
 
-    /**
-     * Passes the current value to `updater`, sets the return value.
-     *
-     * @param {string}            path
-     * @param {function(*): *}    updater
-     * @returns {boolean}
-     */
-    update(path, updater) {
-      return this.set(path, updater(this.get(path)));
-    },
+    // Initial computation
+    recompute();
 
-    /**
-     * Subscribes to path. The returned function cancels the subscription.
-     * When the last subscriber for a path is removed, its Map entry is deleted (no leak).
-     *
-     * previousValue is only passed when `changedPath` equals the subscribed
-     * path (exact match); on ancestor/descendant notifications it is
-     * `undefined` — the changed path's old value would be misleading there.
-     *
-     * @param {string}   path
-     * @param {function(currentValue: *, previousValue: *, changedPath: string): void} callback
-     * @returns {function(): void} Cleanup — removes the subscription.
-     */
-    subscribe(path, callback) {
-      if (!subscribers.has(path)) {
-        subscribers.set(path, new Set());
-        indexSubscribedPath(path);
-      }
-      subscribers.get(path).add(callback);
-      return () => {
-        const bucket = subscribers.get(path);
-        if (!bucket) return;
-        bucket.delete(callback);
-        if (bucket.size === 0) {
-          subscribers.delete(path);
-          unindexSubscribedPath(path);
-        }
-      };
-    },
+    // Subscribe to each dep
+    const unsubs = deps.map((dep) => subscribe(dep, recompute));
 
-    /**
-     * Registers a computed (derived) value at `path`.
-     * Immediately computes and sets the initial value, then re-computes
-     * whenever any of the `deps` paths change.
-     *
-     * Chaining: a computed path can itself be a dep of another computed.
-     * Loop prevention: if a dep change triggers the same computed recursively,
-     * the re-entry is swallowed.
-     *
-     * Dev-mode: calling store.set(path) on a computed path warns the developer.
-     *
-     * @param {string}            path   - Destination path in the store (ordinary path).
-     * @param {string[]}          deps   - Array of store paths to watch.
-     * @param {function(...*): *} fn     - Pure function receiving dependency values in `deps`
-     *                                      order; return value is written to path.
-     * @returns {function(): void}        dispose — cancels all dep subscriptions AND
-     *   deletes the computed value from state, so no ghost value remains
-     *   (store.get(path) → undefined afterwards). The deletion itself emits
-     *   no notification — disposal is teardown, not a state change.
-     *
-     * @example
-     * const dispose = store.computed('fullName', ['firstName', 'lastName'],
-     *   (firstName, lastName) => `${firstName} ${lastName}`);
-     * // later:
-     * dispose(); // stops recomputing AND removes "fullName" from state
-     */
-    computed(path, deps, fn) {
-      if (
-        typeof path !== 'string'
-        || !path.trim()
-        || String(path).split('.').some((key) => UNSAFE_PATH_SEGMENTS.has(key))
-      ) {
-        throw new TypeError('store.computed(path, deps, fn) requires a safe, non-empty string path.');
-      }
-      if (
-        !Array.isArray(deps)
-        || !deps.every(
-          (dep) => typeof dep === 'string'
-            && dep.trim()
-            && !dep.split('.').some((key) => UNSAFE_PATH_SEGMENTS.has(key)),
-        )
-      ) {
-        throw new TypeError('store.computed(path, deps, fn) requires an array of safe, non-empty string dependency paths.');
-      }
-      if (typeof fn !== 'function') {
-        throw new TypeError('store.computed(path, deps, fn) requires a calculation function.');
-      }
+    let disposed = false;
+    const dispose = function dispose() {
+      if (disposed) return;
+      disposed = true;
+      for (const unsub of unsubs) unsub();
+      if (computedDisposers.get(path) !== dispose) return;
 
-      const previousDispose = computedDisposers.get(path);
-      if (previousDispose) {
-        previousDispose();
-      }
+      computedDisposers.delete(path);
+      computedPaths.delete(path);
+      // Ghost-value removal: delete the last computed value from state so
+      // nothing stale remains readable after disposal (silent — no notify)
+      deleteByPath(initialState, path);
+    };
 
-      computedPaths.add(path);
+    computedDisposers.set(path, dispose);
+    return dispose;
+  }
 
-      const recompute = () => {
-        if (computedUpdating.has(path)) return; // loop guard
-        computedUpdating.add(path);
-        try {
-          const newVal = fn(...deps.map((dep) => getByPath(initialState, dep)));
-          // Bypass the computed-path warning by going through setByPath directly
-          const result = setByPath(initialState, path, newVal);
-          if (result.changed) scheduleNotify(path, result.previousValue);
-        } finally {
-          computedUpdating.delete(path);
-        }
-      };
-
-      // Initial computation
-      recompute();
-
-      // Subscribe to each dep
-      const unsubs = deps.map((dep) => this.subscribe(dep, recompute));
-
-      let disposed = false;
-      const dispose = function dispose() {
-        if (disposed) return;
-        disposed = true;
-        for (const unsub of unsubs) unsub();
-        if (computedDisposers.get(path) !== dispose) return;
-
-        computedDisposers.delete(path);
-        computedPaths.delete(path);
-        // Ghost-value removal: delete the last computed value from state so
-        // nothing stale remains readable after disposal (silent — no notify)
-        deleteByPath(initialState, path);
-      };
-
-      computedDisposers.set(path, dispose);
-      return dispose;
-    },
+  return {
+    get,
+    set,
+    update,
+    subscribe,
+    batch,
+    computed,
   };
 }
 
