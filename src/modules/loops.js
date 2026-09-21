@@ -13,7 +13,7 @@
 import { tag } from '../core/triggers.js';
 import { defineModule } from '../core/registry.js';
 import { createCleanupStack } from '../core/context.js';
-import { createScope, setElementScope, setScopeAlias, readScopePath, watchScopePath } from '../core/scope.js';
+import { createScope, setElementScope, setScopeAlias, readScopePath, watchScopePath, cloneWithScope } from '../core/scope.js';
 import { getByPath } from '../store.js';
 import { resolveStatic } from '../template.js';
 import { longestIncreasingSubsequenceIndices, shallowEqual } from '../shared.js';
@@ -52,7 +52,7 @@ function transformLoop(el, data, ctx) {
   }
 
   const childSource = el.tagName === 'TEMPLATE' ? el.content : el;
-  const templateNodes = Array.from(childSource.childNodes).map((n) => n.cloneNode(true));
+  const templateNodes = Array.from(childSource.childNodes).map((n) => cloneWithScope(n));
   const doc = el.ownerDocument;
 
   if (!isLive) {
@@ -82,7 +82,7 @@ function transformLoop(el, data, ctx) {
 
       const frag = doc.createDocumentFragment();
       for (const node of templateNodes) {
-        frag.appendChild(node.cloneNode(true));
+        frag.appendChild(cloneWithScope(node));
       }
 
       setElementScope(frag, itemScope);
@@ -151,7 +151,7 @@ function transformLoop(el, data, ctx) {
 
     const frag = doc.createDocumentFragment();
     for (const node of templateNodes) {
-      frag.appendChild(node.cloneNode(true));
+      frag.appendChild(cloneWithScope(node));
     }
 
     const itemCleanupStack = createCleanupStack();
@@ -164,7 +164,7 @@ function transformLoop(el, data, ctx) {
     for (let i = 0; i < nodes.length; i++) {
       setElementScope(nodes[i], itemScope);
     }
-    return { frag, nodes, cleanupStack: itemCleanupStack, moveAlias };
+    return { frag, nodes, cleanupStack: itemCleanupStack, moveAlias, itemScope };
   }
 
   function reconcile(newList) {
@@ -191,14 +191,14 @@ function transformLoop(el, data, ctx) {
         }
       }
 
-      if (keyVal !== undefined) {
-        if (seenKeys.has(keyVal)) {
-          ctx.error('FOR_DUPLICATE_KEY', { keyVal, templateName: el.id || '?' }, el);
-        } else {
-          seenKeys.add(keyVal);
-          newKeyOrder.push(keyVal);
-          newItemMap.set(keyVal, { item, idx: i });
-        }
+      if (keyVal === undefined) {
+        ctx.error('FOR_MISSING_KEY', { templateName: el.id || '?', index: i, key: keyAttr }, el);
+      } else if (seenKeys.has(keyVal)) {
+        ctx.error('FOR_DUPLICATE_KEY', { keyVal, templateName: el.id || '?' }, el);
+      } else {
+        seenKeys.add(keyVal);
+        newKeyOrder.push(keyVal);
+        newItemMap.set(keyVal, { item, idx: i });
       }
     }
 
@@ -223,9 +223,9 @@ function transformLoop(el, data, ctx) {
 
       for (const keyVal of newKeyOrder) {
         const { item, idx } = newItemMap.get(keyVal);
-        const { frag, nodes, cleanupStack, moveAlias } = renderItemNodes(item, idx);
+        const { frag, nodes, cleanupStack, moveAlias, itemScope } = renderItemNodes(item, idx);
         appendNode(frag);
-        keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack, moveAlias });
+        keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack, moveAlias, itemScope });
       }
       orderedKeys = newKeyOrder;
       return;
@@ -273,7 +273,7 @@ function transformLoop(el, data, ctx) {
 
           if (itemChanged || indexChanged) {
             block.cleanupStack?.run();
-            const { frag, nodes, cleanupStack, moveAlias } = renderItemNodes(item, idx);
+            const { frag, nodes, cleanupStack, moveAlias, itemScope } = renderItemNodes(item, idx);
             const firstOld = block.nodes[0];
             if (firstOld && firstOld.parentNode) {
               firstOld.parentNode.insertBefore(frag, firstOld);
@@ -291,7 +291,12 @@ function transformLoop(el, data, ctx) {
             block.idx = idx;
             block.cleanupStack = cleanupStack;
             block.moveAlias = moveAlias;
+            block.itemScope = itemScope;
           } else {
+            if (block.itemScope) {
+              block.itemScope[as] = item;
+            }
+            block.item = item;
             block.moveAlias(idx);
             block.idx = idx;
           }
@@ -310,14 +315,14 @@ function transformLoop(el, data, ctx) {
           nextPlacedNode = block.nodes[0];
         } else {
           // Mount new item
-          const { frag, nodes, cleanupStack, moveAlias } = renderItemNodes(item, idx);
+          const { frag, nodes, cleanupStack, moveAlias, itemScope } = renderItemNodes(item, idx);
           if (container) {
             if (nextPlacedNode) container.insertBefore(frag, nextPlacedNode);
             else container.appendChild(frag);
           } else {
             endAnchor.parentNode?.insertBefore(frag, nextPlacedNode || endAnchor);
           }
-          keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack, moveAlias });
+          keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack, moveAlias, itemScope });
           nextPlacedNode = nodes[0];
         }
       }
@@ -335,7 +340,7 @@ function transformLoop(el, data, ctx) {
 
           if (itemChanged || indexChanged) {
             block.cleanupStack?.run();
-            const { frag, nodes, cleanupStack, moveAlias } = renderItemNodes(item, idx);
+            const { frag, nodes, cleanupStack, moveAlias, itemScope } = renderItemNodes(item, idx);
             const firstOld = block.nodes[0];
             if (firstOld && firstOld.parentNode) {
               firstOld.parentNode.insertBefore(frag, firstOld);
@@ -348,7 +353,12 @@ function transformLoop(el, data, ctx) {
             block.idx = idx;
             block.cleanupStack = cleanupStack;
             block.moveAlias = moveAlias;
+            block.itemScope = itemScope;
           } else {
+            if (block.itemScope) {
+              block.itemScope[as] = item;
+            }
+            block.item = item;
             block.moveAlias(idx);
             block.idx = idx;
           }
@@ -361,9 +371,9 @@ function transformLoop(el, data, ctx) {
             expectedPrev = block.nodes[block.nodes.length - 1];
           }
         } else {
-          const { frag, nodes, cleanupStack, moveAlias } = renderItemNodes(item, idx);
+          const { frag, nodes, cleanupStack, moveAlias, itemScope } = renderItemNodes(item, idx);
           appendNode(frag);
-          keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack, moveAlias });
+          keyedBlocks.set(keyVal, { nodes, item, idx, cleanupStack, moveAlias, itemScope });
           expectedPrev = nodes[nodes.length - 1];
         }
       }
