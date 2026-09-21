@@ -1099,6 +1099,7 @@ Lime provides 7 standard unprivileged modules.
 - **Reactive Behavior (`data-live`):**
   - Requires `key="item.id"` attribute.
   - Efficiently reuses existing DOM elements when items are reordered or updated in-place.
+  - **Index Alias and Reordering:** Specifying an `index="idx"` alias injects the item's numerical offset into its lexical scope. When items are reordered, their numeric index changes, which intentionally triggers re-rendering of the affected item blocks to update index-dependent bindings. To preserve DOM node identity and focus across reorderings, omit the `index` attribute.
 - **Errors:**
   - `FOR_MISSING_ATTR`: Missing `each` or `as` attribute.
   - `FOR_NOT_ARRAY`: Target path is not an array.
@@ -1492,3 +1493,14 @@ handlers: {
   },
 }
 ```
+
+---
+
+## 18. Test Execution Environments
+
+Lime CSR uses distinct test environments tailored to specific verification levels:
+
+- **Unit and Integration Tests (`npm test`):** Executes all test suites in Node.js with JSDOM. Tests reactive primitives, module compilation, DOM transformations, event delegation, and diagnostics.
+- **Built Bundle Smoke Tests (`npm run test:browser`):** Executes `test/browser-smoke.test.js` in Node.js with JSDOM against production-built artifacts in `dist/` (`dist/index.min.js`, `dist/core.min.js`, etc.) to verify distribution integrity, subpath exports, and zero-build consumption.
+- **Real Browser & CSP Tests (`npm run test:csp`):** Launches a real headless Chromium/Chrome instance (`chromium`, `chromium-browser`, or `google-chrome`, configurable via `CHROMIUM_BIN`) to enforce strict Content Security Policy (`default-src 'none'; script-src 'self'; style-src 'self'`) and ensure zero `eval()` / dynamic code execution in a real browser rendering engine.
+

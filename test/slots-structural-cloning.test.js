@@ -3,7 +3,7 @@ import test from 'node:test';
 import { JSDOM } from 'jsdom';
 
 import { createEngine, createStore, setDevMode } from '../src/index.js';
-import { text, show, model, events, conditionals, loops } from '../src/modules/index.js';
+import { text, conditionals, loops } from '../src/modules/index.js';
 
 function createDom(html = '') {
   const dom = new JSDOM(`<!doctype html><html><body>${html}</body></html>`);

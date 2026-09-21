@@ -27,9 +27,12 @@ npm install lime-csr-js
 ```
 
 For development, `npm run verify` runs lint, type checks, tests, and the build.
-`npm run test:csp` checks visibility under strict CSP in real Chromium/Chrome
-after building. It requires an installed browser (`chromium`, `chromium-browser`,
-or `google-chrome`), or an explicit `CHROMIUM_BIN` executable path.
+
+### Testing Environments
+
+- **`npm test`**: Runs unit and regression test suites in Node.js using JSDOM.
+- **`npm run test:browser`**: Runs ESM bundle smoke tests in Node.js using JSDOM against built artifacts in `dist/`.
+- **`npm run test:csp`**: Validates runtime execution and DOM visibility under strict CSP (`default-src 'none'; script-src 'self'; style-src 'self'`) in real headless Chromium/Chrome after building. Requires an installed browser (`chromium`, `chromium-browser`, or `google-chrome`), or an explicit `CHROMIUM_BIN` executable path.
 
 ### Subpath Exports
 
