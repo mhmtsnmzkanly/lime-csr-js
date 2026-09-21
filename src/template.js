@@ -26,7 +26,7 @@
 
 import { getByPath } from "./store.js";
 import { error, isDevMode } from "./errors.js";
-import { inLiveBlock, inUnexpandedFor, inIgnoredBlock } from "./shared.js";
+import { inLiveBlock, inUnexpandedFor, inIgnoredBlock, isUnsafeAttribute } from "./shared.js";
 import { isSafeUrlProtocol } from "./utils.js";
 import { getElementScope } from "./core/scope.js";
 
@@ -226,15 +226,21 @@ export function resolveStatic(root, context, store = null) {
             return;
           }
           let nodeScope = null;
-          for (let i = 0; i < attrCount; i++) {
-            const attr = attrs[i];
+          const attrsToProcess = Array.from(attrs);
+          for (let i = 0; i < attrsToProcess.length; i++) {
+            const attr = attrsToProcess[i];
             const attrVal = attr.value;
             if (attrVal && attrVal.indexOf('${') !== -1) {
+              if (isUnsafeAttribute(attr.name)) {
+                error('UNSAFE_EVENT_ATTR', { attrName: attr.name }, node);
+                node.removeAttribute(attr.name);
+                continue;
+              }
               if (!nodeScope) nodeScope = getNodeScope(node, context);
               let resolved = resolveString(attrVal, nodeScope, store);
               if (URL_ATTRS.has(attr.name.toLowerCase())) {
                 if (!isSafeUrlProtocol(resolved)) {
-                  if (isDevMode()) error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
+                  error('UNSAFE_URL_ATTR', { attrName: attr.name }, node);
                   resolved = "";
                 }
               }

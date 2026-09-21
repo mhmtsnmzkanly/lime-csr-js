@@ -156,3 +156,16 @@ export function shallowEqual(a, b) {
   }
   return true;
 }
+
+/**
+ * Determines whether an attribute name is unsafe for dynamic binding or interpolation
+ * (e.g. event handlers like onclick, or script-injecting attributes like srcdoc).
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function isUnsafeAttribute(name) {
+  if (typeof name !== 'string') return false;
+  const normalized = name.trim().toLowerCase();
+  return normalized.startsWith('on') || normalized === 'srcdoc';
+}

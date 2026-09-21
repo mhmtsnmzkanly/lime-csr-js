@@ -18,9 +18,9 @@
 import { attr, pattern } from '../core/triggers.js';
 import { readScopePath, watchScopePath } from '../core/scope.js';
 import { isSafeUrlProtocol } from '../utils.js';
+import { isUnsafeAttribute } from '../shared.js';
 
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'cite', 'poster', 'ping']);
-const EVENT_ATTR_PATTERN = /^on/i;
 const RESERVED_NAMES = new Set(['text', 'model', 'show', 'live', 'diff', 'lime-ignore']);
 
 function isReservedName(name) {
@@ -73,8 +73,9 @@ export function text() {
           const attrName = ctx.matchedAttribute;
           if (!attrName) return null;
 
-          if (EVENT_ATTR_PATTERN.test(attrName)) {
+          if (isUnsafeAttribute(attrName)) {
             ctx.error('UNSAFE_EVENT_ATTR', { attrName }, el);
+            el.removeAttribute(attrName);
             return null;
           }
 
