@@ -16,15 +16,18 @@
  *   - setDevMode(false): completely silences console output and overlay (diagnostics still dispatch).
  */
 
-/** @type {boolean|'prod'|'dev'} */
-let devMode = true;
+const DIAGNOSTICS_KEY = Symbol.for('lime.diagnostics');
+const sharedDiagnosticsState = (globalThis[DIAGNOSTICS_KEY] ??= {
+  devMode: true,
+  listeners: new Set(),
+  activeMountStack: [],
+});
 
-/** @type {Set<(diagnostic: {code: string, message: string, context: *}) => void>} */
-const diagnosticListeners = new Set();
-const DIAGNOSTIC_DEDUP_WINDOW_MS = 1000;
 const diagnosticStates = new Map();
 const contextIds = new WeakMap();
 let nextContextId = 0;
+
+const DIAGNOSTIC_DEDUP_WINDOW_MS = 1000;
 
 const DIAGNOSTIC_CATEGORIES = Object.freeze({
   MOUNT: 'mount',
@@ -77,7 +80,7 @@ export function loadDevMessages() {
 }
 
 // Automatically initiate loading in dev mode
-if (devMode === true || devMode === 'dev') {
+if (sharedDiagnosticsState.devMode === true || sharedDiagnosticsState.devMode === 'dev') {
   loadDevMessages();
 }
 
@@ -90,20 +93,46 @@ if (devMode === true || devMode === 'dev') {
  */
 export function setDevMode(mode) {
   if (mode === 'prod' || mode === 'production') {
-    devMode = 'prod';
+    sharedDiagnosticsState.devMode = 'prod';
     return Promise.resolve(null);
   }
   if (mode === false) {
-    devMode = false;
+    sharedDiagnosticsState.devMode = false;
     return Promise.resolve(null);
   }
-  devMode = true;
+  sharedDiagnosticsState.devMode = true;
   return loadDevMessages();
 }
 
 /** @returns {boolean} */
 export function isDevMode() {
-  return devMode === true || devMode === 'dev';
+  return sharedDiagnosticsState.devMode === true || sharedDiagnosticsState.devMode === 'dev';
+}
+
+/**
+ * Active mount context helpers to attribute pre-ownership diagnostics and cleanup errors.
+ */
+export function pushActiveMount(mountTarget) {
+  sharedDiagnosticsState.activeMountStack.push(mountTarget);
+}
+
+export function popActiveMount() {
+  return sharedDiagnosticsState.activeMountStack.pop();
+}
+
+export function getActiveMount() {
+  const stack = sharedDiagnosticsState.activeMountStack;
+  return stack.length > 0 ? stack[stack.length - 1] : null;
+}
+
+export function withActiveMount(mountTarget, fn) {
+  if (!mountTarget) return fn();
+  pushActiveMount(mountTarget);
+  try {
+    return fn();
+  } finally {
+    popActiveMount();
+  }
 }
 
 /**
@@ -120,7 +149,9 @@ function getCategory(code) {
 
 function getContextKey(context) {
   if (context && (typeof context === 'object' || typeof context === 'function')) {
-    if (!contextIds.has(context)) contextIds.set(context, ++nextContextId);
+    if (!contextIds.has(context)) {
+      contextIds.set(context, ++nextContextId);
+    }
     return `object:${contextIds.get(context)}`;
   }
   return `${typeof context}:${String(context)}`;
@@ -173,12 +204,12 @@ export function subscribeDiagnostics(listener) {
   if (typeof listener !== 'function') {
     throw new TypeError('subscribeDiagnostics(listener) requires a function listener.');
   }
-  diagnosticListeners.add(listener);
+  sharedDiagnosticsState.listeners.add(listener);
   let subscribed = true;
   return function unsubscribe() {
     if (!subscribed) return;
     subscribed = false;
-    diagnosticListeners.delete(listener);
+    sharedDiagnosticsState.listeners.delete(listener);
   };
 }
 
@@ -305,7 +336,7 @@ export function warn(code, message, context, options = {}) {
   );
 
   if (!isDuplicate) {
-    for (const listener of [...diagnosticListeners]) {
+    for (const listener of [...sharedDiagnosticsState.listeners]) {
       try {
         listener(diagnostic);
       } catch (err) {
@@ -320,9 +351,9 @@ export function warn(code, message, context, options = {}) {
     }
   }
 
-  if (!devMode) return;
+  if (!sharedDiagnosticsState.devMode) return;
 
-  if (devMode === 'prod') {
+  if (sharedDiagnosticsState.devMode === 'prod') {
     if (context !== undefined) {
       console.warn(`[lime-error] ${code}`, context);
     } else {

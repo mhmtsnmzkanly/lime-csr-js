@@ -132,7 +132,9 @@ test('public api: "lime-csr-js/core" exports strictly intended public kernel pri
     'getElementScope',
     'isLocalScopeBinding',
     'pattern',
+    'setDevMode',
     'setElementScope',
+    'subscribeDiagnostics',
     'tag',
   ]);
 

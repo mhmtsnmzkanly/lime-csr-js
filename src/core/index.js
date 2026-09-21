@@ -24,3 +24,7 @@ export {
   setElementScope,
   getElementScope,
 } from './scope.js';
+export {
+  setDevMode,
+  subscribeDiagnostics,
+} from '../errors.js';
